@@ -12,6 +12,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var healthSyncEnabled = false
     @Published private(set) var isBusy = false
     @Published private(set) var todayWaterMl = 0
+    @Published private(set) var dashboardURL = URL(string: "https://apitempo.com/?app=1")!
     @Published var status = "Strava hesabını bağlayarak başla."
     let dailyGoalMl = 2_000
 
@@ -30,7 +31,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     override init() {
         super.init()
-        accessToken = SecureTokenStore.read()
+        let savedToken = SecureTokenStore.read()
+        if savedToken != nil && !UserDefaults.standard.bool(forKey: "tempoDashboardBridgeReady") {
+            SecureTokenStore.delete()
+            accessToken = nil
+            status = "Yeni paneli açmak için Strava hesabını bir kez yeniden bağla."
+        } else {
+            accessToken = savedToken
+        }
         let savedSyncPreference = UserDefaults.standard.bool(forKey: "tempoHealthSyncEnabled")
         let hasCloudConsent = UserDefaults.standard.bool(forKey: "tempoCloudSyncConsent")
         healthSyncEnabled = savedSyncPreference && hasCloudConsent
@@ -252,12 +260,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             }
             do {
                 if let accessToken { try await revokeServerConnection(using: accessToken) }
+                dashboardURL = URL(string: "/mobile/auth/clear?nonce=\(UUID().uuidString)", relativeTo: baseURL)!
+                try? await Task.sleep(nanoseconds: 500_000_000)
                 SecureTokenStore.delete()
                 accessToken = nil
                 todayWaterMl = 0
                 UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabled")
                 UserDefaults.standard.set(false, forKey: "tempoCloudSyncConsent")
                 UserDefaults.standard.set(false, forKey: "tempoPendingWaterDeletion")
+                UserDefaults.standard.set(false, forKey: "tempoDashboardBridgeReady")
                 isBusy = false
                 status = "Bağlantı kaldırıldı; sunucudaki su toplamları silindi."
             } catch {
@@ -291,6 +302,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı. Yeniden dene.")
             }
             accessToken = token
+            UserDefaults.standard.set(true, forKey: "tempoDashboardBridgeReady")
+            if let dashboardURL = result.dashboardURL.flatMap(URL.init(string:)) {
+                self.dashboardURL = dashboardURL
+            }
             status = "Strava bağlı. Bugünkü su miktarını ekleyebilirsin."
             await refreshWater()
         } catch {
@@ -428,6 +443,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         todayWaterMl = 0
         healthSyncEnabled = false
         UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabled")
+        UserDefaults.standard.set(false, forKey: "tempoDashboardBridgeReady")
         status = "Tempo bağlantısının süresi doldu. Strava ile yeniden giriş yap."
     }
 
@@ -458,6 +474,7 @@ private struct TicketRequest: Encodable { let ticket: String; let verifier: Stri
 private struct TicketResponse: Decodable {
     let token: String?
     let error: String?
+    let dashboardURL: String?
 }
 
 private struct WaterSyncRequest: Encodable { let totals: [String: Double] }

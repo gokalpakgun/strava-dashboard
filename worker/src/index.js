@@ -20,6 +20,12 @@ export default {
       if (url.pathname === "/mobile/auth/callback" && request.method === "GET") {
         return completeMobileAuthorization(url, env);
       }
+      if (url.pathname === "/mobile/auth/session" && request.method === "GET") {
+        return completeMobileWebSession(url, env);
+      }
+      if (url.pathname === "/mobile/auth/clear" && request.method === "GET") {
+        return clearMobileWebSession(request, url, env);
+      }
       if (url.pathname === "/privacy" && request.method === "GET") {
         return env.ASSETS.fetch(new Request(new URL("/privacy.html", url), request));
       }
@@ -364,7 +370,11 @@ async function completeMobileAuthorization(url, env) {
   const athleteId = tokens.athlete?.id;
   if (!athleteId || !tokens.refresh_token) return new Response("Strava hesabı doğrulanamadı. Yeniden dene.", { status: 502 });
   const ticket = randomToken();
-  await env.TOKEN_STORE.put(`mobile-ticket:${ticket}`, JSON.stringify({ athleteId: String(athleteId), codeChallenge: oauthState.codeChallenge }), { expirationTtl: 300 });
+  await env.TOKEN_STORE.put(`mobile-ticket:${ticket}`, JSON.stringify({
+    athleteId: String(athleteId),
+    codeChallenge: oauthState.codeChallenge,
+    refreshToken: tokens.refresh_token,
+  }), { expirationTtl: 300 });
   return new Response(null, {
     status: 302,
     headers: {
@@ -390,20 +400,69 @@ async function exchangeMobileTicket(request, env) {
   if (!/^[a-f0-9]{64}$/i.test(ticket)) return json({ error: "Bağlantı kodu geçersiz." }, 400);
   if (!/^[A-Za-z0-9_-]{43}$/.test(verifier)) return json({ error: "Uygulama doğrulaması geçersiz." }, 400);
   const ticketData = await env.TOKEN_STORE.get(`mobile-ticket:${ticket}`, "json");
-  if (!ticketData?.athleteId || !ticketData?.codeChallenge) return json({ error: "Bağlantı kodunun süresi doldu. Strava bağlantısını yeniden başlat." }, 401);
+  if (!ticketData?.athleteId || !ticketData?.codeChallenge || !ticketData?.refreshToken) return json({ error: "Bağlantı kodunun süresi doldu. Strava bağlantısını yeniden başlat." }, 401);
   if (await sha256Base64Url(verifier) !== ticketData.codeChallenge) return json({ error: "Uygulama doğrulaması eşleşmedi." }, 401);
   await env.TOKEN_STORE.delete(`mobile-ticket:${ticket}`);
   const token = randomToken();
   const tokenHash = await hashToken(token);
   const athleteKey = String(ticketData.athleteId);
+  const webTicket = randomToken();
   const oldHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteKey}`);
   const writes = [
     env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteKey, { expirationTtl: MOBILE_TOKEN_SECONDS }),
     env.TOKEN_STORE.put(`mobile-link-for:${athleteKey}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`mobile-web-ticket:${webTicket}`, JSON.stringify({
+      athleteId: athleteKey,
+      refreshToken: ticketData.refreshToken,
+    }), { expirationTtl: 300 }),
   ];
   if (oldHash) writes.push(env.TOKEN_STORE.delete(`mobile-session:${oldHash}`));
   await Promise.all(writes);
-  return json({ token, athleteId: athleteKey, expiresIn: MOBILE_TOKEN_SECONDS });
+  const origin = new URL(request.url).origin;
+  return json({
+    token,
+    athleteId: athleteKey,
+    expiresIn: MOBILE_TOKEN_SECONDS,
+    dashboardURL: `${origin}/mobile/auth/session?ticket=${encodeURIComponent(webTicket)}`,
+  });
+}
+
+async function completeMobileWebSession(url, env) {
+  requireBindings(env);
+  const ticket = url.searchParams.get("ticket") || "";
+  if (!/^[a-f0-9]{64}$/i.test(ticket)) return new Response("Oturum bağlantısı geçersiz.", { status: 400 });
+  const ticketData = await env.TOKEN_STORE.get(`mobile-web-ticket:${ticket}`, "json");
+  if (!ticketData?.athleteId || !ticketData?.refreshToken) {
+    return new Response("Oturum bağlantısının süresi doldu. Tempo uygulamasından yeniden giriş yap.", { status: 401 });
+  }
+  await env.TOKEN_STORE.delete(`mobile-web-ticket:${ticket}`);
+  const sessionId = randomToken();
+  await env.TOKEN_STORE.put(`session:${sessionId}`, JSON.stringify({
+    refresh_token: ticketData.refreshToken,
+    athlete_id: ticketData.athleteId,
+  }), { expirationTtl: SESSION_SECONDS });
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${url.origin}/?connected=1&app=1`,
+      "Cache-Control": "no-store",
+      "Set-Cookie": cookie(SESSION_COOKIE, sessionId, SESSION_SECONDS, "/"),
+    },
+  });
+}
+
+async function clearMobileWebSession(request, url, env) {
+  requireBindings(env);
+  const sessionId = readCookie(request, SESSION_COOKIE);
+  if (sessionId) await env.TOKEN_STORE.delete(`session:${sessionId}`);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${url.origin}/?app=1`,
+      "Cache-Control": "no-store",
+      "Set-Cookie": cookie(SESSION_COOKIE, "", 0, "/"),
+    },
+  });
 }
 
 async function logoutMobile(request, env) {
