@@ -18,6 +18,10 @@
 	<string>2</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Tempo; su tüketimi, uyku, adım, aktif enerji, dinlenik nabız, HRV ve kilo verilerini spor gelişimini göstermek ve kişisel koç değerlendirmesini iyileştirmek için okur.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Tempo, uygulamada eklediğin su miktarını Apple Sağlık hesabına kaydeder.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

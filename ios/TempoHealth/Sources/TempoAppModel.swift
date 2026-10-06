@@ -12,6 +12,11 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var isLoadingDashboard = false
     @Published private(set) var isCoachLoading = false
     @Published private(set) var todayWaterMl = 0
+    @Published private(set) var healthSyncEnabled = UserDefaults.standard.bool(forKey: "tempoHealthSyncEnabledV1")
+    @Published private(set) var isHealthSyncing = false
+    @Published private(set) var healthDays: [String: TempoHealthMetrics] = [:]
+    @Published private(set) var healthLastSync: Date?
+    @Published private(set) var healthError: String?
     @Published private(set) var dashboard: TempoDashboard?
     @Published private(set) var dashboardError: String?
     @Published private(set) var coachAnswer = ""
@@ -20,6 +25,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     let dailyGoalMl = 2_000
     private let baseURL = URL(string: "https://apitempo.com")!
+    private let healthStore = TempoHealthStore()
     private var webAuthSession: ASWebAuthenticationSession?
     private var pendingVerifier: String?
     private var lastDashboardRefresh: Date?
@@ -40,6 +46,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         if accessToken != nil {
             status = "Strava bağlı. Verilerin hazırlanıyor."
             Task { await reloadAll() }
+        }
+        if healthSyncEnabled {
+            startHealthObservers()
+            Task { await syncAppleHealth() }
         }
     }
 
@@ -94,7 +104,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     func syncWhenActive() {
         guard accessToken != nil else { return }
         Task {
-            await refreshWater()
+            if healthSyncEnabled { await syncAppleHealth() }
+            else { await refreshWater() }
             if lastDashboardRefresh == nil || Date().timeIntervalSince(lastDashboardRefresh ?? .distantPast) > 300 {
                 await refreshDashboard()
             }
@@ -102,9 +113,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func reloadAll() async {
-        async let dashboardTask: Void = refreshDashboard()
-        async let waterTask: Void = refreshWater()
-        _ = await (dashboardTask, waterTask)
+        await refreshDashboard()
+        if healthSyncEnabled { await syncAppleHealth() }
+        else { await refreshWater() }
     }
 
     func refreshDashboard() async {
@@ -132,6 +143,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func addWater(_ amountMl: Int) {
+        if healthSyncEnabled {
+            addWaterToAppleHealth(amountMl)
+            return
+        }
         guard let accessToken, !isBusy else { return }
         isBusy = true
         status = "\(amountMl) ml ekleniyor…"
@@ -156,6 +171,86 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             } catch {
                 status = "Su eklenemedi: \(error.localizedDescription)"
             }
+        }
+    }
+
+    var healthAvailable: Bool { healthStore.isAvailable }
+
+    var todayHealth: TempoHealthMetrics {
+        healthDays[Self.localDay()] ?? TempoHealthMetrics(waterMl: Double(todayWaterMl))
+    }
+
+    var latestSleep: (day: String, minutes: Double)? {
+        healthDays.compactMap { day, value in
+            guard let minutes = value.sleepMinutes, minutes > 0 else { return nil }
+            return (day, minutes)
+        }.max { $0.0 < $1.0 }
+    }
+
+    var latestWeightKg: Double? {
+        healthDays.sorted { $0.key > $1.key }.compactMap { $0.value.bodyMassKg }.first
+    }
+
+    func connectAppleHealth() {
+        guard healthStore.isAvailable, !isHealthSyncing else {
+            healthError = "Apple Sağlık bu cihazda kullanılamıyor."
+            return
+        }
+        isHealthSyncing = true
+        healthError = nil
+        status = "Apple Sağlık izni bekleniyor…"
+        Task {
+            do {
+                try await healthStore.requestAuthorization()
+                healthSyncEnabled = true
+                UserDefaults.standard.set(true, forKey: "tempoHealthSyncEnabledV1")
+                startHealthObservers()
+                isHealthSyncing = false
+                await syncAppleHealth()
+            } catch {
+                isHealthSyncing = false
+                healthError = error.localizedDescription
+                status = "Apple Sağlık bağlanamadı: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func syncAppleHealth() async {
+        guard healthSyncEnabled, healthStore.isAvailable, !isHealthSyncing else { return }
+        isHealthSyncing = true
+        healthError = nil
+        defer { isHealthSyncing = false }
+        do {
+            let days = try await healthStore.readRecentDays()
+            healthDays = days
+            healthLastSync = Date()
+            todayWaterMl = Int((days[Self.localDay()]?.waterMl ?? 0).rounded())
+            if accessToken != nil { try await uploadHealth(days) }
+            status = days.isEmpty
+                ? "Apple Sağlık bağlı; paylaşılmış veri bulunamadı. Sağlık izinlerini kontrol edebilirsin."
+                : "Apple Sağlık verilerin güncel."
+        } catch {
+            healthError = error.localizedDescription
+            status = "Apple Sağlık eşitlenemedi: \(error.localizedDescription)"
+        }
+    }
+
+    func disconnectAppleHealth() {
+        healthStore.disableBackgroundDelivery()
+        healthSyncEnabled = false
+        UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
+        healthDays = [:]
+        healthLastSync = nil
+        todayWaterMl = 0
+        Task {
+            if let accessToken {
+                var request = URLRequest(url: URL(string: "/api/mobile/health", relativeTo: baseURL)!)
+                request.httpMethod = "DELETE"
+                request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                _ = try? await URLSession.shared.data(for: request)
+                await refreshWater()
+            }
+            status = "Apple Sağlık eşitlemesi kapatıldı. İzinleri iPhone Ayarlar’dan ayrıca değiştirebilirsin."
         }
     }
 
@@ -212,6 +307,12 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             dashboard = nil
             dashboardError = nil
             todayWaterMl = 0
+            healthStore.disableBackgroundDelivery()
+            healthSyncEnabled = false
+            healthDays = [:]
+            healthLastSync = nil
+            healthError = nil
+            UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
             coachAnswer = ""
             UserDefaults.standard.set(false, forKey: "tempoNativeAPIReadyV1")
             isBusy = false
@@ -269,6 +370,45 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         todayWaterMl = 0
         UserDefaults.standard.set(false, forKey: "tempoNativeAPIReadyV1")
         status = "Tempo bağlantısının süresi doldu. Strava ile yeniden giriş yap."
+    }
+
+    private func addWaterToAppleHealth(_ amountMl: Int) {
+        guard !isBusy else { return }
+        isBusy = true
+        status = "\(amountMl) ml Apple Sağlık’a ekleniyor…"
+        Task {
+            defer { isBusy = false }
+            do {
+                try await healthStore.saveWater(amountMl: Double(amountMl))
+                await syncAppleHealth()
+                status = "\(amountMl) ml Apple Sağlık’a eklendi."
+            } catch {
+                healthError = error.localizedDescription
+                status = "Su Apple Sağlık’a eklenemedi: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func uploadHealth(_ days: [String: TempoHealthMetrics]) async throws {
+        guard let accessToken else { return }
+        var request = URLRequest(url: URL(string: "/api/mobile/health/sync", relativeTo: baseURL)!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(TempoHealthSyncPayload(days: days))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.server("Sağlık verileri sunucuya eşitlenemedi.") }
+        if http.statusCode == 401 { expireSession(); return }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.server(Self.serverMessage(data, fallback: "Sağlık verileri sunucuya eşitlenemedi."))
+        }
+    }
+
+    private func startHealthObservers() {
+        healthStore.startBackgroundDelivery { [weak self] in
+            await self?.syncAppleHealth()
+        }
     }
 
     private static func serverMessage(_ data: Data, fallback: String) -> String {

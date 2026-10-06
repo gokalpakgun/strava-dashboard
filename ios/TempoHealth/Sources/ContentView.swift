@@ -208,13 +208,14 @@ private struct HomeScreen: View {
     }
 
     private var hydrationCompact: some View {
-        NavigationLink(destination: WaterScreen()) {
+        NavigationLink(destination: HealthScreen()) {
             HStack(spacing: 16) {
-                Image(systemName: "drop.fill").font(.title2).foregroundStyle(TempoTheme.blue)
-                    .frame(width: 48, height: 48).background(TempoTheme.blue.opacity(0.12), in: Circle())
+                Image(systemName: "heart.text.square.fill").font(.title2).foregroundStyle(.pink)
+                    .frame(width: 48, height: 48).background(Color.pink.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Bugünkü su").font(.headline)
-                    Text("\(model.todayWaterMl) / \(model.dailyGoalMl) ml").font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                    Text("Apple Sağlık").font(.headline)
+                    Text(model.healthSyncEnabled ? "\(model.todayWaterMl) ml su · sağlık verileri bağlı" : "Uyku, adım, kalori, nabız ve daha fazlası")
+                        .font(.subheadline).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
@@ -456,7 +457,7 @@ private struct CoachScreen: View {
                         }
                     }
                 }
-                Text("Koç yalnızca seçtiğin dönemdeki Strava aktivite ölçülerini kullanır. Sağlık teşhisi vermez.")
+                Text(model.healthSyncEnabled ? "Koç, seçtiğin dönemdeki Strava ve özetlenmiş Apple Sağlık ölçülerini kullanır. Sağlık teşhisi vermez." : "Koç yalnızca seçtiğin dönemdeki Strava aktivite ölçülerini kullanır. Sağlık teşhisi vermez.")
                     .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -474,7 +475,7 @@ private struct MoreScreen: View {
                 if let athlete = model.dashboard?.athlete { ProfileHeader(athlete: athlete) }
                 else { PageTitle(title: "Profil", subtitle: "Tempo hesabın") }
                 LazyVGrid(columns: columns, spacing: 12) {
-                    MoreLink(title: "Su Takibi", subtitle: "Günlük hedef", icon: "drop.fill", color: TempoTheme.blue, destination: AnyView(WaterScreen()))
+                    MoreLink(title: "Apple Sağlık", subtitle: "Uyku, su ve hareket", icon: "heart.text.square.fill", color: .pink, destination: AnyView(HealthScreen()))
                     MoreLink(title: "Aylık", subtitle: "Son 6 ay", icon: "chart.bar.fill", color: TempoTheme.green, destination: AnyView(MonthlyStatsScreen()))
                     MoreLink(title: "Ekipman", subtitle: "Bisiklet ve ayakkabı", icon: "bicycle", color: TempoTheme.orange, destination: AnyView(GearScreen()))
                     MoreLink(title: "Segmentler", subtitle: "Favorilerin", icon: "flag.checkered", color: TempoTheme.purple, destination: AnyView(SegmentsScreen()))
@@ -502,42 +503,147 @@ private struct MoreScreen: View {
     }
 }
 
-private struct WaterScreen: View {
+private struct HealthScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    var progress: Double { min(Double(model.todayWaterMl) / Double(model.dailyGoalMl), 1) }
+    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+    private var progress: Double { min(Double(model.todayWaterMl) / Double(model.dailyGoalMl), 1) }
+
     var body: some View {
         TempoPage {
-            PageTitle(title: "Su Takibi", subtitle: "Günlük sıvı hedefin")
-            TempoCard {
-                VStack(spacing: 24) {
-                    ZStack {
-                        Circle().stroke(.white.opacity(0.08), lineWidth: 15)
-                        Circle().trim(from: 0, to: CGFloat(progress)).stroke(TempoTheme.blue, style: StrokeStyle(lineWidth: 15, lineCap: .round)).rotationEffect(.degrees(-90))
-                        VStack(spacing: 2) {
-                            Image(systemName: "drop.fill").foregroundStyle(TempoTheme.blue)
-                            Text("\(model.todayWaterMl)").font(.system(size: 38, weight: .bold, design: .rounded))
-                            Text("ml").font(.caption).foregroundStyle(TempoTheme.secondary)
-                        }
-                    }.frame(width: 190, height: 190)
-                    Text("Günlük hedef: \(model.dailyGoalMl) ml").font(.subheadline).foregroundStyle(TempoTheme.secondary)
-                }.frame(maxWidth: .infinity)
-            }
-            SectionHeading(title: "Hızlı ekle", caption: "BUGÜN", padding: false)
-            HStack(spacing: 10) {
-                ForEach([200, 250, 500], id: \.self) { amount in
-                    Button { model.addWater(amount) } label: {
-                        VStack(spacing: 7) {
-                            Image(systemName: amount == 500 ? "waterbottle.fill" : "cup.and.saucer.fill").font(.title3)
-                            Text("+\(amount)").font(.headline)
-                            Text("ml").font(.caption2).foregroundStyle(TempoTheme.secondary)
-                        }.frame(maxWidth: .infinity).padding(.vertical, 16).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    }.buttonStyle(.plain).foregroundStyle(TempoTheme.blue).disabled(model.isBusy)
+            PageTitle(title: "Apple Sağlık", subtitle: "Günlük sağlık ve toparlanma görünümün")
+            if !model.healthAvailable {
+                TempoCard {
+                    Label("Apple Sağlık bu cihazda kullanılamıyor.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(TempoTheme.orange)
+                }
+            } else if !model.healthSyncEnabled {
+                connectCard
+            } else {
+                healthOverview
+                SectionHeading(title: "Bugünkü ölçüler", caption: "APPLE SAĞLIK", padding: false)
+                LazyVGrid(columns: columns, spacing: 12) {
+                    HealthMetricTile(title: "Adım", value: whole(model.todayHealth.steps), unit: "adım", icon: "figure.walk", color: TempoTheme.green)
+                    HealthMetricTile(title: "Aktif enerji", value: whole(model.todayHealth.activeEnergyKcal), unit: "kcal", icon: "flame.fill", color: TempoTheme.orange)
+                    HealthMetricTile(title: "Dinlenik nabız", value: decimal(model.todayHealth.restingHeartRateBpm), unit: "atım/dk", icon: "heart.fill", color: .pink)
+                    HealthMetricTile(title: "HRV", value: decimal(model.todayHealth.hrvMs), unit: "ms", icon: "waveform.path.ecg", color: TempoTheme.purple)
+                    HealthMetricTile(title: "Son uyku", value: sleepText, unit: model.latestSleep == nil ? "veri yok" : "", icon: "moon.zzz.fill", color: TempoTheme.blue)
+                    HealthMetricTile(title: "Kilo", value: decimal(model.latestWeightKg), unit: "kg", icon: "scalemass.fill", color: TempoTheme.green)
                 }
             }
+            if let error = model.healthError {
+                Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
+            }
             Text(model.status).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            if model.healthSyncEnabled {
+                HStack(spacing: 10) {
+                    Button { Task { await model.syncAppleHealth() } } label: {
+                        Label(model.isHealthSyncing ? "Eşitleniyor…" : "Şimdi eşitle", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(TempoSecondaryButtonStyle())
+                    .disabled(model.isHealthSyncing)
+                    Button(role: .destructive, action: model.disconnectAppleHealth) {
+                        Image(systemName: "link.badge.minus").frame(width: 26)
+                    }
+                    .buttonStyle(TempoSecondaryButtonStyle())
+                }
+                Text("Tempo yalnızca verdiğin Apple Sağlık izinlerindeki ölçüleri okur. Apple, reddedilen okuma izinlerini uygulamaya açıklamaz; eksik ölçüler boş görünür.")
+                    .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+            }
         }
-        .navigationTitle("Su")
+        .navigationTitle("Sağlık")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var connectCard: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 16) {
+                Image(systemName: "heart.text.square.fill").font(.system(size: 42)).foregroundStyle(.pink)
+                Text("Sağlık verilerini Tempo’ya bağla").font(.title3.bold())
+                Text("Son 90 gündeki su, uyku, adım, aktif kalori, dinlenik nabız, HRV ve kilo ölçülerini tek ekranda gör. Hızlı su ekleme de Apple Sağlık’a kaydedilir.")
+                    .font(.subheadline).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+                Button(action: model.connectAppleHealth) {
+                    Label(model.isHealthSyncing ? "Bağlanıyor…" : "Apple Sağlık’a bağlan", systemImage: "heart.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(TempoPrimaryButtonStyle())
+                .disabled(model.isHealthSyncing)
+            }
+        }
+    }
+
+    private var healthOverview: some View {
+        TempoCard {
+            VStack(spacing: 24) {
+                HStack {
+                    Label("Apple Sağlık bağlı", systemImage: "checkmark.circle.fill").font(.subheadline.bold()).foregroundStyle(TempoTheme.green)
+                    Spacer()
+                    if let date = model.healthLastSync {
+                        Text(date.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+                }
+                ZStack {
+                    Circle().stroke(.white.opacity(0.08), lineWidth: 15)
+                    Circle().trim(from: 0, to: CGFloat(progress)).stroke(TempoTheme.blue, style: StrokeStyle(lineWidth: 15, lineCap: .round)).rotationEffect(.degrees(-90))
+                    VStack(spacing: 2) {
+                        Image(systemName: "drop.fill").foregroundStyle(TempoTheme.blue)
+                        Text("\(model.todayWaterMl)").font(.system(size: 38, weight: .bold, design: .rounded))
+                        Text("/ \(model.dailyGoalMl) ml").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+                }.frame(width: 190, height: 190)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Hızlı su ekle").font(.headline).frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 10) {
+                        ForEach([200, 250, 500], id: \.self) { amount in
+                            Button { model.addWater(amount) } label: {
+                                VStack(spacing: 7) {
+                                    Image(systemName: amount == 500 ? "waterbottle.fill" : "cup.and.saucer.fill").font(.title3)
+                                    Text("+\(amount) ml").font(.subheadline.bold())
+                                }.frame(maxWidth: .infinity).padding(.vertical, 14).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                            }.buttonStyle(.plain).foregroundStyle(TempoTheme.blue).disabled(model.isBusy)
+                        }
+                    }
+                }
+            }.frame(maxWidth: .infinity)
+        }
+    }
+
+    private var sleepText: String {
+        guard let minutes = model.latestSleep?.minutes else { return "—" }
+        return TempoFormat.duration(minutes * 60)
+    }
+
+    private func whole(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return Int(value.rounded()).formatted(.number.locale(Locale(identifier: "tr_TR")))
+    }
+
+    private func decimal(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return value.formatted(.number.locale(Locale(identifier: "tr_TR")).precision(.fractionLength(1)))
+    }
+}
+
+private struct HealthMetricTile: View {
+    let title: String
+    let value: String
+    let unit: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            Image(systemName: icon).font(.title3).foregroundStyle(color)
+                .frame(width: 38, height: 38).background(color.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.caption).foregroundStyle(TempoTheme.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(value).font(.title3.bold())
+                    if !unit.isEmpty { Text(unit).font(.caption2).foregroundStyle(TempoTheme.secondary) }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 

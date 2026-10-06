@@ -134,6 +134,42 @@ struct TempoCoachResponse: Decodable {
     let error: String?
 }
 
+struct TempoHealthMetrics: Codable, Equatable {
+    var waterMl: Double?
+    var sleepMinutes: Double?
+    var steps: Double?
+    var activeEnergyKcal: Double?
+    var restingHeartRateBpm: Double?
+    var hrvMs: Double?
+    var bodyMassKg: Double?
+
+    init(
+        waterMl: Double? = nil,
+        sleepMinutes: Double? = nil,
+        steps: Double? = nil,
+        activeEnergyKcal: Double? = nil,
+        restingHeartRateBpm: Double? = nil,
+        hrvMs: Double? = nil,
+        bodyMassKg: Double? = nil
+    ) {
+        self.waterMl = waterMl
+        self.sleepMinutes = sleepMinutes
+        self.steps = steps
+        self.activeEnergyKcal = activeEnergyKcal
+        self.restingHeartRateBpm = restingHeartRateBpm
+        self.hrvMs = hrvMs
+        self.bodyMassKg = bodyMassKg
+    }
+
+    var hasData: Bool {
+        [waterMl, sleepMinutes, steps, activeEnergyKcal, restingHeartRateBpm, hrvMs, bodyMassKg].contains { $0 != nil }
+    }
+}
+
+struct TempoHealthSyncPayload: Encodable {
+    let days: [String: TempoHealthMetrics]
+}
+
 enum TempoFormat {
     private static let isoWithFractional: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()

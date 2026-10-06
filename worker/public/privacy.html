@@ -18,20 +18,20 @@
     <p><a href="/">Tempo’ya dön</a></p>
     <h1>Gizlilik Politikası</h1>
     <p class="updated">Son güncelleme: 7 Ekim 2026</p>
-    <p>Tempo, Strava profilini, aktivitelerini, rotalarını ve kullanıcının açıkça kaydettiği günlük su toplamlarını kişisel spor uygulamasında göstermek için çalışır. Veriler reklam, pazarlama veya satış amacıyla kullanılmaz.</p>
+    <p>Tempo, Strava profilini, aktivitelerini ve rotalarını; kullanıcı izin verirse Apple Sağlık ölçülerini kişisel spor uygulamasında göstermek için çalışır. Veriler reklam, pazarlama veya satış amacıyla kullanılmaz.</p>
 
-    <h2>Su verileri</h2>
-    <p>Tempo iPhone uygulaması, kullanıcının seçtiği miktarı günlük su toplamına ekler. Uygulama Apple Sağlık verilerini okumaz veya Apple Sağlık’a veri yazmaz. Kayıt yalnızca kullanıcı uygulamadaki hızlı ekleme düğmelerinden birine bastığında oluşturulur.</p>
-    <p>Günlük toplamlar, kullanıcıya ait Strava hesabıyla ilişkilendirilerek HTTPS üzerinden apitempo.com altyapısına (Cloudflare Workers ve KV) gönderilir. Toplamlar en fazla 100 gün saklanır ve yapay zekâ koçuna gönderilmez.</p>
+    <h2>Apple Sağlık verileri</h2>
+    <p>Apple Sağlık bağlantısı isteğe bağlıdır. Kullanıcı izin verdiğinde Tempo son 90 gündeki su, uyku süresi, adım, aktif enerji, dinlenik nabız, kalp atış hızı değişkenliği (HRV) ve kilo ölçülerini okur. Uygulamadaki hızlı ekleme düğmeleriyle eklenen su miktarı Apple Sağlık’a yazılır. Tempo, izin verilmeyen veri türlerini okuyamaz.</p>
+    <p>Günlük özetler kullanıcıya ait Strava hesabıyla ilişkilendirilerek HTTPS üzerinden apitempo.com altyapısına (Cloudflare Workers ve KV) gönderilir ve en fazla 100 gün saklanır. Ham HealthKit örnekleri, kaynak cihaz bilgileri ve dakika dakika ölçümler sunucuya gönderilmez.</p>
 
     <h2>Strava ve hesap bilgileri</h2>
     <p>Kullanıcı Strava hesabını bağladığında Tempo, Strava OAuth akışını kullanır. Strava yenileme anahtarı Cloudflare KV’de saklanır. iPhone uygulaması rastgele oluşturulan Tempo erişim anahtarını iOS Keychain’de tutar; sunucuda bu anahtarın yalnızca SHA-256 özeti saklanır. Uygulama Strava’dan profil, aktivite, ekipman, favori segment, aktivite fotoğrafı ve GPS rota verilerini alabilir.</p>
 
     <h2>Yapay zekâ koçu</h2>
-    <p>Kullanıcı “Koça sor” düğmesine bastığında seçilen dönemin anonimleştirilmiş aktivite özeti Cloudflare Workers AI hizmetine gönderilir. İsim, aktivite adı, tam saat, konum, rota ve su toplamları bu özete eklenmez. Yanıt yalnızca spor verilerini değerlendirmek için kullanılır.</p>
+    <p>Kullanıcı “Koça sor” düğmesine bastığında seçilen dönemin anonimleştirilmiş aktivite özeti ve Apple Sağlık bağlıysa günlük ölçülerden oluşturulan dönem özeti Cloudflare Workers AI hizmetine gönderilir. İsim, aktivite adı, tam saat, konum, rota ve ham Sağlık örnekleri bu özete eklenmez. Yanıt yalnızca spor ve sağlıklı yaşam verilerini değerlendirmek için kullanılır; tıbbi teşhis amacı taşımaz.</p>
 
     <h2>Saklama ve silme</h2>
-    <p>Kullanıcı Tempo iPhone uygulamasında bağlantıyı kaldırdığında mobil oturum, saklanan Strava yenileme anahtarı, mobil pano önbelleği ve sunucudaki su toplamları silinir. Strava hesabındaki Tempo yetkisi ayrıca Strava ayarlarından kaldırılabilir.</p>
+    <p>Kullanıcı Apple Sağlık eşitlemesini kapattığında sunucudaki Sağlık özetleri silinir. Strava bağlantısını kaldırdığında mobil oturum, saklanan Strava yenileme anahtarı, mobil pano önbelleği ve sunucudaki Sağlık özetleri silinir. Apple Sağlık izinleri iPhone Ayarlar uygulamasından, Strava yetkisi ise Strava ayarlarından ayrıca değiştirilebilir.</p>
 
     <h2>Üçüncü taraf hizmetler ve güvenlik</h2>
     <p>Strava hesap ve aktivite verilerinin kaynağıdır. Cloudflare, Tempo’nun sunucu, KV veri saklama ve isteğe bağlı yapay zekâ altyapısını sağlar. İletim HTTPS kullanır; mobil erişim anahtarı iOS Keychain’de saklanır.</p>
