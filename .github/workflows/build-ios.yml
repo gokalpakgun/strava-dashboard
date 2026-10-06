@@ -31,8 +31,12 @@ jobs:
 
       - name: IPA paketini hazırla
         run: |
+          APP_PATH="$RUNNER_TEMP/TempoDerivedData/Build/Products/Release-iphoneos/Tempo.app"
+          EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
+          test -n "$EXECUTABLE_NAME"
+          test -f "$APP_PATH/$EXECUTABLE_NAME"
           mkdir -p "$RUNNER_TEMP/TempoIPA/Payload"
-          cp -R "$RUNNER_TEMP/TempoDerivedData/Build/Products/Release-iphoneos/Tempo.app" "$RUNNER_TEMP/TempoIPA/Payload/"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/TempoIPA/Payload/"
           ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/TempoIPA/Payload" "$RUNNER_TEMP/Tempo-unsigned.ipa"
 
       - name: IPA dosyasını yükle
