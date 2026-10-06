@@ -428,7 +428,7 @@ document.querySelector('#coach-form')?.addEventListener('submit', async (event) 
   submit.dataset.busy = 'true';
   submit.textContent = 'İnceleniyor…';
   updateCoachButton();
-  status.textContent = 'Aktivite özetin Cloudflare AI tarafından değerlendiriliyor…';
+  status.textContent = 'Ayrıntılı antrenman ölçümlerin Cloudflare AI tarafından değerlendiriliyor…';
   answer.hidden = true;
 
   try {
@@ -452,7 +452,7 @@ document.querySelector('#coach-form')?.addEventListener('submit', async (event) 
     body.textContent = result.answer;
     answer.append(heading, body);
     answer.hidden = false;
-    status.textContent = 'Değerlendirme hazır. Bu yanıt uygulamada saklanmaz.';
+    const detailCount = Number(result.detailedActivityCount) || 0; const periodCount = Number(result.periodActivityCount) || 0; status.textContent = detailCount ? `Değerlendirme hazır. ${detailCount} / ${periodCount} aktivitenin ayrıntılı ölçüleri kullanıldı. Yanıt uygulamada saklanmaz.` : 'Bu dönemde erişilebilir ayrıntı yok; yalnızca özet veriler kullanıldı.';
   } catch (error) {
     status.textContent = error.message || 'Koç yanıtı alınamadı. Biraz sonra tekrar dene.';
   } finally {
