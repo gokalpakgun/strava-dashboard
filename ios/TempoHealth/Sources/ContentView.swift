@@ -635,7 +635,12 @@ private struct EddingtonScreen: View {
 
 private struct YearSummaryScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    private var activities: [TempoActivity] { (model.dashboard?.activities ?? []).filter { $0.date.map(Calendar.current.isDate(_:equalTo: Date(), toGranularity: .year)) ?? false } }
+    private var activities: [TempoActivity] {
+        (model.dashboard?.activities ?? []).filter { activity in
+            guard let date = activity.date else { return false }
+            return Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+        }
+    }
     var body: some View {
         TempoPage {
             PageTitle(title: "\(Calendar.current.component(.year, from: Date())) Özeti", subtitle: "Yıl içindeki hareketin")
