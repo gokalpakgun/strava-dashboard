@@ -172,6 +172,13 @@ document.querySelector('#disconnect-link')?.addEventListener('click', async (eve
   window.location.reload();
 });
 
+document.querySelectorAll('.nav-item').forEach((link) => {
+  link.addEventListener('click', () => {
+    document.querySelector('.nav-item.active')?.classList.remove('active');
+    link.classList.add('active');
+  });
+});
+
 const params = new URLSearchParams(window.location.search);
 if (params.get('connected') === '1') {
   showNotice('Strava bağlandı. Güncel aktivitelerin yükleniyor.');
