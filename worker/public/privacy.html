@@ -18,20 +18,20 @@
     <p><a href="/">Tempo’ya dön</a></p>
     <h1>Gizlilik Politikası</h1>
     <p class="updated">Son güncelleme: 6 Ekim 2026</p>
-    <p>Tempo, Strava antrenmanlarını ve kullanıcının açıkça izin verdiği Apple Sağlık günlük su toplamlarını kişisel spor panosunda göstermek için çalışır. Sağlık verileri reklam, pazarlama, profil çıkarma veya satış amacıyla kullanılmaz.</p>
+    <p>Tempo, Strava antrenmanlarını ve kullanıcının açıkça kaydettiği günlük su toplamlarını kişisel spor panosunda göstermek için çalışır. Su verileri reklam, pazarlama, profil çıkarma veya satış amacıyla kullanılmaz.</p>
 
-    <h2>Apple Sağlık verileri</h2>
-    <p>Tempo iPhone uygulaması, yalnızca “Diyetle alınan su” verisini okumak için Apple HealthKit izni ister. Uygulama su kayıtlarını iPhone’da günlük toplamlar halinde hesaplar; tek tek kayıtları, zaman damgalarını veya başka Sağlık verilerini sunucuya göndermez. Eşitleme ancak kullanıcı uygulamada veri gönderimini kabul ettikten ve iOS izin ekranını yanıtladıktan sonra başlar.</p>
-    <p>Günlük toplamlar, kullanıcıya ait Strava hesabıyla ilişkilendirilerek HTTPS üzerinden apitempo.com altyapısına (Cloudflare Workers ve KV) gönderilir. Toplamlar en fazla 100 gün saklanır. Tempo bu verileri yapay zekâ koçuna göndermez ve Apple Sağlık’a veri yazmaz.</p>
+    <h2>Su verileri</h2>
+    <p>Tempo iPhone uygulaması, kullanıcının seçtiği miktarı günlük su toplamına ekler. Uygulama Apple Sağlık verilerini okumaz veya Apple Sağlık’a veri yazmaz. Eşitleme yalnızca kullanıcı uygulamada veri gönderimini kabul edip bir miktar eklediğinde başlar.</p>
+    <p>Günlük toplamlar, kullanıcıya ait Strava hesabıyla ilişkilendirilerek HTTPS üzerinden apitempo.com altyapısına (Cloudflare Workers ve KV) gönderilir. Toplamlar en fazla 100 gün saklanır ve yapay zekâ koçuna gönderilmez.</p>
 
     <h2>Strava ve hesap bilgileri</h2>
     <p>Kullanıcı Strava hesabını bağladığında Tempo, Strava OAuth akışını kullanır. Web panosunun Strava erişim belirteçleri sunucuda saklanır; iPhone uygulaması ise su eşitleme isteğini doğrulamak için gereken erişim belirtecini iOS Keychain’de tutar. Uygulamadaki Strava bağlantısı, kullanıcının su verisini doğru pano hesabına bağlamak için kullanılır.</p>
 
     <h2>Saklama ve silme</h2>
-    <p>Kullanıcı Tempo iPhone uygulamasında bağlantıyı kaldırdığında, uygulama eşitleme belirtecini iptal eder ve sunucudaki Apple Sağlık su toplamlarını siler. Web panosundaki “Bağlantıyı kaldır” seçeneği de su bağlantısını ve saklanan toplamları kaldırır. Apple Sağlık izinleri ayrıca iPhone’daki Ayarlar &gt; Gizlilik ve Güvenlik &gt; Sağlık bölümünden yönetilebilir.</p>
+    <p>Kullanıcı Tempo iPhone uygulamasında bağlantıyı kaldırdığında, uygulama eşitleme belirtecini iptal eder ve sunucudaki su toplamlarını siler. Veri gönderme onayını kapatmak veya web panosundaki “Bağlantıyı kaldır” seçeneğini kullanmak da saklanan toplamları kaldırır.</p>
 
     <h2>Üçüncü taraf hizmetler ve güvenlik</h2>
-    <p>Strava hesap bağlantısını, Cloudflare ise Tempo’nun sunucu ve veri saklama altyapısını sağlar. Apple Sağlık verisi yalnızca bu özellik için Tempo sunucularına aktarılır; başka hizmetlere gönderilmez. İletim HTTPS kullanır, uygulama belirteci iOS Keychain’de saklanır ve sunucuda belirtecin kendisi yerine özeti tutulur.</p>
+    <p>Strava hesap bağlantısını, Cloudflare ise Tempo’nun sunucu ve veri saklama altyapısını sağlar. Su toplamları başka hizmetlere gönderilmez. İletim HTTPS kullanır, uygulama belirteci iOS Keychain’de saklanır ve sunucuda belirtecin kendisi yerine özeti tutulur.</p>
 
     <h2>Arka plan eşitlemesi</h2>
     <p>iOS, Sağlık verisinin arka planda okunacağı zamanı yönetir. Uygulama açıkken eşitleme kullanıcı isteğiyle yapılabilir; uygulama arka plandayken bildirimler gecikebilir. Telefon kilitliyken Sağlık verisine erişim kısıtlanabilir.</p>

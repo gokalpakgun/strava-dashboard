@@ -35,6 +35,12 @@ export default {
       if (url.pathname === "/api/mobile/water/sync" && request.method === "DELETE") {
         return unlinkMobileWater(request, env);
       }
+      if (url.pathname === "/api/mobile/water" && request.method === "GET") {
+        return getMobileWater(request, env);
+      }
+      if (url.pathname === "/api/mobile/water/add" && request.method === "POST") {
+        return addMobileWater(request, env);
+      }
       if (url.pathname === "/auth/logout" && request.method === "POST") {
         return logout(request, env);
       }
@@ -417,6 +423,65 @@ async function logoutMobile(request, env) {
   }
   await Promise.all(deletes);
   return json({ ok: true });
+}
+
+async function getMobileWater(request, env) {
+  requireBindings(env);
+  const token = readBearerToken(request);
+  if (!token) return json({ error: "Uygulama bağlantısı geçersiz." }, 401);
+  const tokenHash = await hashToken(token);
+  const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
+  if (!athleteId) return json({ error: "Uygulama bağlantısının süresi doldu. Strava ile yeniden giriş yap." }, 401);
+  const totals = await env.TOKEN_STORE.get(`health-water-athlete:${athleteId}`, "json") || {};
+  await Promise.all([
+    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+  ]);
+  return json({ totals });
+}
+
+async function addMobileWater(request, env) {
+  requireBindings(env);
+  const token = readBearerToken(request);
+  if (!token) return json({ error: "Uygulama bağlantısı geçersiz." }, 401);
+  const tokenHash = await hashToken(token);
+  const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
+  if (!athleteId) return json({ error: "Uygulama bağlantısının süresi doldu. Strava ile yeniden giriş yap." }, 401);
+
+  let input;
+  try {
+    const body = await request.text();
+    if (body.length > 1024) return json({ error: "İstek çok büyük." }, 413);
+    input = JSON.parse(body);
+  } catch {
+    return json({ error: "Su miktarı okunamadı." }, 400);
+  }
+
+  const day = typeof input?.date === "string" ? input.date : "";
+  const amountMl = Number(input?.amountMl);
+  const now = new Date();
+  const latestAllowed = new Date(now);
+  latestAllowed.setUTCDate(latestAllowed.getUTCDate() + 1);
+  const earliestAllowed = new Date(now);
+  earliestAllowed.setUTCDate(earliestAllowed.getUTCDate() - 1);
+  const minDay = earliestAllowed.toISOString().slice(0, 10);
+  const maxDay = latestAllowed.toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(`${day}T00:00:00Z`)) || new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day || day < minDay || day > maxDay || !Number.isInteger(amountMl) || amountMl < 1 || amountMl > 2000) {
+    return json({ error: "Tarih veya su miktarı geçersiz." }, 400);
+  }
+
+  const totalsKey = `health-water-athlete:${athleteId}`;
+  const totals = await env.TOKEN_STORE.get(totalsKey, "json") || {};
+  const current = Number(totals[day]) || 0;
+  const totalMl = current + amountMl;
+  if (totalMl > 20000) return json({ error: "Günlük su toplamı 20.000 ml sınırını aşamaz." }, 400);
+  totals[day] = totalMl;
+  await Promise.all([
+    env.TOKEN_STORE.put(totalsKey, JSON.stringify(totals), { expirationTtl: 60 * 60 * 24 * 100 }),
+    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+  ]);
+  return json({ ok: true, totalMl });
 }
 
 async function syncMobileWater(request, env) {

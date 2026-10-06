@@ -11,7 +11,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var isConnected = false
     @Published private(set) var healthSyncEnabled = false
     @Published private(set) var isBusy = false
+    @Published private(set) var todayWaterMl = 0
     @Published var status = "Strava hesabını bağlayarak başla."
+    let dailyGoalMl = 2_000
 
     private let baseURL = URL(string: "https://apitempo.com")!
     private let healthStore = HKHealthStore()
@@ -37,7 +39,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             UserDefaults.standard.set(true, forKey: "tempoPendingWaterDeletion")
         }
         if accessToken != nil {
-            status = healthSyncEnabled ? "Strava bağlı. Su verisi eşitleniyor." : "Strava bağlı. Apple Sağlık eşitlemesini etkinleştir."
+            status = healthSyncEnabled ? "Strava bağlı. Su verisi eşitleniyor." : "Strava bağlı. Bugünkü su miktarını ekleyebilirsin."
+            Task { await refreshWater() }
             if healthSyncEnabled {
                 startWaterObserver()
                 Task { await syncWater() }
@@ -136,6 +139,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     func syncWhenActive() {
         guard accessToken != nil else { return }
+        Task { await refreshWater() }
         if UserDefaults.standard.bool(forKey: "tempoPendingWaterDeletion"), !healthSyncEnabled {
             Task { await retryPendingWaterDeletion() }
             return
@@ -144,8 +148,67 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         Task { await syncWater() }
     }
 
+    func addWater(_ amountMl: Int) {
+        guard let accessToken else {
+            status = "Önce Strava hesabını bağla."
+            return
+        }
+        guard UserDefaults.standard.bool(forKey: "tempoCloudSyncConsent") else {
+            status = "Su toplamını göndermek için veri gönderme onayını işaretle."
+            return
+        }
+        guard !isBusy else { return }
+        isBusy = true
+        status = "\(amountMl) ml ekleniyor…"
+        Task {
+            defer { isBusy = false }
+            do {
+                var request = URLRequest(url: URL(string: "/api/mobile/water/add", relativeTo: baseURL)!)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 15
+                request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONEncoder().encode(ManualWaterRequest(date: Self.localDay(), amountMl: amountMl))
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let http = response as? HTTPURLResponse
+                if http?.statusCode == 401 {
+                    expireSession()
+                    return
+                }
+                let result = try JSONDecoder().decode(ManualWaterResponse.self, from: data)
+                guard let statusCode = http?.statusCode, (200..<300).contains(statusCode), let total = result.totalMl else {
+                    throw APIError.server(result.error ?? "Su miktarı eklenemedi.")
+                }
+                UserDefaults.standard.set(false, forKey: "tempoPendingWaterDeletion")
+                todayWaterMl = total
+                status = "\(amountMl) ml eklendi. Bugünkü toplam: \(total) ml."
+            } catch {
+                status = "Su eklenemedi: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func refreshWater() async {
+        guard let accessToken else { return }
+        do {
+            var request = URLRequest(url: URL(string: "/api/mobile/water", relativeTo: baseURL)!)
+            request.timeoutInterval = 15
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let http = response as? HTTPURLResponse
+            if http?.statusCode == 401 {
+                expireSession()
+                return
+            }
+            guard let statusCode = http?.statusCode, (200..<300).contains(statusCode) else { return }
+            let result = try JSONDecoder().decode(WaterStateResponse.self, from: data)
+            todayWaterMl = Int((result.totals[Self.localDay()] ?? 0).rounded())
+        } catch {
+            // Son bilinen toplam ekranda kalır; kullanıcı ekleme yapınca hata ayrıntısı gösterilir.
+        }
+    }
+
     func disableHealthSync() {
-        guard healthSyncEnabled else { return }
         healthSyncEnabled = false
         UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabled")
         UserDefaults.standard.set(true, forKey: "tempoPendingWaterDeletion")
@@ -155,7 +218,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthStore.disableBackgroundDelivery(for: waterType) { _, _ in }
         }
         guard let accessToken else {
-            status = "Apple Sağlık eşitlemesi kapatıldı."
+            todayWaterMl = 0
+            status = "Su eşitlemesi kapatıldı."
             return
         }
         Task {
@@ -165,7 +229,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             do {
                 try await deleteServerWater(using: accessToken)
                 UserDefaults.standard.set(false, forKey: "tempoPendingWaterDeletion")
-                status = "Apple Sağlık eşitlemesi kapatıldı; sunucudaki su toplamları silindi."
+                todayWaterMl = 0
+                status = "Su eşitlemesi kapatıldı; sunucudaki su toplamları silindi."
             } catch {
                 status = "Eşitleme durdu. Su verisini silmek için internet gelince uygulamayı tekrar aç."
             }
@@ -189,6 +254,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 if let accessToken { try await revokeServerConnection(using: accessToken) }
                 SecureTokenStore.delete()
                 accessToken = nil
+                todayWaterMl = 0
                 UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabled")
                 UserDefaults.standard.set(false, forKey: "tempoCloudSyncConsent")
                 UserDefaults.standard.set(false, forKey: "tempoPendingWaterDeletion")
@@ -225,7 +291,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı. Yeniden dene.")
             }
             accessToken = token
-            status = "Strava bağlı. Şimdi Apple Sağlık iznini ver."
+            status = "Strava bağlı. Bugünkü su miktarını ekleyebilirsin."
+            await refreshWater()
         } catch {
             status = error.localizedDescription
         }
@@ -355,6 +422,24 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
     }
 
+    private func expireSession() {
+        SecureTokenStore.delete()
+        accessToken = nil
+        todayWaterMl = 0
+        healthSyncEnabled = false
+        UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabled")
+        status = "Tempo bağlantısının süresi doldu. Strava ile yeniden giriş yap."
+    }
+
+    private static func localDay() -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = .current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
     private static func randomVerifier() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
@@ -376,6 +461,20 @@ private struct TicketResponse: Decodable {
 }
 
 private struct WaterSyncRequest: Encodable { let totals: [String: Double] }
+
+private struct ManualWaterRequest: Encodable {
+    let date: String
+    let amountMl: Int
+}
+
+private struct ManualWaterResponse: Decodable {
+    let totalMl: Int?
+    let error: String?
+}
+
+private struct WaterStateResponse: Decodable {
+    let totals: [String: Double]
+}
 
 private enum APIError: LocalizedError {
     case server(String)
