@@ -354,6 +354,7 @@ function renderHeatmap(activities) {
     caption.textContent = 'Seçili rota: ' + formatDate(activity.start_date_local) + ' · ' + activityType(activity).label + ' · ' + (Number(activity.distance || 0) / 1000).toFixed(1) + ' km';
   }
   requestAnimationFrame(() => heatmapMap.invalidateSize());
+}
 
 
 
@@ -538,7 +539,6 @@ document.querySelector('#health-water-clear')?.addEventListener('click', () => {
 });
 
 renderHealthWater(readHealthWaterTotals());
-}
 
 document.querySelector('#disconnect-link')?.addEventListener('click', async (event) => {
   event.preventDefault();
