@@ -282,40 +282,41 @@ function decodePolyline(encoded) {
   return points;
 }
 
+let heatmapMap;
+
 function renderHeatmap(activities) {
-  const group = document.querySelector('#heatmap-routes');
+  const caption = document.querySelector('#heatmap-copy');
+  const count = document.querySelector('#heatmap-count');
   const tracks = activities.slice(0, 300).map((activity) => decodePolyline(activity.polyline || '')).filter((points) => points.length > 1);
   const allPoints = tracks.flat();
-  const caption = document.querySelector('#heatmap-copy');
-  group.replaceChildren();
   if (!allPoints.length) {
+    count.textContent = '0 rota';
     caption.textContent = 'Aktivitelerde GPS rotası bulunamadı. Strava’da aktivite haritası görünüyorsa hesabı yeniden bağla.';
     return;
   }
-  const meanLat = allPoints.reduce((sum, [lat]) => sum + lat, 0) / allPoints.length;
-  const longitudeScale = Math.max(0.01, Math.cos(meanLat * Math.PI / 180));
-  const projectedTracks = tracks.map((track) => track.map(([lat, lng]) => [lat, lng * longitudeScale]));
-  const points = projectedTracks.flat();
-  const bounds = points.reduce((value, [lat, lng]) => ({
-    minLat: Math.min(value.minLat, lat), maxLat: Math.max(value.maxLat, lat),
-    minLng: Math.min(value.minLng, lng), maxLng: Math.max(value.maxLng, lng),
-  }), { minLat: Infinity, maxLat: -Infinity, minLng: Infinity, maxLng: -Infinity });
-  const { minLat, maxLat, minLng, maxLng } = bounds;
-  const latSpan = maxLat - minLat || 0.001;
-  const lngSpan = maxLng - minLng || 0.001;
-  const scale = Math.min(920 / lngSpan, 380 / latSpan);
-  const width = lngSpan * scale;
-  const height = latSpan * scale;
-  const xOffset = (1000 - width) / 2;
-  const yOffset = (440 - height) / 2;
-  const ns = 'http://www.w3.org/2000/svg';
-  projectedTracks.forEach((track) => {
-    const path = document.createElementNS(ns, 'polyline');
-    path.setAttribute('points', track.map(([lat, lng]) => `${(lng - minLng) * scale + xOffset},${(maxLat - lat) * scale + yOffset}`).join(' '));
-    path.setAttribute('class', 'heatmap-route');
-    group.append(path);
+  if (!window.L) {
+    count.textContent = 'Harita yüklenemedi';
+    caption.textContent = 'Harita kütüphanesi yüklenemedi. Sayfayı yenileyip tekrar dene.';
+    return;
+  }
+  if (!heatmapMap) {
+    heatmapMap = L.map('heatmap-map', { scrollWheelZoom: false, preferCanvas: true }).setView(allPoints[0], 12);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap katkıda bulunanlar</a>',
+    }).addTo(heatmapMap);
+  }
+  heatmapMap.eachLayer((layer) => {
+    if (layer instanceof L.Polyline) heatmapMap.removeLayer(layer);
   });
-  caption.textContent = `${tracks.length} GPS rotası · son ${activities.length} aktiviteden`;
+  tracks.forEach((track) => {
+    L.polyline(track, { color: '#f36e45', weight: 2.4, opacity: 0.42, lineCap: 'round', lineJoin: 'round' }).addTo(heatmapMap);
+  });
+  const bounds = L.latLngBounds(allPoints.map(([lat, lng]) => [lat, lng]));
+  heatmapMap.fitBounds(bounds.pad(0.12), { maxZoom: 14 });
+  count.textContent = `${tracks.length} rota`;
+  caption.textContent = `${tracks.length} GPS rotası · son ${Math.min(activities.length, 300)} aktiviteden`;
+  requestAnimationFrame(() => heatmapMap.invalidateSize());
 }
 
 function renderRewind(activities, historyLimited) {

@@ -10,6 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -64,7 +66,7 @@
           <section class="panel feature-panel" id="segments"><div class="panel-heading"><div><p class="eyebrow">SEGMENTLER</p><h2>Favori segmentlerin</h2></div></div><div class="data-list" id="segments-list"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
           <section class="panel feature-panel" id="monthly-stats"><div class="panel-heading"><div><p class="eyebrow">AYLIK İSTATİSTİKLER</p><h2>Son 6 ay</h2></div></div><div class="month-grid" id="monthly-list"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
           <section class="panel feature-panel" id="eddington"><p class="eyebrow">EDDINGTON SAYISI · KOŞU</p><h2 class="big-metric" id="eddington-number">—</h2><p id="eddington-copy">Günlük koşu mesafelerine göre hesaplanıyor.</p></section>
-          <section class="panel feature-panel heatmap-panel" id="heatmap"><div class="panel-heading"><div><p class="eyebrow">ISI HARİTASI</p><h2>Aktivite rotaların</h2></div></div><svg id="heatmap-svg" viewBox="0 0 1000 440" role="img" aria-label="Strava aktivitelerinin rota haritası"><rect width="1000" height="440" rx="12" fill="#f5f6f2"/><g class="map-grid"><path d="M0 110H1000M0 220H1000M0 330H1000M250 0V440M500 0V440M750 0V440"/></g><g id="heatmap-routes"></g></svg><p class="data-empty" id="heatmap-copy">Strava verileri yükleniyor…</p></section>
+          <section class="panel feature-panel heatmap-panel" id="heatmap"><div class="panel-heading"><div><p class="eyebrow">ISI HARİTASI</p><h2>Aktivite rotaların</h2></div><span class="map-count" id="heatmap-count">Rotalar yükleniyor</span></div><div id="heatmap-map" aria-label="Strava aktivite rotalarının haritası"></div><p class="data-empty" id="heatmap-copy">Strava verileri yükleniyor…</p></section>
           <section class="panel feature-panel" id="rewind"><div class="panel-heading"><div><p class="eyebrow">YIL ÖZETİ</p><h2 id="rewind-title">Bu yıl</h2></div></div><div class="rewind-grid" id="rewind-list"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
           <section class="panel feature-panel" id="photos"><div class="panel-heading"><div><p class="eyebrow">FOTOĞRAFLAR</p><h2>Son aktivitelerinden</h2></div></div><div class="photo-grid" id="photos-grid"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
         </div>
