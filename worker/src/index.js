@@ -305,7 +305,7 @@ async function getDashboard(request, env) {
     return json({ error: "Seçtiğin dönemde değerlendirilecek Strava aktivitesi bulunamadı." }, 422);
   }
 
-  await env.TOKEN_STORE.put(cooldownKey, "1", { expirationTtl: 20 });
+  await env.TOKEN_STORE.put(cooldownKey, "1", { expirationTtl: 60 });
   const prompt = question || "Bu dönemdeki spor gelişimimi değerlendir. Güçlü yanlarımı, dikkat çeken değişimleri ve uygulanabilir sonraki adımları açıkla.";
   try {
     const result = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
