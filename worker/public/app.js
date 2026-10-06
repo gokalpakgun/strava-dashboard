@@ -1,5 +1,5 @@
 const notice = document.querySelector('#demo-notice');
-<<<<<<< HEAD
+
 let noticeTimer;
 let hasLiveStravaData = false;
 
@@ -7,9 +7,9 @@ function updateCoachButton() {
   const submit = document.querySelector('#coach-submit');
   if (submit) submit.disabled = !hasLiveStravaData || !document.querySelector('#coach-consent')?.checked || submit.dataset.busy === 'true';
 }
-=======
-let noticeTimer; let hasLiveStravaData = false; function updateCoachButton() { const submit = document.querySelector('#coach-submit'); if (submit) submit.disabled = !hasLiveStravaData || !document.querySelector('#coach-consent')?.checked || submit.dataset.busy === 'true'; }
->>>>>>> f69d4323fd03c237d74573df461900faf0c32204
+
+
+
 
 function showNotice(message) {
   notice.textContent = message;
@@ -118,14 +118,14 @@ function drawChart(activities, weekStart) {
   });
 }
 
-<<<<<<< HEAD
+
 function renderDashboard(activities) {
   hasLiveStravaData = true;
   updateCoachButton();
   document.querySelector('#coach-status').textContent = 'Hazır. Her değerlendirme isteğinde veriler yeniden gönderilir; onay kutusunu işaretleyerek izin ver.';
-=======
-function renderDashboard(activities) { hasLiveStravaData = true; updateCoachButton(); document.querySelector('#coach-status').textContent = 'Hazır. Her değerlendirme isteğinde veriler yeniden gönderilir; onay kutusunu işaretleyerek izin ver.';
->>>>>>> f69d4323fd03c237d74573df461900faf0c32204
+
+
+
   const now = new Date();
   const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
   const thisWeek = activities.filter((activity) => new Date(activity.start_date_local) >= weekStart);
@@ -317,14 +317,14 @@ function renderHeatmap(activities) {
     return;
   }
   if (!heatmapMap) {
-<<<<<<< HEAD
-    heatmapMap = L.map('heatmap-map', { scrollWheelZoom: false, preferCanvas: true }).setView(allPoints[0], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      subdomains: 'abc',
-=======
+
+
+
+
+
     heatmapMap = L.map('heatmap-map', { scrollWheelZoom: false, preferCanvas: true }).setView(allPoints[0], 12);    heatmapMap.attributionControl.setPrefix(false);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains: 'abc',
->>>>>>> f69d4323fd03c237d74573df461900faf0c32204
+
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap katkıda bulunanlar</a>',
     }).addTo(heatmapMap);
@@ -416,7 +416,7 @@ document.querySelectorAll('.nav-item').forEach((link) => {
   });
 });
 
-<<<<<<< HEAD
+
 document.querySelector('#coach-consent')?.addEventListener('change', updateCoachButton);
 document.querySelector('#coach-form')?.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -464,9 +464,9 @@ document.querySelector('#coach-form')?.addEventListener('submit', async (event) 
 });
 
 const menuToggle = document.querySelector('.menu-toggle');
-=======
-document.querySelector('#coach-consent')?.addEventListener('change', updateCoachButton); document.querySelector('#coach-form')?.addEventListener('submit', async (event) => { event.preventDefault(); const consent = document.querySelector('#coach-consent'); if (!hasLiveStravaData || !consent.checked) return; const submit = document.querySelector('#coach-submit'); const status = document.querySelector('#coach-status'); const answer = document.querySelector('#coach-answer'); submit.dataset.busy = 'true'; submit.textContent = 'İnceleniyor…'; updateCoachButton(); status.textContent = 'Aktivite özetin Cloudflare AI tarafından değerlendiriliyor…'; answer.hidden = true; try { const response = await fetch('/api/coach', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent: true, period: document.querySelector('#coach-period').value, question: document.querySelector('#coach-question').value }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Koç yanıtı alınamadı.'); answer.replaceChildren(); const heading = document.createElement('h3'); heading.textContent = `${result.period || 'Seçilen dönem'} değerlendirmesi`; const body = document.createElement('p'); body.textContent = result.answer; answer.append(heading, body); answer.hidden = false; status.textContent = 'Değerlendirme hazır. Bu yanıt uygulamada saklanmaz.'; } catch (error) { status.textContent = error.message || 'Koç yanıtı alınamadı. Biraz sonra tekrar dene.'; } finally { consent.checked = false; submit.dataset.busy = 'false'; submit.innerHTML = 'Değerlendir <span>✦</span>'; updateCoachButton(); } }); const menuToggle = document.querySelector('.menu-toggle');
->>>>>>> f69d4323fd03c237d74573df461900faf0c32204
+
+
+
 const closeMobileMenu = () => {
   document.body.classList.remove('mobile-nav-open');
   menuToggle?.setAttribute('aria-expanded', 'false');
