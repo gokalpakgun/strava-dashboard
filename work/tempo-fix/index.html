@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101312">
+  <meta name="description" content="Strava antrenmanlarını ve hedeflerini tek bir yerde takip et.">
+  <title>Tempo — Strava istatistiklerin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="#top" aria-label="Tempo ana sayfa"><span class="brand-mark">t</span><span>tempo<span class="brand-dot">.</span></span></a>
+      <div class="profile"><div class="avatar">GK</div><div><strong>Örnek sporcu</strong><span>Demo profil</span></div><span class="chevron">⌄</span></div>
+      <nav aria-label="Ana menü">
+        <p class="nav-label">MENÜ</p>
+        <a class="nav-item active" href="#overview"><span>◫</span> Genel Bakış</a>
+        <a class="nav-item" href="#activities"><span>↗</span> Aktiviteler</a>
+        <a class="nav-item" href="#goals"><span>◎</span> Hedefler</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="sync-icon">↻</div><strong>Demo görünümü</strong><p>Bu panel örnek verilerle çalışıyor.</p><a href="README.md">Canlı veriyi bağla <span>↗</span></a><div class="sidebar-foot">Kişisel antrenman panon</div></div>
+    </aside>
+
+    <main id="top">
+      <header class="topbar"><div class="mobile-brand"><span class="brand-mark">t</span> tempo<span class="brand-dot">.</span></div><div class="breadcrumb">Panel <span>/</span> Genel Bakış</div><div class="top-actions"><button class="icon-button" aria-label="Bildirimler">♧</button><div class="mini-avatar">GK</div></div></header>
+      <section class="content" id="overview">
+        <div class="welcome"><div><p class="eyebrow">HAFTALIK ANTRENMAN PANON</p><h1>Selam! <span>✳</span></h1><p class="subhead">İstikrar, büyük hedeflerin gizli yakıtıdır.</p></div><button class="period-button" id="period-button" aria-expanded="false">Son 7 gün <span>⌄</span></button></div>
+        <section class="hero-card"><div class="hero-copy"><span class="hero-kicker"><i></i> HAFTALIK ÖZET</span><h2>Ritmini<br>yakalamışsın.</h2><p>Bu hafta geçen haftaya göre <b>+%18</b> daha fazla mesafe katettin. Aynen devam!</p><a href="#activities">Aktiviteleri incele <span>→</span></a></div><div class="hero-art" aria-hidden="true"><div class="sun"></div><div class="hill hill-back"></div><div class="hill hill-front"></div><div class="route">〰</div><div class="art-label">GÜZEL BİR HAFTA<br><b>YOLDA GEÇER</b></div></div><div class="hero-index">01 <span>/ 04</span></div></section>
+
+        <div class="section-heading"><div><p class="eyebrow">PERFORMANSIN</p><h2>Bu haftanın özeti</h2></div><span class="updated"><i></i> Az önce güncellendi</span></div>
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-top"><span>Toplam mesafe</span><span class="stat-icon orange">↗</span></div><div class="stat-value">32.8 <small>km</small></div><div class="stat-note"><span class="positive">↑ %18.4</span> <span>geçen haftaya göre</span></div><div class="sparkline" aria-hidden="true"><i style="--h:25%"></i><i style="--h:45%"></i><i style="--h:35%"></i><i style="--h:70%"></i><i style="--h:52%"></i><i style="--h:86%"></i><i style="--h:100%"></i></div></article>
+          <article class="stat-card"><div class="stat-top"><span>Hareket süresi</span><span class="stat-icon lilac">◷</span></div><div class="stat-value">3<span class="colon">:</span>42 <small>saat</small></div><div class="stat-note"><span class="positive">↑ 24 dk</span> <span>geçen haftaya göre</span></div><div class="progress-track"><div class="progress lilac-fill" style="width:68%"></div></div><div class="progress-label"><span>Haftalık hedef</span><b>5:30 saat</b></div></article>
+          <article class="stat-card"><div class="stat-top"><span>Yükseklik kazanımı</span><span class="stat-icon blue">⌁</span></div><div class="stat-value">428 <small>m</small></div><div class="stat-note"><span class="positive">↑ %12.6</span> <span>geçen haftaya göre</span></div><div class="elevation-bars" aria-hidden="true"><i style="--h:25%"></i><i style="--h:44%"></i><i style="--h:36%"></i><i style="--h:70%"></i><i style="--h:52%"></i><i style="--h:90%"></i><i style="--h:64%"></i><i style="--h:100%"></i><i style="--h:72%"></i><i style="--h:84%"></i></div></article>
+          <article class="stat-card"><div class="stat-top"><span>Aktivite</span><span class="stat-icon green">✳</span></div><div class="stat-value">5 <small>antrenman</small></div><div class="stat-note"><span class="neutral">Bu hafta</span><span> · en iyi serin 12 gün</span></div><div class="week-dots"><span>Pt</span><span>Sa</span><span>Ça</span><span>Pe</span><span>Cu</span><span>Ct</span><span>Pa</span></div><div class="week-dots dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
+        </div>
+
+        <div class="lower-grid">
+          <section class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">SON 7 GÜN</p><h2>Haftalık mesafe</h2></div><div class="chart-legend"><i></i> Mesafe <button aria-label="Grafik seçenekleri">···</button></div></div><div class="chart-wrap"><div class="y-labels"><span>12 km</span><span>8 km</span><span>4 km</span><span>0 km</span></div><div class="chart"><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><div class="gridline"></div><svg viewBox="0 0 700 190" preserveAspectRatio="none" role="img" aria-label="Günlere göre koşu mesafesi grafiği"><defs><linearGradient id="fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#ff7043" stop-opacity=".22"/><stop offset="1" stop-color="#ff7043" stop-opacity="0"/></linearGradient></defs><path class="area" d="M0 147 C45 140 60 145 100 124 S170 145 200 118 S270 125 300 88 S370 110 400 112 S470 78 500 97 S570 35 600 52 S670 42 700 16 L700 190 L0 190Z"/><path class="line" d="M0 147 C45 140 60 145 100 124 S170 145 200 118 S270 125 300 88 S370 110 400 112 S470 78 500 97 S570 35 600 52 S670 42 700 16"/><circle cx="600" cy="52" r="5"/></svg><div class="x-labels"><span>Pzt</span><span>Sal</span><span>Çar</span><span>Per</span><span>Cum</span><span>Cmt</span><span>Paz</span></div></div></div></section>
+          <section class="panel goals-panel" id="goals"><div class="panel-heading"><div><p class="eyebrow">YOLUNDA</p><h2>Hedeflerin</h2></div><a class="text-link" href="#goals">Tümü <span>→</span></a></div><div class="goal-row"><div class="goal-ring ring-orange"><span>68<small>%</small></span></div><div class="goal-info"><strong>Haftalık mesafe</strong><span>32.8 / 48 km</span><div class="goal-track"><i style="width:68%"></i></div></div></div><div class="goal-row"><div class="goal-ring ring-lilac"><span>74<small>%</small></span></div><div class="goal-info"><strong>Koşu antrenmanı</strong><span>3 / 4 antrenman</span><div class="goal-track lilac-track"><i style="width:74%"></i></div></div></div><div class="goal-tip"><span>✦</span> Haftalık hedefin için <b>15.2 km</b> kaldı.</div></section>
+        </div>
+
+        <section class="panel activities-panel" id="activities"><div class="panel-heading"><div><p class="eyebrow">SON ANTRENMANLAR</p><h2>Aktivitelerin</h2></div><a class="text-link" href="#activities">Tümünü gör <span>→</span></a></div><div class="activity-table"><div class="table-head"><span>AKTİVİTE</span><span>TARİH</span><span>MESAFE</span><span>SÜRE</span><span>TEMPO</span></div><article class="activity-row"><div class="activity-name"><span class="activity-icon run">↗</span><div><strong>Sabah koşusu</strong><small>Koşu · Kadıköy sahil</small></div></div><span class="activity-date">Bugün, 07:12</span><b>8.42 km</b><span>46:18</span><span>5:30 <small>/km</small></span></article><article class="activity-row"><div class="activity-name"><span class="activity-icon ride">⌁</span><div><strong>Akşam sürüşü</strong><small>Bisiklet · Moda turu</small></div></div><span class="activity-date">Cum, 18:40</span><b>16.7 km</b><span>52:06</span><span>19.2 <small>km/sa</small></span></article><article class="activity-row"><div class="activity-name"><span class="activity-icon run">↗</span><div><strong>Tempo koşusu</strong><small>Koşu · Fenerbahçe parkı</small></div></div><span class="activity-date">Çar, 06:55</span><b>6.25 km</b><span>33:42</span><span>5:23 <small>/km</small></span></article><article class="activity-row"><div class="activity-name"><span class="activity-icon run">↗</span><div><strong>Rahat koşu</strong><small>Koşu · Caddebostan</small></div></div><span class="activity-date">Sal, 19:20</span><b>5.18 km</b><span>31:14</span><span>6:02 <small>/km</small></span></article></div><div class="table-footer">Örnek aktivite verileri gösteriliyor <span>Strava verisini bağla <b>→</b></span></div></section>
+        <footer><span>© 2025 tempo.</span><span>Koşu tutkusuyla yapıldı <b>♥</b></span><a href="README.md">Proje bilgisi</a></footer>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="demo-notice" role="status" aria-live="polite"></div>
+</body>
+</html>
+
+
