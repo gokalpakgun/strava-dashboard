@@ -1,0 +1,44 @@
+name: Tempo iPhone IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/build-ios.yml"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: iPhone uygulamasını derle
+        run: |
+          xcodebuild \
+            -project ios/TempoHealth/TempoHealth.xcodeproj \
+            -scheme TempoHealth \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/TempoDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: IPA paketini hazırla
+        run: |
+          mkdir -p "$RUNNER_TEMP/TempoIPA/Payload"
+          cp -R "$RUNNER_TEMP/TempoDerivedData/Build/Products/Release-iphoneos/Tempo.app" "$RUNNER_TEMP/TempoIPA/Payload/"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/TempoIPA/Payload" "$RUNNER_TEMP/Tempo-unsigned.ipa"
+
+      - name: IPA dosyasını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tempo-iPhone-unsigned
+          path: ${{ runner.temp }}/Tempo-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

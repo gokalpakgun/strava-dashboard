@@ -1,6 +1,8 @@
 const SESSION_COOKIE = "tempo_session";
 const STATE_COOKIE = "tempo_oauth_state";
 const SESSION_SECONDS = 60 * 60 * 24 * 30; const COACH_DETAIL_LIMIT = 12; const COACH_DETAIL_CACHE_SECONDS = 600;
+const MOBILE_TOKEN_SECONDS = 60 * 60 * 24 * 100;
+const MOBILE_CALLBACK_SCHEME = "tempohealth";
 
 export default {
   async fetch(request, env) {
@@ -11,6 +13,27 @@ export default {
       }
       if (url.pathname === "/auth/callback" && request.method === "GET") {
         return completeAuthorization(request, url, env);
+      }
+      if (url.pathname === "/mobile/auth/start" && request.method === "GET") {
+        return startMobileAuthorization(url, env);
+      }
+      if (url.pathname === "/mobile/auth/callback" && request.method === "GET") {
+        return completeMobileAuthorization(url, env);
+      }
+      if (url.pathname === "/privacy" && request.method === "GET") {
+        return env.ASSETS.fetch(new Request(new URL("/privacy.html", url), request));
+      }
+      if (url.pathname === "/api/mobile/auth/exchange" && request.method === "POST") {
+        return exchangeMobileTicket(request, env);
+      }
+      if (url.pathname === "/api/mobile/auth/logout" && request.method === "POST") {
+        return logoutMobile(request, env);
+      }
+      if (url.pathname === "/api/mobile/water/sync" && request.method === "POST") {
+        return syncMobileWater(request, env);
+      }
+      if (url.pathname === "/api/mobile/water/sync" && request.method === "DELETE") {
+        return unlinkMobileWater(request, env);
       }
       if (url.pathname === "/auth/logout" && request.method === "POST") {
         return logout(request, env);
@@ -282,18 +305,209 @@ async function getDashboard(request, env) {
   return json(result);
 }
 
+async function startMobileAuthorization(url, env) {
+  requireBindings(env);
+  const codeChallenge = url.searchParams.get("code_challenge") || "";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
+    return new Response("Uygulama doğrulaması başlatılamadı. Tempo uygulamasından yeniden dene.", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
+  const state = randomToken();
+  await env.TOKEN_STORE.put(`mobile-oauth-state:${state}`, JSON.stringify({ codeChallenge }), { expirationTtl: 600 });
+  const authorize = new URL("https://www.strava.com/oauth/authorize");
+  authorize.search = new URLSearchParams({
+    client_id: env.STRAVA_CLIENT_ID,
+    response_type: "code",
+    redirect_uri: `${url.origin}/mobile/auth/callback`,
+    approval_prompt: "auto",
+    scope: "read",
+    state,
+  }).toString();
+  return new Response(null, {
+    status: 302,
+    headers: { Location: authorize.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+  });
+}
+
+async function completeMobileAuthorization(url, env) {
+  requireBindings(env);
+  const state = url.searchParams.get("state") || "";
+  const code = url.searchParams.get("code") || "";
+  if (!/^[a-f0-9]{64}$/i.test(state) || !code) {
+    return new Response("Bağlantı isteği geçersiz veya süresi dolmuş. Tempo uygulamasından yeniden dene.", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
+  const oauthState = await env.TOKEN_STORE.get(`mobile-oauth-state:${state}`, "json");
+  if (!oauthState?.codeChallenge) {
+    return new Response("Bağlantı isteği geçersiz veya süresi dolmuş. Tempo uygulamasından yeniden dene.", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
+  await env.TOKEN_STORE.delete(`mobile-oauth-state:${state}`);
+  const tokens = await stravaToken({
+    client_id: env.STRAVA_CLIENT_ID,
+    client_secret: env.STRAVA_CLIENT_SECRET,
+    code,
+    grant_type: "authorization_code",
+  });
+  const athleteId = tokens.athlete?.id;
+  if (!athleteId || !tokens.refresh_token) return new Response("Strava hesabı doğrulanamadı. Yeniden dene.", { status: 502 });
+  const ticket = randomToken();
+  await env.TOKEN_STORE.put(`mobile-ticket:${ticket}`, JSON.stringify({ athleteId: String(athleteId), codeChallenge: oauthState.codeChallenge }), { expirationTtl: 300 });
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${MOBILE_CALLBACK_SCHEME}://auth?ticket=${encodeURIComponent(ticket)}`,
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
+
+async function exchangeMobileTicket(request, env) {
+  requireBindings(env);
+  let input;
+  try {
+    const body = await request.text();
+    if (body.length > 1024) return json({ error: "İstek çok büyük." }, 413);
+    input = JSON.parse(body);
+  } catch {
+    return json({ error: "Bağlantı kodu okunamadı." }, 400);
+  }
+  const ticket = typeof input?.ticket === "string" ? input.ticket : "";
+  const verifier = typeof input?.verifier === "string" ? input.verifier : "";
+  if (!/^[a-f0-9]{64}$/i.test(ticket)) return json({ error: "Bağlantı kodu geçersiz." }, 400);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(verifier)) return json({ error: "Uygulama doğrulaması geçersiz." }, 400);
+  const ticketData = await env.TOKEN_STORE.get(`mobile-ticket:${ticket}`, "json");
+  if (!ticketData?.athleteId || !ticketData?.codeChallenge) return json({ error: "Bağlantı kodunun süresi doldu. Strava bağlantısını yeniden başlat." }, 401);
+  if (await sha256Base64Url(verifier) !== ticketData.codeChallenge) return json({ error: "Uygulama doğrulaması eşleşmedi." }, 401);
+  await env.TOKEN_STORE.delete(`mobile-ticket:${ticket}`);
+  const token = randomToken();
+  const tokenHash = await hashToken(token);
+  const athleteKey = String(ticketData.athleteId);
+  const oldHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteKey}`);
+  const writes = [
+    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteKey, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`mobile-link-for:${athleteKey}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+  ];
+  if (oldHash) writes.push(env.TOKEN_STORE.delete(`mobile-session:${oldHash}`));
+  await Promise.all(writes);
+  return json({ token, athleteId: athleteKey, expiresIn: MOBILE_TOKEN_SECONDS });
+}
+
+async function logoutMobile(request, env) {
+  requireBindings(env);
+  const token = readBearerToken(request);
+  if (!token) return json({ error: "Uygulama oturumu geçersiz." }, 401);
+  const tokenHash = await hashToken(token);
+  const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
+  if (!athleteId) return json({ ok: true });
+  const linkedHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`);
+  const deletes = [env.TOKEN_STORE.delete(`mobile-session:${tokenHash}`)];
+  if (linkedHash === tokenHash) {
+    deletes.push(
+      env.TOKEN_STORE.delete(`mobile-link-for:${athleteId}`),
+      env.TOKEN_STORE.delete(`health-water-athlete:${athleteId}`),
+    );
+  }
+  await Promise.all(deletes);
+  return json({ ok: true });
+}
+
+async function syncMobileWater(request, env) {
+  requireBindings(env);
+  const token = readBearerToken(request);
+  if (!token) return json({ error: "Uygulama bağlantısı geçersiz." }, 401);
+  const tokenHash = await hashToken(token);
+  const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
+  if (!athleteId) return json({ error: "Uygulama bağlantısının süresi doldu. Strava ile yeniden giriş yap." }, 401);
+
+  let input;
+  try {
+    const body = await request.text();
+    if (body.length > 16384) return json({ error: "İstek çok büyük." }, 413);
+    input = JSON.parse(body);
+  } catch {
+    return json({ error: "Su toplamları okunamadı." }, 400);
+  }
+  const incoming = input?.totals;
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming) || Object.keys(incoming).length > 100) {
+    return json({ error: "Günlük su toplamları geçersiz." }, 400);
+  }
+
+  const now = new Date();
+  const latestAllowed = new Date(now);
+  latestAllowed.setUTCDate(latestAllowed.getUTCDate() + 1);
+  const earliestAllowed = new Date(now);
+  earliestAllowed.setUTCDate(earliestAllowed.getUTCDate() - 90);
+  const minDay = earliestAllowed.toISOString().slice(0, 10);
+  const maxDay = latestAllowed.toISOString().slice(0, 10);
+  const clean = {};
+  for (const [day, value] of Object.entries(incoming)) {
+    const amount = Number(value);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(`${day}T00:00:00Z`)) || new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day || day < minDay || day > maxDay || !Number.isFinite(amount) || amount < 0 || amount > 20000) {
+      return json({ error: "Tarih veya su miktarı geçersiz." }, 400);
+    }
+    clean[day] = Math.round(amount);
+  }
+
+  const totalsKey = `health-water-athlete:${athleteId}`;
+  const totals = Object.keys(clean).length ? await env.TOKEN_STORE.get(totalsKey, "json") || {} : {};
+  Object.assign(totals, clean);
+  for (const savedDay of Object.keys(totals)) if (savedDay < minDay) delete totals[savedDay];
+  const writes = [
+    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+  ];
+  writes.push(Object.keys(clean).length
+    ? env.TOKEN_STORE.put(totalsKey, JSON.stringify(totals), { expirationTtl: 60 * 60 * 24 * 100 })
+    : env.TOKEN_STORE.delete(totalsKey));
+  await Promise.all(writes);
+  return json({ ok: true, syncedDays: Object.keys(clean).length });
+}
+
+async function unlinkMobileWater(request, env) {
+  requireBindings(env);
+  const token = readBearerToken(request);
+  if (!token) return json({ error: "Uygulama bağlantısı geçersiz." }, 401);
+  const tokenHash = await hashToken(token);
+  const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
+  if (!athleteId) return json({ error: "Uygulama bağlantısının süresi doldu." }, 401);
+  const currentHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`);
+  if (currentHash === tokenHash) {
+    await Promise.all([
+      env.TOKEN_STORE.delete(`mobile-link-for:${athleteId}`),
+      env.TOKEN_STORE.delete(`health-water-athlete:${athleteId}`),
+    ]);
+  }
+  return json({ ok: true });
+}
+
 async function getWaterState(request, env) {
   requireBindings(env);
   const sessionId = readCookie(request, SESSION_COOKIE);
-  if (!sessionId || !await env.TOKEN_STORE.get(`session:${sessionId}`, "json")) {
+  const session = sessionId ? await env.TOKEN_STORE.get(`session:${sessionId}`, "json") : null;
+  if (!session?.refresh_token) {
     return json({ error: "Önce Strava hesabını bağla." }, 401);
   }
-  const [totals, linkHash] = await Promise.all([
+  const athleteId = session.athlete_id ? String(session.athlete_id) : "";
+  const [legacyTotals, linkHash, mobileHash, athleteTotals] = await Promise.all([
     env.TOKEN_STORE.get(`health-water:${sessionId}`, "json"),
     env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`),
+    athleteId ? env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`) : null,
+    athleteId ? env.TOKEN_STORE.get(`health-water-athlete:${athleteId}`, "json") : null,
   ]);
   if (linkHash) await env.TOKEN_STORE.put(`health-water-link:${linkHash}`, sessionId, { expirationTtl: SESSION_SECONDS });
-  return json({ linked: Boolean(linkHash), totals: totals || {} });
+  return json({
+    linked: Boolean(linkHash || mobileHash),
+    source: mobileHash ? "iphone" : linkHash ? "shortcut" : null,
+    totals: { ...(legacyTotals || {}), ...(athleteTotals || {}) },
+  });
 }
 
 async function createWaterPair(request, url, env) {
@@ -322,10 +536,18 @@ async function unlinkWaterPair(request, url, env) {
   }
   const tokenHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
   if (tokenHash) await env.TOKEN_STORE.delete(`health-water-link:${tokenHash}`);
-  await Promise.all([
+  const session = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
+  const athleteId = session?.athlete_id ? String(session.athlete_id) : "";
+  const mobileHash = athleteId ? await env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`) : null;
+  const deletes = [
     env.TOKEN_STORE.delete(`health-water-link-for:${sessionId}`),
     env.TOKEN_STORE.delete(`health-water:${sessionId}`),
-  ]);
+  ];
+  if (athleteId) {
+    deletes.push(env.TOKEN_STORE.delete(`health-water-athlete:${athleteId}`));
+    if (mobileHash) deletes.push(env.TOKEN_STORE.delete(`mobile-session:${mobileHash}`), env.TOKEN_STORE.delete(`mobile-link-for:${athleteId}`));
+  }
+  await Promise.all(deletes);
   return json({ ok: true });
 }
 
@@ -383,6 +605,18 @@ async function syncWaterTotal(request, env) {
 async function hashToken(token) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Base64Url(value) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+  let binary = "";
+  for (const byte of digest) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function readBearerToken(request) {
+  const match = (request.headers.get("Authorization") || "").match(/^Bearer ([a-f0-9]{64})$/i);
+  return match ? match[1] : "";
 }
 
 async function getCoachReview(request, url, env) {

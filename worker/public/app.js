@@ -418,6 +418,7 @@ function renderStravaSections(data) {
   renderPhotos(data.photos);
 }
 let healthWaterLinked = false;
+let healthWaterSource = null;
 
 function renderHealthWater(totals = {}) {
   const list = document.querySelector('#health-water-list');
@@ -445,12 +446,14 @@ function renderHealthWater(totals = {}) {
   });
 }
 
-function updateHealthWaterControls(linked = healthWaterLinked) {
+function updateHealthWaterControls(linked = healthWaterLinked, source = healthWaterSource) {
   healthWaterLinked = linked;
+  healthWaterSource = source;
   const pair = document.querySelector('#health-water-pair');
   const unlink = document.querySelector('#health-water-unlink');
   if (pair) {
     pair.disabled = !hasLiveStravaData;
+    pair.hidden = source === 'iphone';
     pair.textContent = linked ? 'Yeni anahtar oluştur' : 'Kestirme ile eşleştir';
   }
   if (unlink) unlink.hidden = !linked;
@@ -463,10 +466,16 @@ async function loadHealthWaterState() {
     const response = await fetch('/api/health/water', { credentials: 'same-origin' });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Su verisi alınamadı.');
-    updateHealthWaterControls(Boolean(result.linked));
+    updateHealthWaterControls(Boolean(result.linked), result.source || null);
     renderHealthWater(result.totals);
     const dates = Object.keys(result.totals || {}).sort();
-    if (!result.linked) status.textContent = 'Kestirme eşleştirmesi kapalı. Eşleştirme anahtarı oluşturarak başlayabilirsin.';
+    if (result.source === 'iphone' && !dates.length) status.textContent = 'Tempo iPhone uygulaması bağlı. İlk su kaydı eşitlendiğinde burada görünecek.';
+    else if (result.source === 'iphone') {
+      const day = dates[dates.length - 1];
+      const label = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${day}T12:00:00`));
+      status.textContent = `Tempo iPhone uygulaması bağlı · son eşitlenen gün ${label}.`;
+    }
+    else if (!result.linked) status.textContent = 'Su takibi için Kestirme eşleştirmesi kurabilir veya Tempo iPhone uygulamasını kullanabilirsin.';
     else if (!dates.length) status.textContent = 'Kestirme eşleşti. İlk günlük su toplamı gönderildiğinde burada görünecek.';
     else {
       const day = dates[dates.length - 1];
@@ -525,7 +534,7 @@ document.querySelector('#health-water-unlink')?.addEventListener('click', async 
     document.querySelector('#health-water-pair-token').textContent = '';
     document.querySelector('#health-water-auth-header').textContent = '';
     renderHealthWater({});
-    updateHealthWaterControls(false);
+    updateHealthWaterControls(false, null);
     status.textContent = 'Kestirme bağlantısı kaldırıldı; sunucudaki su toplamları silindi.';
   } catch (error) {
     status.textContent = error.message || 'Eşleştirme kaldırılamadı.';
@@ -633,6 +642,9 @@ fetch('/api/dashboard', { credentials: 'same-origin' })
     renderAthlete(data.athlete);
     renderStravaSections(data);
     loadHealthWaterState();
+    window.setInterval(() => {
+      if (document.visibilityState === 'visible' && hasLiveStravaData) loadHealthWaterState();
+    }, 20000);
   })
   .catch((error) => {
     if (error.message !== 'not-connected') showNotice('Örnek veriler gösteriliyor. Canlı bağlantı için önce Strava’yı bağla.');
