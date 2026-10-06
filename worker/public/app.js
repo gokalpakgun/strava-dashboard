@@ -144,6 +144,28 @@ function renderDashboard(activities) {
   document.querySelector('#disconnect-link').hidden = false;
 }
 
+function renderAthlete(athlete) {
+  const fullName = [athlete.firstname, athlete.lastname].filter(Boolean).join(' ') || 'Strava sporcusu';
+  const location = [athlete.city, athlete.state, athlete.country].filter(Boolean).join(', ') || 'Konum paylaşılmamış';
+  document.querySelector('#athlete-name').textContent = fullName;
+  document.querySelector('#athlete-location').textContent = location;
+  document.querySelector('#athlete-followers').textContent = athlete.follower_count ?? '—';
+  document.querySelector('#athlete-following').textContent = athlete.friend_count ?? '—';
+  document.querySelector('#athlete-weight').textContent = athlete.weight ? `${athlete.weight} kg` : '—';
+  document.querySelector('#strava-profile-link').href = `https://www.strava.com/athletes/${encodeURIComponent(athlete.id)}`;
+  const avatar = document.querySelector('#athlete-avatar');
+  avatar.textContent = (athlete.firstname || 'S').slice(0, 1).toUpperCase();
+  document.querySelector('.profile strong').textContent = fullName;
+  document.querySelector('.profile div:nth-child(2) span').textContent = location;
+  if (athlete.profile) {
+    const image = document.createElement('img');
+    image.src = athlete.profile;
+    image.alt = '';
+    image.referrerPolicy = 'no-referrer';
+    image.addEventListener('load', () => { avatar.textContent = ''; avatar.append(image); });
+  }
+}
+
 document.querySelector('#disconnect-link')?.addEventListener('click', async (event) => {
   event.preventDefault();
   await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
@@ -156,12 +178,15 @@ if (params.get('connected') === '1') {
   window.history.replaceState({}, '', window.location.pathname);
 }
 
-fetch('/api/activities', { credentials: 'same-origin' })
+fetch('/api/dashboard', { credentials: 'same-origin' })
   .then(async (response) => {
     if (!response.ok) throw new Error(response.status === 401 ? 'not-connected' : 'load-failed');
     return response.json();
   })
-  .then(renderDashboard)
+  .then((data) => {
+    renderDashboard(data.activities);
+    renderAthlete(data.athlete);
+  })
   .catch((error) => {
     if (error.message !== 'not-connected') showNotice('Örnek veriler gösteriliyor. Canlı bağlantı için önce Strava’yı bağla.');
   });

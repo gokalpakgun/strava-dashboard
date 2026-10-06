@@ -18,6 +18,9 @@ export default {
       if (url.pathname === "/api/activities" && request.method === "GET") {
         return getActivities(request, env);
       }
+      if (url.pathname === "/api/dashboard" && request.method === "GET") {
+        return getDashboard(request, env);
+      }
       if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
         return json({ error: "Not found" }, 404);
       }
@@ -47,7 +50,7 @@ async function startAuthorization(url, env) {
     response_type: "code",
     redirect_uri: redirectUri,
     approval_prompt: "auto",
-    scope: "activity:read_all",
+    scope: "activity:read_all,profile:read_all",
     state,
   }).toString();
   return new Response(null, {
@@ -139,6 +142,63 @@ async function getActivities(request, env) {
   })));
 }
 
+async function getDashboard(request, env) {
+  requireBindings(env);
+  const sessionId = readCookie(request, SESSION_COOKIE);
+  if (!sessionId) return json({ error: "Strava bağlantısı gerekli" }, 401);
+
+  const saved = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
+  if (!saved?.refresh_token) return json({ error: "Strava bağlantısı gerekli" }, 401);
+
+  const tokens = await stravaToken({
+    client_id: env.STRAVA_CLIENT_ID,
+    client_secret: env.STRAVA_CLIENT_SECRET,
+    grant_type: "refresh_token",
+    refresh_token: saved.refresh_token,
+  });
+  await env.TOKEN_STORE.put(`session:${sessionId}`, JSON.stringify({
+    refresh_token: tokens.refresh_token,
+    athlete_id: tokens.athlete?.id ?? saved.athlete_id,
+  }), { expirationTtl: SESSION_SECONDS });
+
+  const headers = { Authorization: `Bearer ${tokens.access_token}` };
+  const [athleteResponse, activitiesResponse] = await Promise.all([
+    fetch("https://www.strava.com/api/v3/athlete", { headers }),
+    fetch("https://www.strava.com/api/v3/athlete/activities?per_page=100", { headers }),
+  ]);
+  if (!athleteResponse.ok || !activitiesResponse.ok) {
+    console.error("Strava dashboard request failed:", athleteResponse.status, activitiesResponse.status);
+    return json({ error: "Strava profil veya aktiviteleri alınamadı." }, 502);
+  }
+
+  const [athlete, activities] = await Promise.all([athleteResponse.json(), activitiesResponse.json()]);
+  return json({
+    athlete: {
+      id: athlete.id,
+      firstname: athlete.firstname,
+      lastname: athlete.lastname,
+      profile: athlete.profile,
+      city: athlete.city,
+      state: athlete.state,
+      country: athlete.country,
+      sex: athlete.sex,
+      weight: athlete.weight,
+      follower_count: athlete.follower_count,
+      friend_count: athlete.friend_count,
+    },
+    activities: activities.map((activity) => ({
+      id: activity.id,
+      name: activity.name,
+      type: activity.sport_type || activity.type,
+      start_date_local: activity.start_date_local,
+      distance: activity.distance,
+      moving_time: activity.moving_time,
+      total_elevation_gain: activity.total_elevation_gain,
+      average_speed: activity.average_speed,
+    })),
+  });
+}
+
 async function logout(request, env) {
   requireBindings(env);
   const sessionId = readCookie(request, SESSION_COOKIE);
@@ -156,8 +216,9 @@ async function stravaToken(fields) {
     body: new URLSearchParams(fields),
   });
   if (!response.ok) {
-    console.error("Strava token request failed with status:", response.status);
-    throw new Error("Strava token request failed");
+    const details = (await response.text()).slice(0, 1000);
+    console.error("Strava token request failed:", response.status, details);
+    throw new Error(`Strava token request failed (${response.status})`);
   }
   return response.json();
 }
