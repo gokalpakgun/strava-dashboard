@@ -285,13 +285,17 @@ function decodePolyline(encoded) {
 function renderHeatmap(activities) {
   const group = document.querySelector('#heatmap-routes');
   const tracks = activities.slice(0, 300).map((activity) => decodePolyline(activity.polyline || '')).filter((points) => points.length > 1);
-  const points = tracks.flat();
+  const allPoints = tracks.flat();
   const caption = document.querySelector('#heatmap-copy');
   group.replaceChildren();
-  if (!points.length) {
+  if (!allPoints.length) {
     caption.textContent = 'Konum bilgisi olan Strava rotası bulunamadı.';
     return;
   }
+  const meanLat = allPoints.reduce((sum, [lat]) => sum + lat, 0) / allPoints.length;
+  const longitudeScale = Math.max(0.01, Math.cos(meanLat * Math.PI / 180));
+  const projectedTracks = tracks.map((track) => track.map(([lat, lng]) => [lat, lng * longitudeScale]));
+  const points = projectedTracks.flat();
   const bounds = points.reduce((value, [lat, lng]) => ({
     minLat: Math.min(value.minLat, lat), maxLat: Math.max(value.maxLat, lat),
     minLng: Math.min(value.minLng, lng), maxLng: Math.max(value.maxLng, lng),
@@ -305,13 +309,13 @@ function renderHeatmap(activities) {
   const xOffset = (1000 - width) / 2;
   const yOffset = (440 - height) / 2;
   const ns = 'http://www.w3.org/2000/svg';
-  tracks.forEach((track) => {
+  projectedTracks.forEach((track) => {
     const path = document.createElementNS(ns, 'polyline');
     path.setAttribute('points', track.map(([lat, lng]) => `${(lng - minLng) * scale + xOffset},${(maxLat - lat) * scale + yOffset}`).join(' '));
     path.setAttribute('class', 'heatmap-route');
     group.append(path);
   });
-  caption.textContent = `${tracks.length} rota · son ${activities.length} aktivite içinden`;
+  caption.textContent = `${tracks.length} GPS rotası · son ${activities.length} aktiviteden`;
 }
 
 function renderRewind(activities, historyLimited) {
