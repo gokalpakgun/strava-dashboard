@@ -1,3 +1,27 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101312">
+  <meta name="description" content="Strava antrenmanlarını ve hedeflerini tek bir yerde takip et.">
+  <title>Tempo — Strava istatistiklerin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <button class="sidebar-backdrop" type="button" aria-label="Menüyü kapat"></button>
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" type="button" aria-label="Menüyü kapat">×</button>
+      <a class="brand" href="#top" aria-label="Tempo ana sayfa"><span class="brand-mark">t</span><span>tempo<span class="brand-dot">.</span></span></a>
+      <div class="profile"><div class="avatar">S</div><div><strong>Strava hesabın</strong><span>Henüz bağlanmadı</span></div><span class="chevron">⌄</span></div>
+      <nav aria-label="Ana menü">
         <p class="nav-label">MENÜ</p>
         <a class="nav-item active" href="#overview"><span>◷</span> Genel Bakış</a>
         <a class="nav-item" href="#activities"><span>▤</span> Aktiviteler</a>
