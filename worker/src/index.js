@@ -20,12 +20,6 @@ export default {
       if (url.pathname === "/mobile/auth/callback" && request.method === "GET") {
         return completeMobileAuthorization(url, env);
       }
-      if (url.pathname === "/mobile/auth/session" && request.method === "GET") {
-        return completeMobileWebSession(url, env);
-      }
-      if (url.pathname === "/mobile/auth/clear" && request.method === "GET") {
-        return clearMobileWebSession(request, url, env);
-      }
       if (url.pathname === "/privacy" && request.method === "GET") {
         return env.ASSETS.fetch(new Request(new URL("/privacy.html", url), request));
       }
@@ -34,6 +28,12 @@ export default {
       }
       if (url.pathname === "/api/mobile/auth/logout" && request.method === "POST") {
         return logoutMobile(request, env);
+      }
+      if (url.pathname === "/api/mobile/dashboard" && request.method === "GET") {
+        return getMobileDashboard(request, env);
+      }
+      if (url.pathname === "/api/mobile/coach" && request.method === "POST") {
+        return getMobileCoachReview(request, env);
       }
       if (url.pathname === "/api/mobile/water/sync" && request.method === "POST") {
         return syncMobileWater(request, env);
@@ -200,13 +200,42 @@ async function getDashboard(request, env) {
   requireBindings(env);
   const sessionId = readCookie(request, SESSION_COOKIE);
   if (!sessionId) return json({ error: "Strava bağlantısı gerekli" }, 401);
+  const sessionKey = `session:${sessionId}`;
+  const saved = await env.TOKEN_STORE.get(sessionKey, "json");
+  if (!saved?.refresh_token) return json({ error: "Strava bağlantısı gerekli" }, 401);
+  return buildDashboard(env, { sessionKey, cacheKey: `dashboard:${sessionId}`, saved, sessionTtl: SESSION_SECONDS });
+}
 
-  const cacheKey = `dashboard:${sessionId}`;
+async function getMobileDashboard(request, env) {
+  requireBindings(env);
+  const context = await getMobileContext(request, env);
+  if (context.response) return context.response;
+  return buildDashboard(env, {
+    sessionKey: `mobile-strava:${context.athleteId}`,
+    cacheKey: `mobile-dashboard:${context.athleteId}`,
+    saved: context.saved,
+    sessionTtl: MOBILE_TOKEN_SECONDS,
+  });
+}
+
+async function getMobileContext(request, env) {
+  const token = readBearerToken(request);
+  if (!token) return { response: json({ error: "Uygulama bağlantısı geçersiz." }, 401) };
+  const tokenHash = await hashToken(token);
+  const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
+  if (!athleteId) return { response: json({ error: "Uygulama bağlantısının süresi doldu. Strava ile yeniden giriş yap." }, 401) };
+  const saved = await env.TOKEN_STORE.get(`mobile-strava:${athleteId}`, "json");
+  if (!saved?.refresh_token) return { response: json({ error: "Strava bağlantısını uygulamadan bir kez yenile." }, 401) };
+  await Promise.all([
+    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+  ]);
+  return { athleteId, tokenHash, saved };
+}
+
+async function buildDashboard(env, { sessionKey, cacheKey, saved, sessionTtl }) {
   const cached = await env.TOKEN_STORE.get(cacheKey, "json");
   if (cached) return json(cached);
-
-  const saved = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
-  if (!saved?.refresh_token) return json({ error: "Strava bağlantısı gerekli" }, 401);
 
   const tokens = await stravaToken({
     client_id: env.STRAVA_CLIENT_ID,
@@ -214,10 +243,10 @@ async function getDashboard(request, env) {
     grant_type: "refresh_token",
     refresh_token: saved.refresh_token,
   });
-  await env.TOKEN_STORE.put(`session:${sessionId}`, JSON.stringify({
+  await env.TOKEN_STORE.put(sessionKey, JSON.stringify({
     refresh_token: tokens.refresh_token,
     athlete_id: tokens.athlete?.id ?? saved.athlete_id,
-  }), { expirationTtl: SESSION_SECONDS });
+  }), { expirationTtl: sessionTtl });
 
   const headers = { Authorization: `Bearer ${tokens.access_token}` };
   const [athleteResponse, segmentsResponse] = await Promise.all([
@@ -334,7 +363,7 @@ async function startMobileAuthorization(url, env) {
     response_type: "code",
     redirect_uri: `${url.origin}/mobile/auth/callback`,
     approval_prompt: "auto",
-    scope: "read",
+    scope: "activity:read_all,profile:read_all",
     state,
   }).toString();
   return new Response(null, {
@@ -406,62 +435,22 @@ async function exchangeMobileTicket(request, env) {
   const token = randomToken();
   const tokenHash = await hashToken(token);
   const athleteKey = String(ticketData.athleteId);
-  const webTicket = randomToken();
   const oldHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteKey}`);
   const writes = [
     env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteKey, { expirationTtl: MOBILE_TOKEN_SECONDS }),
     env.TOKEN_STORE.put(`mobile-link-for:${athleteKey}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-    env.TOKEN_STORE.put(`mobile-web-ticket:${webTicket}`, JSON.stringify({
-      athleteId: athleteKey,
-      refreshToken: ticketData.refreshToken,
-    }), { expirationTtl: 300 }),
+    env.TOKEN_STORE.put(`mobile-strava:${athleteKey}`, JSON.stringify({
+      refresh_token: ticketData.refreshToken,
+      athlete_id: athleteKey,
+    }), { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.delete(`mobile-dashboard:${athleteKey}`),
   ];
   if (oldHash) writes.push(env.TOKEN_STORE.delete(`mobile-session:${oldHash}`));
   await Promise.all(writes);
-  const origin = new URL(request.url).origin;
   return json({
     token,
     athleteId: athleteKey,
     expiresIn: MOBILE_TOKEN_SECONDS,
-    dashboardURL: `${origin}/mobile/auth/session?ticket=${encodeURIComponent(webTicket)}`,
-  });
-}
-
-async function completeMobileWebSession(url, env) {
-  requireBindings(env);
-  const ticket = url.searchParams.get("ticket") || "";
-  if (!/^[a-f0-9]{64}$/i.test(ticket)) return new Response("Oturum bağlantısı geçersiz.", { status: 400 });
-  const ticketData = await env.TOKEN_STORE.get(`mobile-web-ticket:${ticket}`, "json");
-  if (!ticketData?.athleteId || !ticketData?.refreshToken) {
-    return new Response("Oturum bağlantısının süresi doldu. Tempo uygulamasından yeniden giriş yap.", { status: 401 });
-  }
-  await env.TOKEN_STORE.delete(`mobile-web-ticket:${ticket}`);
-  const sessionId = randomToken();
-  await env.TOKEN_STORE.put(`session:${sessionId}`, JSON.stringify({
-    refresh_token: ticketData.refreshToken,
-    athlete_id: ticketData.athleteId,
-  }), { expirationTtl: SESSION_SECONDS });
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: `${url.origin}/?connected=1&app=1`,
-      "Cache-Control": "no-store",
-      "Set-Cookie": cookie(SESSION_COOKIE, sessionId, SESSION_SECONDS, "/"),
-    },
-  });
-}
-
-async function clearMobileWebSession(request, url, env) {
-  requireBindings(env);
-  const sessionId = readCookie(request, SESSION_COOKIE);
-  if (sessionId) await env.TOKEN_STORE.delete(`session:${sessionId}`);
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: `${url.origin}/?app=1`,
-      "Cache-Control": "no-store",
-      "Set-Cookie": cookie(SESSION_COOKIE, "", 0, "/"),
-    },
   });
 }
 
@@ -477,6 +466,8 @@ async function logoutMobile(request, env) {
   if (linkedHash === tokenHash) {
     deletes.push(
       env.TOKEN_STORE.delete(`mobile-link-for:${athleteId}`),
+      env.TOKEN_STORE.delete(`mobile-strava:${athleteId}`),
+      env.TOKEN_STORE.delete(`mobile-dashboard:${athleteId}`),
       env.TOKEN_STORE.delete(`health-water-athlete:${athleteId}`),
     );
   }
@@ -746,35 +737,73 @@ function readBearerToken(request) {
 async function getCoachReview(request, url, env) {
   requireBindings(env);
   if (!env.AI) return json({ error: "Yapay zekâ hizmeti henüz etkinleştirilmedi." }, 503);
-
   const origin = request.headers.get("Origin");
   if (origin !== url.origin) return json({ error: "İstek doğrulanamadı." }, 403);
-
   const sessionId = readCookie(request, SESSION_COOKIE);
   if (!sessionId) return json({ error: "Önce Strava hesabını bağla." }, 401);
-  const saved = await env.TOKEN_STORE.get("session:" + sessionId, "json");
+  const sessionKey = "session:" + sessionId;
+  const saved = await env.TOKEN_STORE.get(sessionKey, "json");
   if (!saved?.refresh_token) return json({ error: "Önce Strava hesabını bağla." }, 401);
+  const input = await readCoachInput(request);
+  if (input.response) return input.response;
+  const dashboardResponse = await getDashboard(request, env);
+  if (!dashboardResponse.ok) return dashboardResponse;
+  return runCoachReview(env, {
+    dashboard: await dashboardResponse.json(),
+    period: input.period,
+    question: input.question,
+    cooldownKey: "coach-cooldown:" + sessionId,
+    detailSessionKey: sessionKey,
+    detailIdentity: sessionId,
+    sessionTtl: SESSION_SECONDS,
+  });
+}
 
+async function getMobileCoachReview(request, env) {
+  requireBindings(env);
+  if (!env.AI) return json({ error: "Yapay zekâ hizmeti henüz etkinleştirilmedi." }, 503);
+  const context = await getMobileContext(request, env);
+  if (context.response) return context.response;
+  const input = await readCoachInput(request);
+  if (input.response) return input.response;
+  const dashboardResponse = await buildDashboard(env, {
+    sessionKey: `mobile-strava:${context.athleteId}`,
+    cacheKey: `mobile-dashboard:${context.athleteId}`,
+    saved: context.saved,
+    sessionTtl: MOBILE_TOKEN_SECONDS,
+  });
+  if (!dashboardResponse.ok) return dashboardResponse;
+  return runCoachReview(env, {
+    dashboard: await dashboardResponse.json(),
+    period: input.period,
+    question: input.question,
+    cooldownKey: `mobile-coach-cooldown:${context.athleteId}`,
+    detailSessionKey: `mobile-strava:${context.athleteId}`,
+    detailIdentity: `mobile-${context.athleteId}`,
+    sessionTtl: MOBILE_TOKEN_SECONDS,
+  });
+}
+
+async function readCoachInput(request) {
   let input;
   try {
     const body = await request.text();
-    if (body.length > 4096) return json({ error: "İstek metni çok uzun." }, 413);
+    if (body.length > 4096) return { response: json({ error: "İstek metni çok uzun." }, 413) };
     input = JSON.parse(body);
   } catch {
-    return json({ error: "İstek bilgileri okunamadı." }, 400);
+    return { response: json({ error: "İstek bilgileri okunamadı." }, 400) };
   }
-  if (input?.consent !== true) return json({ error: "AI değerlendirmesi için veri kullanım onayı gerekli." }, 400);
+  if (input?.consent !== true) return { response: json({ error: "AI değerlendirmesi için veri kullanım onayı gerekli." }, 400) };
   const question = typeof input?.question === "string" ? input.question.trim().slice(0, 500) : "";
   const period = ["30", "90", "180", "365", "all"].includes(String(input?.period)) ? String(input.period) : "90";
+  return { question, period };
+}
 
-  const cooldownKey = "coach-cooldown:" + sessionId;
+async function runCoachReview(env, { dashboard, period, question, cooldownKey, detailSessionKey, detailIdentity, sessionTtl }) {
   if (await env.TOKEN_STORE.get(cooldownKey)) {
     return json({ error: "Yeni bir değerlendirme istemeden önce biraz bekle." }, 429);
   }
-
-  const dashboardResponse = await getDashboard(request, env);
-  if (!dashboardResponse.ok) return dashboardResponse;
-  const dashboard = await dashboardResponse.json(); dashboard.coachDetails = await fetchCoachActivityDetails(env, sessionId, dashboard, period);
+  dashboard.coachDetails = await fetchCoachActivityDetails(env, detailSessionKey, detailIdentity, sessionTtl, dashboard, period);
   const summary = buildCoachSummary(dashboard, period);
   if (!summary.overall.activityCount) {
     return json({ error: "Seçtiğin dönemde değerlendirilecek Strava aktivitesi bulunamadı." }, 422);
@@ -807,17 +836,17 @@ async function getCoachReview(request, url, env) {
     return json({ error: "Koç yanıtı alınamadı. Biraz sonra tekrar dene." }, 502);
   }
 }
-async function fetchCoachActivityDetails(env, sessionId, dashboard, period) {
-  const cacheKey = "coach-details:" + sessionId + ":" + period;
+async function fetchCoachActivityDetails(env, sessionKey, cacheIdentity, sessionTtl, dashboard, period) {
+  const cacheKey = "coach-details:" + cacheIdentity + ":" + period;
   const cached = await env.TOKEN_STORE.get(cacheKey, "json");
   if (Array.isArray(cached)) return cached;
   const selected = selectCoachActivities(dashboard.activities || [], period).slice(0, COACH_DETAIL_LIMIT);
   if (!selected.length) return [];
   try {
-    const saved = await env.TOKEN_STORE.get("session:" + sessionId, "json");
+    const saved = await env.TOKEN_STORE.get(sessionKey, "json");
     if (!saved?.refresh_token) return [];
     const tokens = await stravaToken({ client_id: env.STRAVA_CLIENT_ID, client_secret: env.STRAVA_CLIENT_SECRET, grant_type: "refresh_token", refresh_token: saved.refresh_token });
-    await env.TOKEN_STORE.put("session:" + sessionId, JSON.stringify({ refresh_token: tokens.refresh_token, athlete_id: saved.athlete_id }), { expirationTtl: SESSION_SECONDS });
+    await env.TOKEN_STORE.put(sessionKey, JSON.stringify({ refresh_token: tokens.refresh_token, athlete_id: saved.athlete_id }), { expirationTtl: sessionTtl });
     const details = [];
     for (let index = 0; index < selected.length; index += 4) {
       const batch = selected.slice(index, index + 4);

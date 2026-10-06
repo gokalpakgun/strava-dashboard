@@ -17,24 +17,24 @@
   <main>
     <p><a href="/">Tempo’ya dön</a></p>
     <h1>Gizlilik Politikası</h1>
-    <p class="updated">Son güncelleme: 6 Ekim 2026</p>
-    <p>Tempo, Strava antrenmanlarını ve kullanıcının açıkça kaydettiği günlük su toplamlarını kişisel spor panosunda göstermek için çalışır. Su verileri reklam, pazarlama, profil çıkarma veya satış amacıyla kullanılmaz.</p>
+    <p class="updated">Son güncelleme: 7 Ekim 2026</p>
+    <p>Tempo, Strava profilini, aktivitelerini, rotalarını ve kullanıcının açıkça kaydettiği günlük su toplamlarını kişisel spor uygulamasında göstermek için çalışır. Veriler reklam, pazarlama veya satış amacıyla kullanılmaz.</p>
 
     <h2>Su verileri</h2>
-    <p>Tempo iPhone uygulaması, kullanıcının seçtiği miktarı günlük su toplamına ekler. Uygulama Apple Sağlık verilerini okumaz veya Apple Sağlık’a veri yazmaz. Eşitleme yalnızca kullanıcı uygulamada veri gönderimini kabul edip bir miktar eklediğinde başlar.</p>
+    <p>Tempo iPhone uygulaması, kullanıcının seçtiği miktarı günlük su toplamına ekler. Uygulama Apple Sağlık verilerini okumaz veya Apple Sağlık’a veri yazmaz. Kayıt yalnızca kullanıcı uygulamadaki hızlı ekleme düğmelerinden birine bastığında oluşturulur.</p>
     <p>Günlük toplamlar, kullanıcıya ait Strava hesabıyla ilişkilendirilerek HTTPS üzerinden apitempo.com altyapısına (Cloudflare Workers ve KV) gönderilir. Toplamlar en fazla 100 gün saklanır ve yapay zekâ koçuna gönderilmez.</p>
 
     <h2>Strava ve hesap bilgileri</h2>
-    <p>Kullanıcı Strava hesabını bağladığında Tempo, Strava OAuth akışını kullanır. Web panosunun Strava erişim belirteçleri sunucuda saklanır; iPhone uygulaması ise su eşitleme isteğini doğrulamak için gereken erişim belirtecini iOS Keychain’de tutar. Uygulamadaki Strava bağlantısı, kullanıcının su verisini doğru pano hesabına bağlamak için kullanılır.</p>
+    <p>Kullanıcı Strava hesabını bağladığında Tempo, Strava OAuth akışını kullanır. Strava yenileme anahtarı Cloudflare KV’de saklanır. iPhone uygulaması rastgele oluşturulan Tempo erişim anahtarını iOS Keychain’de tutar; sunucuda bu anahtarın yalnızca SHA-256 özeti saklanır. Uygulama Strava’dan profil, aktivite, ekipman, favori segment, aktivite fotoğrafı ve GPS rota verilerini alabilir.</p>
+
+    <h2>Yapay zekâ koçu</h2>
+    <p>Kullanıcı “Koça sor” düğmesine bastığında seçilen dönemin anonimleştirilmiş aktivite özeti Cloudflare Workers AI hizmetine gönderilir. İsim, aktivite adı, tam saat, konum, rota ve su toplamları bu özete eklenmez. Yanıt yalnızca spor verilerini değerlendirmek için kullanılır.</p>
 
     <h2>Saklama ve silme</h2>
-    <p>Kullanıcı Tempo iPhone uygulamasında bağlantıyı kaldırdığında, uygulama eşitleme belirtecini iptal eder ve sunucudaki su toplamlarını siler. Veri gönderme onayını kapatmak veya web panosundaki “Bağlantıyı kaldır” seçeneğini kullanmak da saklanan toplamları kaldırır.</p>
+    <p>Kullanıcı Tempo iPhone uygulamasında bağlantıyı kaldırdığında mobil oturum, saklanan Strava yenileme anahtarı, mobil pano önbelleği ve sunucudaki su toplamları silinir. Strava hesabındaki Tempo yetkisi ayrıca Strava ayarlarından kaldırılabilir.</p>
 
     <h2>Üçüncü taraf hizmetler ve güvenlik</h2>
-    <p>Strava hesap bağlantısını, Cloudflare ise Tempo’nun sunucu ve veri saklama altyapısını sağlar. Su toplamları başka hizmetlere gönderilmez. İletim HTTPS kullanır, uygulama belirteci iOS Keychain’de saklanır ve sunucuda belirtecin kendisi yerine özeti tutulur.</p>
-
-    <h2>Arka plan eşitlemesi</h2>
-    <p>iOS, Sağlık verisinin arka planda okunacağı zamanı yönetir. Uygulama açıkken eşitleme kullanıcı isteğiyle yapılabilir; uygulama arka plandayken bildirimler gecikebilir. Telefon kilitliyken Sağlık verisine erişim kısıtlanabilir.</p>
+    <p>Strava hesap ve aktivite verilerinin kaynağıdır. Cloudflare, Tempo’nun sunucu, KV veri saklama ve isteğe bağlı yapay zekâ altyapısını sağlar. İletim HTTPS kullanır; mobil erişim anahtarı iOS Keychain’de saklanır.</p>
 
     <h2>Politika değişiklikleri</h2>
     <p>Bu politika, uygulamanın veri işleme biçimindeki değişikliklere göre güncellenebilir. App Store’a gönderimden önce uygulama sahibinin iletişim bilgileri ve veri sorumlusu bilgileri bu sayfada tamamlanmalıdır.</p>
