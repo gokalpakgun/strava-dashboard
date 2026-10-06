@@ -21,6 +21,18 @@ export default {
       if (url.pathname === "/api/dashboard" && request.method === "GET") {
         return getDashboard(request, env);
       }
+      if (url.pathname === "/api/health/water" && request.method === "GET") {
+        return getWaterState(request, env);
+      }
+      if (url.pathname === "/api/health/water/pair" && request.method === "POST") {
+        return createWaterPair(request, url, env);
+      }
+      if (url.pathname === "/api/health/water/pair" && request.method === "DELETE") {
+        return unlinkWaterPair(request, url, env);
+      }
+      if (url.pathname === "/api/health/water/sync" && request.method === "POST") {
+        return syncWaterTotal(request, env);
+      }
 
       if (url.pathname === "/api/coach" && request.method === "POST") {
 
@@ -268,7 +280,112 @@ async function getDashboard(request, env) {
   };
   await env.TOKEN_STORE.put(cacheKey, JSON.stringify(result), { expirationTtl: 600 });
   return json(result);
-}async function getCoachReview(request, url, env) {
+}
+
+async function getWaterState(request, env) {
+  requireBindings(env);
+  const sessionId = readCookie(request, SESSION_COOKIE);
+  if (!sessionId || !await env.TOKEN_STORE.get(`session:${sessionId}`, "json")) {
+    return json({ error: "Önce Strava hesabını bağla." }, 401);
+  }
+  const [totals, linkHash] = await Promise.all([
+    env.TOKEN_STORE.get(`health-water:${sessionId}`, "json"),
+    env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`),
+  ]);
+  if (linkHash) await env.TOKEN_STORE.put(`health-water-link:${linkHash}`, sessionId, { expirationTtl: SESSION_SECONDS });
+  return json({ linked: Boolean(linkHash), totals: totals || {} });
+}
+
+async function createWaterPair(request, url, env) {
+  requireBindings(env);
+  if (request.headers.get("Origin") !== url.origin) return json({ error: "İstek doğrulanamadı." }, 403);
+  const sessionId = readCookie(request, SESSION_COOKIE);
+  if (!sessionId || !await env.TOKEN_STORE.get(`session:${sessionId}`, "json")) {
+    return json({ error: "Önce Strava hesabını bağla." }, 401);
+  }
+
+  const oldHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
+  if (oldHash) await env.TOKEN_STORE.delete(`health-water-link:${oldHash}`);
+  const token = randomToken();
+  const tokenHash = await hashToken(token);
+  await env.TOKEN_STORE.put(`health-water-link:${tokenHash}`, sessionId, { expirationTtl: SESSION_SECONDS });
+  await env.TOKEN_STORE.put(`health-water-link-for:${sessionId}`, tokenHash, { expirationTtl: SESSION_SECONDS });
+  return json({ token });
+}
+
+async function unlinkWaterPair(request, url, env) {
+  requireBindings(env);
+  if (request.headers.get("Origin") !== url.origin) return json({ error: "İstek doğrulanamadı." }, 403);
+  const sessionId = readCookie(request, SESSION_COOKIE);
+  if (!sessionId || !await env.TOKEN_STORE.get(`session:${sessionId}`, "json")) {
+    return json({ error: "Önce Strava hesabını bağla." }, 401);
+  }
+  const tokenHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
+  if (tokenHash) await env.TOKEN_STORE.delete(`health-water-link:${tokenHash}`);
+  await Promise.all([
+    env.TOKEN_STORE.delete(`health-water-link-for:${sessionId}`),
+    env.TOKEN_STORE.delete(`health-water:${sessionId}`),
+  ]);
+  return json({ ok: true });
+}
+
+async function syncWaterTotal(request, env) {
+  requireBindings(env);
+  const match = (request.headers.get("Authorization") || "").match(/^Bearer ([a-f0-9]{64})$/i);
+  if (!match) return json({ error: "Kestirme anahtarı eksik veya geçersiz." }, 401);
+
+  let input;
+  try {
+    const body = await request.text();
+    if (body.length > 2048) return json({ error: "İstek çok büyük." }, 413);
+    input = JSON.parse(body);
+  } catch {
+    return json({ error: "Günlük su toplamı okunamadı." }, 400);
+  }
+
+  const day = typeof input?.date === "string" ? input.date : "";
+  const totalMl = input?.totalMl;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(`${day}T00:00:00Z`)) || new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day || typeof totalMl !== "number" || !Number.isFinite(totalMl) || totalMl < 0 || totalMl > 20000) {
+    return json({ error: "Tarih veya su toplamı geçersiz." }, 400);
+  }
+  const now = new Date();
+  const latestAllowed = new Date(now);
+  latestAllowed.setUTCDate(latestAllowed.getUTCDate() + 1);
+  const earliestAllowed = new Date(now);
+  earliestAllowed.setUTCDate(earliestAllowed.getUTCDate() - 90);
+  if (day > latestAllowed.toISOString().slice(0, 10) || day < earliestAllowed.toISOString().slice(0, 10)) {
+    return json({ error: "Yalnızca son 90 günün su toplamı eşitlenebilir." }, 400);
+  }
+
+  const tokenHash = await hashToken(match[1]);
+  const sessionId = await env.TOKEN_STORE.get(`health-water-link:${tokenHash}`);
+  if (!sessionId) return json({ error: "Kestirme bağlantısı süresi dolmuş. Siteden yeni anahtar oluştur." }, 401);
+  const session = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
+  if (!session?.refresh_token) {
+    await env.TOKEN_STORE.delete(`health-water-link:${tokenHash}`);
+    return json({ error: "Strava bağlantısı süresi dolmuş. Siteden yeniden bağlan." }, 401);
+  }
+
+  const totals = await env.TOKEN_STORE.get(`health-water:${sessionId}`, "json") || {};
+  totals[day] = Math.round(totalMl);
+  for (const savedDay of Object.keys(totals)) {
+    if (savedDay < earliestAllowed.toISOString().slice(0, 10)) delete totals[savedDay];
+  }
+  await Promise.all([
+    env.TOKEN_STORE.put(`health-water:${sessionId}`, JSON.stringify(totals), { expirationTtl: 60 * 60 * 24 * 100 }),
+    env.TOKEN_STORE.put(`health-water-link:${tokenHash}`, sessionId, { expirationTtl: SESSION_SECONDS }),
+    env.TOKEN_STORE.put(`health-water-link-for:${sessionId}`, tokenHash, { expirationTtl: SESSION_SECONDS }),
+    env.TOKEN_STORE.put(`session:${sessionId}`, JSON.stringify(session), { expirationTtl: SESSION_SECONDS }),
+  ]);
+  return json({ ok: true, date: day, totalMl: Math.round(totalMl) });
+}
+
+async function hashToken(token) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function getCoachReview(request, url, env) {
   requireBindings(env);
   if (!env.AI) return json({ error: "Yapay zekâ hizmeti henüz etkinleştirilmedi." }, 503);
 
@@ -499,7 +616,15 @@ function roundCoachValue(value, digits) {
 async function logout(request, env) {
   requireBindings(env);
   const sessionId = readCookie(request, SESSION_COOKIE);
-  if (sessionId) await env.TOKEN_STORE.delete(`session:${sessionId}`);
+  if (sessionId) {
+    const waterHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
+    await Promise.all([
+      env.TOKEN_STORE.delete(`session:${sessionId}`),
+      env.TOKEN_STORE.delete(`health-water-link:${waterHash || ""}`),
+      env.TOKEN_STORE.delete(`health-water-link-for:${sessionId}`),
+      env.TOKEN_STORE.delete(`health-water:${sessionId}`),
+    ]);
+  }
   return new Response(null, {
     status: 204,
     headers: { "Cache-Control": "no-store", "Set-Cookie": cookie(SESSION_COOKIE, "", 0, "/") },

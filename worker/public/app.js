@@ -299,28 +299,21 @@ function decodePolyline(encoded) {
   return points;
 }
 
-<<<<<<< HEAD
 let heatmapMap;
-let heatmapTracks = [];
 
-function drawHeatmapRoute(selectedIndex = 'all') {
-  const caption = document.querySelector('#heatmap-copy');
-  const count = document.querySelector('#heatmap-count');
-  const selected = selectedIndex === 'all' ? heatmapTracks : heatmapTracks.filter((route) => String(route.index) === selectedIndex);
-  const points = selected.flatMap((route) => route.points);
-  if (!points.length) {
-=======
 function renderHeatmap(activities) {
   const caption = document.querySelector('#heatmap-copy');
   const count = document.querySelector('#heatmap-count');
   const select = document.querySelector('#heatmap-route-select');
   const previousSelection = select.value || 'all';
-  const routes = activities.slice(0, 300).map((activity, index) => ({ activity, points: decodePolyline(activity.polyline || ''), index })).filter((route) => route.points.length > 1);
+  const routes = activities.slice(0, 300)
+    .map((activity, index) => ({ activity, points: decodePolyline(activity.polyline || ''), index }))
+    .filter((route) => route.points.length > 1);
   select.replaceChildren(new Option('Tüm rotalar', 'all'));
   routes.forEach(({ activity, index }) => {
     const name = activity.name || activityType(activity).label;
     const distance = (Number(activity.distance || 0) / 1000).toFixed(1);
-    select.add(new Option(formatDate(activity.start_date_local) + ' · ' + name + ' · ' + distance + ' km', String(index)));
+    select.add(new Option(`${formatDate(activity.start_date_local)} · ${name} · ${distance} km`, String(index)));
   });
   select.value = routes.some((route) => String(route.index) === previousSelection) ? previousSelection : 'all';
   select.disabled = routes.length === 0;
@@ -329,7 +322,6 @@ function renderHeatmap(activities) {
     select.dataset.bound = 'true';
   }
   if (!routes.length) {
->>>>>>> 597c05aa402933a61939f7daf25aeb7d08b279a8
     count.textContent = '0 rota';
     caption.textContent = 'Aktivitelerde GPS rotası bulunamadı. Strava’da aktivite haritası görünüyorsa hesabı yeniden bağla.';
     return;
@@ -358,51 +350,14 @@ function renderHeatmap(activities) {
   });
   const bounds = L.latLngBounds(points.map(([lat, lng]) => [lat, lng]));
   heatmapMap.fitBounds(bounds.pad(0.12), { maxZoom: 14 });
-<<<<<<< HEAD
-  count.textContent = selectedIndex === 'all' ? `${selected.length} rota` : '1 rota';
-  if (selectedIndex === 'all') {
-    caption.textContent = `${selected.length} GPS rotası gösteriliyor.`;
-  } else {
+  count.textContent = select.value === 'all' ? `${selected.length} rota` : '1 rota';
+  if (select.value === 'all') caption.textContent = `${selected.length} GPS rotası gösteriliyor.`;
+  else {
     const { activity } = selected[0];
-    caption.textContent = `Seçili rota: ${formatDate(activity.start_date_local)} · ${activityType(activity).label} · ${(activity.distance / 1000).toFixed(1)} km`;
-=======
-  count.textContent = select.value === 'all' ? selected.length + ' rota' : '1 rota';
-  if (select.value === 'all') {
-    caption.textContent = selected.length + ' GPS rotası gösteriliyor.';
-  } else {
-    const activity = selected[0].activity;
-    caption.textContent = 'Seçili rota: ' + formatDate(activity.start_date_local) + ' · ' + activityType(activity).label + ' · ' + (Number(activity.distance || 0) / 1000).toFixed(1) + ' km';
->>>>>>> 597c05aa402933a61939f7daf25aeb7d08b279a8
+    caption.textContent = `Seçili rota: ${formatDate(activity.start_date_local)} · ${activityType(activity).label} · ${(Number(activity.distance || 0) / 1000).toFixed(1)} km`;
   }
   requestAnimationFrame(() => heatmapMap.invalidateSize());
 }
-
-<<<<<<< HEAD
-function renderHeatmap(activities) {
-  const select = document.querySelector('#heatmap-route-select');
-  heatmapTracks = activities.slice(0, 300).map((activity, index) => ({ activity, points: decodePolyline(activity.polyline || ''), index })).filter((route) => route.points.length > 1);
-  select.replaceChildren(new Option('Tüm rotalar', 'all'));
-  heatmapTracks.forEach(({ activity, index }) => {
-    const type = activityType(activity).label;
-    const date = formatDate(activity.start_date_local);
-    const distance = Number(activity.distance || 0) / 1000;
-    select.add(new Option(`${date} · ${activity.name || type} · ${distance.toFixed(1)} km`, String(index)));
-  });
-  select.disabled = heatmapTracks.length === 0;
-  if (!select.dataset.bound) {
-    select.addEventListener('change', () => drawHeatmapRoute(select.value));
-    select.dataset.bound = 'true';
-  }
-  if (!heatmapTracks.length) {
-    document.querySelector('#heatmap-count').textContent = '0 rota';
-    document.querySelector('#heatmap-copy').textContent = 'Aktivitelerde GPS rotası bulunamadı. Strava’da aktivite haritası görünüyorsa hesabı yeniden bağla.';
-    return;
-  }
-  drawHeatmapRoute(select.value || 'all');
-}
-=======
-
->>>>>>> 597c05aa402933a61939f7daf25aeb7d08b279a8
 
 function renderRewind(activities, historyLimited) {
   const year = new Date().getFullYear();
@@ -462,152 +417,19 @@ function renderStravaSections(data) {
   renderRewind(data.activities, data.historyLimited);
   renderPhotos(data.photos);
 }
-const HEALTH_WATER_STORAGE_KEY = 'tempo.apple-health-water.v1';
+let healthWaterLinked = false;
 
-function readHealthWaterTotals() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(HEALTH_WATER_STORAGE_KEY) || '{}');
-    return Object.fromEntries(Object.entries(saved).filter(([day, ml]) => /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(ml) && ml > 0));
-  } catch {
-    return {};
-  }
-}
-
-function renderHealthWater(totals) {
+function renderHealthWater(totals = {}) {
   const list = document.querySelector('#health-water-list');
-  const status = document.querySelector('#health-water-status');
-  const clear = document.querySelector('#health-water-clear');
-  const days = Object.entries(totals).sort(([a], [b]) => a.localeCompare(b));
+  if (!list) return;
+  const days = Object.entries(totals || {})
+    .filter(([day, ml]) => /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(Number(ml)) && Number(ml) >= 0)
+    .sort(([a], [b]) => a.localeCompare(b));
   list.replaceChildren();
-  clear.hidden = days.length === 0;
   if (!days.length) {
     const empty = document.createElement('p');
     empty.className = 'data-empty';
-    empty.textContent = 'Apple Health verisi eklenmedi.';
-    list.append(empty);
-    return;
-  }
-  days.slice(-7).forEach(([day, ml]) => {
-    const card = document.createElement('div');
-    card.className = 'water-day';
-    const date = document.createElement('span');
-    date.textContent = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' }).format(new Date(day + 'T12:00:00'));
-    const amount = document.createElement('strong');
-    amount.textContent = Math.round(ml).toLocaleString('tr-TR') + ' ml';
-    card.append(date, amount);
-    list.append(card);
-  });
-  const lastDate = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(days[days.length - 1][0] + 'T12:00:00'));
-  status.textContent = days.length.toLocaleString('tr-TR') + ' gün içe aktarıldı · son kayıt ' + lastDate + '. Günlük toplamlar yalnızca bu tarayıcıda tutuluyor.';
-}
-
-function xmlAttribute(tag, name) {
-  return tag.match(new RegExp('(?:^|\\s)' + name + '="([^"]*)"'))?.[1] || '';
-}
-
-async function parseHealthWaterXml(file) {
-  const totals = Object.create(null);
-  let recordCount = 0;
-  const addRecord = (tag) => {
-    if (xmlAttribute(tag, 'type') !== 'HKQuantityTypeIdentifierDietaryWater') return;
-    const raw = Number(xmlAttribute(tag, 'value'));
-    const unit = xmlAttribute(tag, 'unit').toLowerCase();
-    const day = xmlAttribute(tag, 'startDate').slice(0, 10);
-    const toMl = { ml: 1, l: 1000, cl: 10, fl_oz: 29.5735295625, 'fl oz': 29.5735295625 }[unit];
-    if (!Number.isFinite(raw) || raw <= 0 || !toMl || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
-    totals[day] = (totals[day] || 0) + raw * toMl;
-    recordCount += 1;
-  };
-  if (typeof file.stream !== 'function') {
-    const xml = await file.text();
-    for (const match of xml.matchAll(/<Record\b[^>]*>/g)) addRecord(match[0]);
-    return { totals, recordCount };
-  }
-  const reader = file.stream().getReader();
-  const decoder = new TextDecoder();
-  let carry = '';
-  const consume = (chunk) => {
-    const text = carry + chunk;
-    let cursor = 0;
-    while (true) {
-      const start = text.indexOf('<Record', cursor);
-      if (start < 0) break;
-      const end = text.indexOf('>', start);
-      if (end < 0) {
-        carry = text.slice(start);
-        return;
-      }
-      addRecord(text.slice(start, end + 1));
-      cursor = end + 1;
-    }
-    carry = text.slice(Math.max(cursor, text.length - 7));
-  };
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      consume(decoder.decode(value, { stream: true }));
-    }
-    consume(decoder.decode());
-  } finally {
-    reader.releaseLock();
-  }
-  return { totals, recordCount };
-}
-
-document.querySelector('#health-water-file')?.addEventListener('change', async (event) => {
-  const input = event.currentTarget;
-  const file = input.files?.[0];
-  if (!file) return;
-  const status = document.querySelector('#health-water-status');
-  status.textContent = 'Dosya bu cihazda taranıyor; sunucuya aktarılmıyor…';
-  try {
-    const { totals, recordCount } = await parseHealthWaterXml(file);
-    if (!recordCount) {
-      status.textContent = 'Bu XML dosyasında Apple Health su kaydı bulunamadı. Health uygulamasındaki Su kayıtlarını kontrol et.';
-      return;
-    }
-    localStorage.setItem(HEALTH_WATER_STORAGE_KEY, JSON.stringify(totals));
-    renderHealthWater(totals);
-    status.textContent = recordCount.toLocaleString('tr-TR') + ' su kaydı işlendi · ham XML dosyası gönderilmedi, yalnızca günlük toplamlar bu tarayıcıda saklanıyor.';
-  } catch (error) {
-    console.error('Apple Health water import failed:', error);
-    status.textContent = 'Dosya okunamadı. Apple Health dışa aktarımındaki export.xml dosyasını seçtiğinden emin ol.';
-  } finally {
-    input.value = '';
-  }
-});
-
-document.querySelector('#health-water-clear')?.addEventListener('click', () => {
-  localStorage.removeItem(HEALTH_WATER_STORAGE_KEY);
-  renderHealthWater({});
-  document.querySelector('#health-water-status').textContent = 'Bu tarayıcıdaki Apple Health su toplamları silindi.';
-});
-
-renderHealthWater(readHealthWaterTotals());
-
-const HEALTH_WATER_STORAGE_KEY = 'tempo.apple-health-water.v1';
-
-function readHealthWaterTotals() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(HEALTH_WATER_STORAGE_KEY) || '{}');
-    return Object.fromEntries(Object.entries(saved).filter(([day, ml]) => /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(ml) && ml > 0));
-  } catch {
-    return {};
-  }
-}
-
-function renderHealthWater(totals) {
-  const list = document.querySelector('#health-water-list');
-  const status = document.querySelector('#health-water-status');
-  const clear = document.querySelector('#health-water-clear');
-  const days = Object.entries(totals).sort(([a], [b]) => a.localeCompare(b));
-  list.replaceChildren();
-  clear.hidden = days.length === 0;
-  if (!days.length) {
-    const empty = document.createElement('p');
-    empty.className = 'data-empty';
-    empty.textContent = 'Apple Health verisi eklenmedi.';
+    empty.textContent = 'Eşitlenen su toplamı henüz yok.';
     list.append(empty);
     return;
   }
@@ -617,101 +439,102 @@ function renderHealthWater(totals) {
     const date = document.createElement('span');
     date.textContent = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' }).format(new Date(`${day}T12:00:00`));
     const amount = document.createElement('strong');
-    amount.textContent = `${Math.round(ml).toLocaleString('tr-TR')} ml`;
+    amount.textContent = `${Math.round(Number(ml)).toLocaleString('tr-TR')} ml`;
     card.append(date, amount);
     list.append(card);
   });
-  const lastDay = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${days[days.length - 1][0]}T12:00:00`));
-  status.textContent = `${days.length.toLocaleString('tr-TR')} gün içe aktarıldı · son kayıt ${lastDay}. Günlük toplamlar yalnızca bu tarayıcıda tutuluyor.`;
 }
 
-function xmlAttribute(tag, name) {
-  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return tag.match(new RegExp(`(?:^|\\s)${escapedName}="([^"]*)"`))?.[1] ?? '';
-}
-
-async function parseHealthWaterXml(file) {
-  const totals = Object.create(null);
-  let recordCount = 0;
-  const addRecord = (tag) => {
-    if (xmlAttribute(tag, 'type') !== 'HKQuantityTypeIdentifierDietaryWater') return;
-    const raw = Number(xmlAttribute(tag, 'value'));
-    const unit = xmlAttribute(tag, 'unit').toLowerCase();
-    const day = xmlAttribute(tag, 'startDate').slice(0, 10);
-    const toMl = { ml: 1, l: 1000, cl: 10, fl_oz: 29.5735295625, 'fl oz': 29.5735295625 }[unit];
-    if (!Number.isFinite(raw) || raw <= 0 || !toMl || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
-    totals[day] = (totals[day] || 0) + raw * toMl;
-    recordCount += 1;
-  };
-
-  if (typeof file.stream !== 'function') {
-    const xml = await file.text();
-    for (const match of xml.matchAll(/<Record\b[^>]*>/g)) addRecord(match[0]);
-    return { totals, recordCount };
+function updateHealthWaterControls(linked = healthWaterLinked) {
+  healthWaterLinked = linked;
+  const pair = document.querySelector('#health-water-pair');
+  const unlink = document.querySelector('#health-water-unlink');
+  if (pair) {
+    pair.disabled = !hasLiveStravaData;
+    pair.textContent = linked ? 'Yeni anahtar oluştur' : 'Kestirme ile eşleştir';
   }
-
-  const reader = file.stream().getReader();
-  const decoder = new TextDecoder();
-  let carry = '';
-  const consume = (chunk) => {
-    const text = carry + chunk;
-    let cursor = 0;
-    while (true) {
-      const start = text.indexOf('<Record', cursor);
-      if (start < 0) break;
-      const end = text.indexOf('>', start);
-      if (end < 0) {
-        carry = text.slice(start);
-        return;
-      }
-      addRecord(text.slice(start, end + 1));
-      cursor = end + 1;
-    }
-    carry = text.slice(Math.max(cursor, text.length - 7));
-  };
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      consume(decoder.decode(value, { stream: true }));
-    }
-    consume(decoder.decode());
-  } finally {
-    reader.releaseLock();
-  }
-  return { totals, recordCount };
+  if (unlink) unlink.hidden = !linked;
 }
 
-document.querySelector('#health-water-file')?.addEventListener('change', async (event) => {
-  const input = event.currentTarget;
-  const file = input.files?.[0];
-  if (!file) return;
+async function loadHealthWaterState() {
+  if (!hasLiveStravaData) return;
   const status = document.querySelector('#health-water-status');
-  status.textContent = 'Dosya bu cihazda taranıyor; sunucuya aktarılmıyor…';
   try {
-    const { totals, recordCount } = await parseHealthWaterXml(file);
-    if (!recordCount) {
-      status.textContent = 'Bu XML dosyasında Apple Health su kaydı bulunamadı. Health uygulamasındaki Su kayıtlarını kontrol et.';
-      return;
+    const response = await fetch('/api/health/water', { credentials: 'same-origin' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Su verisi alınamadı.');
+    updateHealthWaterControls(Boolean(result.linked));
+    renderHealthWater(result.totals);
+    const dates = Object.keys(result.totals || {}).sort();
+    if (!result.linked) status.textContent = 'Kestirme eşleştirmesi kapalı. Eşleştirme anahtarı oluşturarak başlayabilirsin.';
+    else if (!dates.length) status.textContent = 'Kestirme eşleşti. İlk günlük su toplamı gönderildiğinde burada görünecek.';
+    else {
+      const day = dates[dates.length - 1];
+      const label = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${day}T12:00:00`));
+      status.textContent = `Kestirme bağlı · son eşitlenen gün ${label}. Günlük toplamlar sunucuda tutulur.`;
     }
-    localStorage.setItem(HEALTH_WATER_STORAGE_KEY, JSON.stringify(totals));
-    renderHealthWater(totals);
-    status.textContent = `${recordCount.toLocaleString('tr-TR')} su kaydı işlendi · ham XML dosyası gönderilmedi, yalnızca günlük toplamlar bu tarayıcıda saklanıyor.`;
   } catch (error) {
-    console.error('Apple Health water import failed:', error);
-    status.textContent = 'Dosya okunamadı. Apple Health dışa aktarımındaki export.xml dosyasını seçtiğinden emin ol.';
-  } finally {
-    input.value = '';
+    status.textContent = error.message || 'Su verisi alınamadı.';
+  }
+}
+
+document.querySelector('#health-water-pair')?.addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const status = document.querySelector('#health-water-status');
+  const box = document.querySelector('#health-water-pair-box');
+  button.disabled = true;
+  status.textContent = 'Kestirme eşleştirme anahtarı oluşturuluyor…';
+  try {
+    const response = await fetch('/api/health/water/pair', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Eşleştirme anahtarı oluşturulamadı.');
+    document.querySelector('#health-water-pair-token').textContent = result.token;
+    document.querySelector('#health-water-endpoint').textContent = new URL('/api/health/water/sync', window.location.origin).toString();
+    document.querySelector('#health-water-auth-header').textContent = `Bearer ${result.token}`;
+    box.hidden = false;
+    updateHealthWaterControls(true);
+    status.textContent = 'Anahtar yalnızca bu kez gösteriliyor. Kestirme ayarına kaydet; kaybolursa yenisini oluştur.';
+  } catch (error) {
+    status.textContent = error.message || 'Eşleştirme anahtarı oluşturulamadı.';
+    button.disabled = !hasLiveStravaData;
   }
 });
 
-document.querySelector('#health-water-clear')?.addEventListener('click', () => {
-  localStorage.removeItem(HEALTH_WATER_STORAGE_KEY);
-  renderHealthWater({});
-  document.querySelector('#health-water-status').textContent = 'Bu tarayıcıdaki Apple Health su toplamları silindi.';
+document.querySelector('#health-water-copy')?.addEventListener('click', async () => {
+  const token = document.querySelector('#health-water-pair-token')?.textContent || '';
+  const status = document.querySelector('#health-water-status');
+  try {
+    await navigator.clipboard.writeText(token);
+    status.textContent = 'Anahtar kopyalandı. iPhone Kestirmeler ayarına yapıştır.';
+  } catch {
+    status.textContent = 'Kopyalama açılamadı. Anahtara basılı tutup Kopyala’yı seç.';
+  }
 });
 
-renderHealthWater(readHealthWaterTotals());
+document.querySelector('#health-water-unlink')?.addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const status = document.querySelector('#health-water-status');
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/health/water/pair', { method: 'DELETE', credentials: 'same-origin' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Eşleştirme kaldırılamadı.');
+    document.querySelector('#health-water-pair-box').hidden = true;
+    document.querySelector('#health-water-pair-token').textContent = '';
+    document.querySelector('#health-water-auth-header').textContent = '';
+    renderHealthWater({});
+    updateHealthWaterControls(false);
+    status.textContent = 'Kestirme bağlantısı kaldırıldı; sunucudaki su toplamları silindi.';
+  } catch (error) {
+    status.textContent = error.message || 'Eşleştirme kaldırılamadı.';
+    button.disabled = false;
+  }
+});
+
+renderHealthWater({});
+updateHealthWaterControls(false);
 
 document.querySelector('#disconnect-link')?.addEventListener('click', async (event) => {
   event.preventDefault();
@@ -809,6 +632,7 @@ fetch('/api/dashboard', { credentials: 'same-origin' })
     renderDashboard(data.activities);
     renderAthlete(data.athlete);
     renderStravaSections(data);
+    loadHealthWaterState();
   })
   .catch((error) => {
     if (error.message !== 'not-connected') showNotice('Örnek veriler gösteriliyor. Canlı bağlantı için önce Strava’yı bağla.');

@@ -30,12 +30,8 @@
         <a class="nav-item" href="#segments"><span>⌁</span> Segmentler</a>
         <a class="nav-item" href="#monthly-stats"><span>▦</span> Aylık İstatistikler</a>
         <a class="nav-item" href="#eddington"><span>⌁</span> Eddington Sayısı</a>
-<<<<<<< HEAD
         <a class="nav-item" href="#heatmap"><span>▧</span> Isı Haritası</a>
         <a class="nav-item" href="#hydration"><span>◉</span> Su Takibi</a>
-=======
-        <a class="nav-item" href="#heatmap"><span>▧</span> Isı Haritası</a><a class="nav-item" href="#hydration"><span>◉</span> Su Takibi</a>
->>>>>>> 597c05aa402933a61939f7daf25aeb7d08b279a8
         <a class="nav-item" href="#rewind"><span>↶</span> Yıl Özeti</a>
         <a class="nav-item" href="#challenges"><span>♧</span> Meydan Okumalar</a>
         <a class="nav-item" href="#photos"><span>▣</span> Fotoğraflar</a>
@@ -89,12 +85,8 @@
           <section class="panel feature-panel" id="monthly-stats"><div class="panel-heading"><div><p class="eyebrow">AYLIK İSTATİSTİKLER</p><h2>Son 6 ay</h2></div></div><div class="month-grid" id="monthly-list"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
           <section class="panel feature-panel" id="eddington"><p class="eyebrow">EDDINGTON SAYISI · KOŞU</p><h2 class="big-metric" id="eddington-number">—</h2><p id="eddington-copy">Günlük koşu mesafelerine göre hesaplanıyor.</p></section>
           <section class="panel feature-panel heatmap-panel" id="heatmap"><div class="panel-heading"><div><p class="eyebrow">ISI HARİTASI</p><h2>Aktivite rotaların</h2></div><div class="heatmap-tools"><label class="map-route-control" for="heatmap-route-select">Haritada göster<select id="heatmap-route-select" disabled><option value="all">Tüm rotalar</option></select></label><span class="map-count" id="heatmap-count">Rotalar yükleniyor</span></div></div><div id="heatmap-map" aria-label="Strava aktivite rotalarının haritası"></div><p class="data-empty" id="heatmap-copy">Strava verileri yükleniyor…</p></section>
-<<<<<<< HEAD
-          <section class="panel feature-panel hydration-panel" id="hydration"><div class="panel-heading"><div><p class="eyebrow">APPLE HEALTH</p><h2>Su tüketimin</h2></div><div class="water-actions"><label class="water-import-button">Apple Health XML seç<input id="health-water-file" type="file" accept=".xml,application/xml,text/xml"></label><button id="health-water-clear" class="water-clear-button" type="button" hidden>Veriyi sil</button></div></div><p class="hydration-note">iPhone’da Sağlık uygulamasından “Tüm Sağlık Verilerini Dışa Aktar”ı seç; Dosyalar’da ZIP’i açıp içindeki export.xml dosyasını burada seç. Yalnızca su kayıtlarının günlük toplamı çıkarılır. Dosya sunucuya gönderilmez; son 7 kayıtlı gün gösterilir ve toplamlar bu tarayıcıda saklanır.</p><div class="water-grid" id="health-water-list"><p class="data-empty">Apple Health verisi eklenmedi.</p></div><p class="data-empty hydration-status" id="health-water-status" role="status" aria-live="polite">Su verisini eklemek için Apple Health XML dosyasını seç.</p></section>
+          <section class="panel feature-panel hydration-panel" id="hydration"><div class="panel-heading"><div><p class="eyebrow">APPLE HEALTH</p><h2>Su tüketimin</h2></div><div class="water-actions"><button id="health-water-pair" class="water-action-button" type="button" disabled>Kestirme ile eşleştir</button><button id="health-water-unlink" class="water-action-button water-action-muted" type="button" hidden>Bağlantıyı kaldır</button></div></div><p class="hydration-note" id="health-water-note">iPhone Kestirmeler, Sağlık uygulamasındaki yalnızca günlük su toplamını apitempo.com’un Cloudflare sunucusuna gönderir; tek tek kayıtlar gönderilmez. Toplamlar en fazla 100 gün saklanır ve bağlantıyı kaldırınca silinir. Önce Strava hesabını bağla.</p><div class="water-pair-box" id="health-water-pair-box" hidden><p>Kestirme ayarına bu anahtarı gir. Anahtar yalnızca şimdi gösterilir; kaybolursa yenisini oluşturabilirsin.</p><code id="health-water-pair-token"></code><button id="health-water-copy" class="water-action-button" type="button">Anahtarı kopyala</button><span class="water-config-label">Kestirme istek adresi</span><code id="health-water-endpoint"></code><span class="water-config-label">Authorization başlığı</span><code id="health-water-auth-header"></code><span class="water-config-label">Gönderilecek biçim</span><code>{"date":"YYYY-AA-GG","totalMl":1234}</code></div><div class="water-grid" id="health-water-list"><p class="data-empty">Eşitlenen su toplamları burada görünecek.</p></div><p class="data-empty hydration-status" id="health-water-status" role="status" aria-live="polite">Strava hesabını bağladıktan sonra Kestirmeler eşleştirmesini kurabilirsin.</p></section>
           <section class="panel feature-panel" id="rewind"><div class="panel-heading"><div><p class="eyebrow">YIL ÖZETİ</p><h2 id="rewind-title">Bu yıl</h2></div></div><div class="rewind-grid" id="rewind-list"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
-=======
-          <section class="panel feature-panel hydration-panel" id="hydration"><div class="panel-heading"><div><p class="eyebrow">APPLE HEALTH</p><h2>Su tüketimin</h2></div><div class="water-actions"><label class="water-import-button">Apple Health XML seç<input id="health-water-file" type="file" accept=".xml,application/xml,text/xml"></label><button id="health-water-clear" class="water-clear-button" type="button" hidden>Veriyi sil</button></div></div><p class="hydration-note">iPhone’da Sağlık uygulamasından “Tüm Sağlık Verilerini Dışa Aktar”ı seç; Dosyalar’da ZIP’i açıp içindeki export.xml dosyasını burada seç. Yalnızca su kayıtlarının günlük toplamı çıkarılır. Dosya sunucuya gönderilmez; son 7 kayıtlı gün gösterilir ve toplamlar bu tarayıcıda saklanır.</p><div class="water-grid" id="health-water-list"><p class="data-empty">Apple Health verisi eklenmedi.</p></div><p class="data-empty hydration-status" id="health-water-status" role="status" aria-live="polite">Su verisini eklemek için Apple Health XML dosyasını seç.</p></section><section class="panel feature-panel" id="rewind"><div class="panel-heading"><div><p class="eyebrow">YIL ÖZETİ</p><h2 id="rewind-title">Bu yıl</h2></div></div><div class="rewind-grid" id="rewind-list"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
->>>>>>> 597c05aa402933a61939f7daf25aeb7d08b279a8
           <section class="panel feature-panel" id="photos"><div class="panel-heading"><div><p class="eyebrow">FOTOĞRAFLAR</p><h2>Son aktivitelerinden</h2></div></div><div class="photo-grid" id="photos-grid"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
         </div>
         <footer><span>© 2026 tempo.</span><span>Koşu tutkusuyla yapıldı <b>♥</b></span><a href="/auth/logout" id="disconnect-link" hidden>Bağlantıyı kes</a></footer>
@@ -104,8 +96,5 @@
   <div class="toast" id="demo-notice" role="status" aria-live="polite"></div>
 </body>
 </html>
-
-
-
 
 
