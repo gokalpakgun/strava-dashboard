@@ -14,7 +14,9 @@
 </head>
 <body>
   <div class="layout">
-    <aside class="sidebar">
+    <button class="sidebar-backdrop" type="button" aria-label="Menüyü kapat"></button>
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" type="button" aria-label="Menüyü kapat">×</button>
       <a class="brand" href="#top" aria-label="Tempo ana sayfa"><span class="brand-mark">t</span><span>tempo<span class="brand-dot">.</span></span></a>
       <div class="profile"><div class="avatar">S</div><div><strong>Strava hesabın</strong><span>Henüz bağlanmadı</span></div><span class="chevron">⌄</span></div>
       <nav aria-label="Ana menü">
@@ -34,7 +36,7 @@
     </aside>
 
     <main id="top">
-      <header class="topbar"><div class="mobile-brand"><span class="brand-mark">t</span> tempo<span class="brand-dot">.</span></div><div class="breadcrumb">Panel <span>/</span> Genel Bakış</div><div class="top-actions"><button class="icon-button" aria-label="Bildirimler">♧</button><div class="mini-avatar">GK</div></div></header>
+      <header class="topbar"><button class="menu-toggle" type="button" aria-label="Menüyü aç" aria-controls="sidebar" aria-expanded="false">☰</button><div class="mobile-brand"><span class="brand-mark">t</span> tempo<span class="brand-dot">.</span></div><div class="breadcrumb">Panel <span>/</span> Genel Bakış</div><div class="top-actions"><button class="icon-button" aria-label="Bildirimler">♧</button><div class="mini-avatar">GK</div></div></header>
       <section class="content" id="overview">
         <div class="welcome"><div><p class="eyebrow">HAFTALIK ANTRENMAN PANON</p><h1>Selam! <span>✳</span></h1><p class="subhead">İstikrar, büyük hedeflerin gizli yakıtıdır.</p></div><a class="period-button connect-button" id="connect-button" href="/auth/start">Strava’ya bağlan <span>↗</span></a></div>
         <section class="panel athlete-panel" id="profile" aria-label="Strava profilin">

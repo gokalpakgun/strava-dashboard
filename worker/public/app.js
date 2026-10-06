@@ -383,7 +383,25 @@ document.querySelectorAll('.nav-item').forEach((link) => {
   link.addEventListener('click', () => {
     document.querySelector('.nav-item.active')?.classList.remove('active');
     link.classList.add('active');
+    document.body.classList.remove('mobile-nav-open');
+    document.querySelector('.menu-toggle')?.setAttribute('aria-expanded', 'false');
   });
+});
+
+const menuToggle = document.querySelector('.menu-toggle');
+const closeMobileMenu = () => {
+  document.body.classList.remove('mobile-nav-open');
+  menuToggle?.setAttribute('aria-expanded', 'false');
+};
+menuToggle?.addEventListener('click', () => {
+  const isOpen = document.body.classList.toggle('mobile-nav-open');
+  menuToggle.setAttribute('aria-expanded', String(isOpen));
+});
+document.querySelectorAll('.sidebar-close, .sidebar-backdrop').forEach((button) => {
+  button.addEventListener('click', closeMobileMenu);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeMobileMenu();
 });
 
 const params = new URLSearchParams(window.location.search);
