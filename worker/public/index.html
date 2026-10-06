@@ -1,3 +1,27 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101312">
+  <meta name="description" content="Strava antrenmanlarını ve hedeflerini tek bir yerde takip et.">
+  <title>Tempo — Strava istatistiklerin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <button class="sidebar-backdrop" type="button" aria-label="Menüyü kapat"></button>
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" type="button" aria-label="Menüyü kapat">×</button>
+      <a class="brand" href="#top" aria-label="Tempo ana sayfa"><span class="brand-mark">t</span><span>tempo<span class="brand-dot">.</span></span></a>
+      <div class="profile"><div class="avatar">S</div><div><strong>Strava hesabın</strong><span>Henüz bağlanmadı</span></div><span class="chevron">⌄</span></div>
+      <nav aria-label="Ana menü">
         <p class="nav-label">MENÜ</p>
         <a class="nav-item active" href="#overview"><span>◷</span> Genel Bakış</a>
         <a class="nav-item" href="#activities"><span>▤</span> Aktiviteler</a>
@@ -46,7 +70,7 @@
           <div class="panel-heading"><div><p class="eyebrow">YAPAY ZEKÂ ANTRENMAN KOÇUN</p><h2 id="coach-title">Tempo Koç</h2></div><span class="coach-badge">Cloudflare AI</span></div>
           <p class="coach-intro">Strava spor geçmişindeki düzeni, değişimleri ve gelişim fırsatlarını yorumlasın. Dönemi seç, merak ettiğini sor.</p>
           <form id="coach-form">
-            <div class="coach-consent"><p>Gönder’e bastığında seçilen dönemin tarih aralığı, spor türü, mesafe, hareket süresi, yükseklik, ortalama hız/koşu temposu özetleriyle birlikte yazdığın soru Cloudflare AI’ye iletilir. GPS rotaları, konum, aktivite adları, profil ve kilo bilgileri gönderilmez. Yanıtlar Tempo’da kaydedilmez. Soruna özel veya sağlık bilgisi ekleme.</p><label><input type="checkbox" id="coach-consent"> Bu verilerin ve soru metnimin Cloudflare AI tarafından değerlendirilmesini onaylıyorum.</label></div>
+            <div class="coach-consent"><p>Gönder’e bastığında seçilen dönemin toplu antrenman özeti ve bu dönemdeki en fazla 12 son aktivitenin (varsa) günü, spor türü, mesafe, hareket süresi, yükseklik, ortalama/en yüksek nabız, kadans, güç, Strava efor puanı ve kilometre/lap bölümleri Cloudflare AI’ye iletilir. Tam GPS rotası, koordinatlar, aktivite adları, profil ve kilo gönderilmez. Ayrıntılı özetler en fazla 10 dakika geçici olarak saklanır; yapay zekâ yanıtı kaydedilmez. Ölçümler Strava’da kayıtlıysa kullanılır. Soruna özel veya sağlık bilgisi ekleme.</p><label><input type="checkbox" id="coach-consent"> Bu verilerin ve soru metnimin Cloudflare AI tarafından değerlendirilmesini onaylıyorum.</label></div>
             <div class="coach-controls"><label for="coach-period">İncelenecek dönem<select id="coach-period" name="period"><option value="30">Son 30 gün</option><option value="90" selected>Son 90 gün</option><option value="180">Son 6 ay</option><option value="365">Son 1 yıl</option><option value="all">Tüm erişilebilir geçmiş</option></select></label></div>
             <label class="coach-question-label" for="coach-question">Koçuna ne sormak istersin?</label>
             <textarea id="coach-question" name="question" maxlength="500" rows="3" placeholder="Örneğin: Bu dönemde nasıl ilerledim, güçlü yanlarım ve geliştirebileceğim noktalar neler?"></textarea>
