@@ -301,7 +301,7 @@ function renderHeatmap(activities) {
   }
   if (!heatmapMap) {
     heatmapMap = L.map('heatmap-map', { scrollWheelZoom: false, preferCanvas: true }).setView(allPoints[0], 12);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap katkıda bulunanlar</a>',
     }).addTo(heatmapMap);
