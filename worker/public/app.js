@@ -166,6 +166,213 @@ function renderAthlete(athlete) {
   }
 }
 
+function setEmptyList(container, message) {
+  container.replaceChildren();
+  const item = document.createElement('p');
+  item.className = 'data-empty';
+  item.textContent = message;
+  container.append(item);
+}
+
+function renderGear(athlete) {
+  const container = document.querySelector('#gear-list');
+  const gear = [...(athlete.bikes || []), ...(athlete.shoes || [])];
+  if (!gear.length) return setEmptyList(container, 'Strava profilinde kayıtlı ekipman bulunamadı.');
+  container.replaceChildren();
+  gear.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'data-row';
+    const name = document.createElement('strong');
+    name.textContent = `${item.name || item.type}${item.primary ? ' · Varsayılan' : ''}`;
+    const detail = document.createElement('span');
+    detail.textContent = `${item.type} · ${(item.distance / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} km`;
+    row.append(name, detail);
+    container.append(row);
+  });
+}
+
+function renderSegments(segments) {
+  const container = document.querySelector('#segments-list');
+  if (!segments?.length) return setEmptyList(container, 'Strava’da favorilere eklenmiş segment bulunamadı.');
+  container.replaceChildren();
+  segments.forEach((segment) => {
+    const row = document.createElement('div');
+    row.className = 'data-row';
+    const link = document.createElement('a');
+    link.href = `https://www.strava.com/segments/${encodeURIComponent(segment.id)}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = segment.name || 'İsimsiz segment';
+    const detail = document.createElement('span');
+    const climb = Number.isFinite(segment.average_grade) ? ` · %${segment.average_grade.toFixed(1)} eğim` : '';
+    detail.textContent = `${(segment.distance / 1000).toFixed(2)} km${climb}`;
+    row.append(link, detail);
+    container.append(row);
+  });
+}
+
+function renderMonthlyStats(activities) {
+  const container = document.querySelector('#monthly-list');
+  container.replaceChildren();
+  const now = new Date();
+  const months = [];
+  for (let offset = 5; offset >= 0; offset -= 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    months.push({ key: `${date.getFullYear()}-${date.getMonth()}`, date, distance: 0, count: 0, time: 0 });
+  }
+  const index = new Map(months.map((month) => [month.key, month]));
+  activities.forEach((activity) => {
+    const date = new Date(activity.start_date_local);
+    const month = index.get(`${date.getFullYear()}-${date.getMonth()}`);
+    if (!month) return;
+    month.distance += activity.distance / 1000;
+    month.count += 1;
+    month.time += activity.moving_time;
+  });
+  const peak = Math.max(1, ...months.map((month) => month.distance));
+  months.forEach((month) => {
+    const card = document.createElement('div');
+    card.className = 'month-card';
+    const name = document.createElement('strong');
+    name.textContent = new Intl.DateTimeFormat('tr-TR', { month: 'long' }).format(month.date);
+    const metric = document.createElement('b');
+    metric.textContent = `${month.distance.toFixed(1)} km`;
+    const track = document.createElement('div');
+    track.className = 'month-track';
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.max(2, month.distance / peak * 100)}%`;
+    track.append(fill);
+    const note = document.createElement('span');
+    note.textContent = `${month.count} aktivite · ${formatHours(month.time)} saat`;
+    card.append(name, metric, track, note);
+    container.append(card);
+  });
+}
+
+function renderEddington(activities, historyLimited) {
+  const days = new Map();
+  activities.filter((activity) => (activity.type || '').toLowerCase().includes('run')).forEach((activity) => {
+    const date = activity.start_date_local.slice(0, 10);
+    days.set(date, (days.get(date) || 0) + activity.distance / 1000);
+  });
+  const distances = [...days.values()].sort((a, b) => b - a);
+  let number = 0;
+  distances.forEach((distance, index) => { if (distance >= index + 1) number = index + 1; });
+  document.querySelector('#eddington-number').textContent = number;
+  document.querySelector('#eddington-copy').textContent = `${number} farklı günde en az ${number} km koştun.${historyLimited ? ' Hesaplama son 1.000 aktiviteyle sınırlı.' : ''}`;
+}
+
+function decodePolyline(encoded) {
+  const points = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte;
+    do { byte = encoded.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5; } while (byte >= 0x20 && index < encoded.length);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    result = 0;
+    shift = 0;
+    do { byte = encoded.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5; } while (byte >= 0x20 && index < encoded.length);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+  return points;
+}
+
+function renderHeatmap(activities) {
+  const group = document.querySelector('#heatmap-routes');
+  const tracks = activities.slice(0, 300).map((activity) => decodePolyline(activity.polyline || '')).filter((points) => points.length > 1);
+  const points = tracks.flat();
+  const caption = document.querySelector('#heatmap-copy');
+  group.replaceChildren();
+  if (!points.length) {
+    caption.textContent = 'Konum bilgisi olan Strava rotası bulunamadı.';
+    return;
+  }
+  const bounds = points.reduce((value, [lat, lng]) => ({
+    minLat: Math.min(value.minLat, lat), maxLat: Math.max(value.maxLat, lat),
+    minLng: Math.min(value.minLng, lng), maxLng: Math.max(value.maxLng, lng),
+  }), { minLat: Infinity, maxLat: -Infinity, minLng: Infinity, maxLng: -Infinity });
+  const { minLat, maxLat, minLng, maxLng } = bounds;
+  const latSpan = maxLat - minLat || 0.001;
+  const lngSpan = maxLng - minLng || 0.001;
+  const scale = Math.min(920 / lngSpan, 380 / latSpan);
+  const width = lngSpan * scale;
+  const height = latSpan * scale;
+  const xOffset = (1000 - width) / 2;
+  const yOffset = (440 - height) / 2;
+  const ns = 'http://www.w3.org/2000/svg';
+  tracks.forEach((track) => {
+    const path = document.createElementNS(ns, 'polyline');
+    path.setAttribute('points', track.map(([lat, lng]) => `${(lng - minLng) * scale + xOffset},${(maxLat - lat) * scale + yOffset}`).join(' '));
+    path.setAttribute('class', 'heatmap-route');
+    group.append(path);
+  });
+  caption.textContent = `${tracks.length} rota · son ${activities.length} aktivite içinden`;
+}
+
+function renderRewind(activities, historyLimited) {
+  const year = new Date().getFullYear();
+  const yearActivities = activities.filter((activity) => new Date(activity.start_date_local).getFullYear() === year);
+  const totalKm = yearActivities.reduce((sum, activity) => sum + activity.distance, 0) / 1000;
+  const totalHours = yearActivities.reduce((sum, activity) => sum + activity.moving_time, 0);
+  const elevation = yearActivities.reduce((sum, activity) => sum + (activity.total_elevation_gain || 0), 0);
+  const longest = Math.max(0, ...yearActivities.map((activity) => activity.distance / 1000));
+  document.querySelector('#rewind-title').textContent = `${year} özeti`;
+  const container = document.querySelector('#rewind-list');
+  container.replaceChildren();
+  [[`${totalKm.toFixed(1)} km`, 'Toplam mesafe'], [yearActivities.length, 'Aktivite'], [`${formatHours(totalHours)} sa`, 'Hareket süresi'], [`${Math.round(elevation).toLocaleString('tr-TR')} m`, 'Yükseklik'], [`${longest.toFixed(1)} km`, 'En uzun aktivite']].forEach(([value, label]) => {
+    const item = document.createElement('div');
+    item.className = 'rewind-item';
+    const metric = document.createElement('strong');
+    metric.textContent = value;
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    item.append(metric, caption);
+    container.append(item);
+  });
+  if (historyLimited) {
+    const note = document.createElement('p');
+    note.className = 'data-empty full-row';
+    note.textContent = 'Strava API sayfa sınırı nedeniyle son 1.000 aktivite kullanıldı.';
+    container.append(note);
+  }
+}
+
+function renderPhotos(photos) {
+  const container = document.querySelector('#photos-grid');
+  container.replaceChildren();
+  if (!photos?.length) return setEmptyList(container, 'Son aktivitelerinde gösterilecek fotoğraf bulunamadı.');
+  photos.forEach((photo) => {
+    const link = document.createElement('a');
+    link.className = 'photo-card';
+    link.href = `https://www.strava.com/activities/${encodeURIComponent(photo.activity_id)}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    const image = document.createElement('img');
+    image.src = photo.image;
+    image.alt = photo.activity_name || 'Strava aktivite fotoğrafı';
+    image.loading = 'lazy';
+    const title = document.createElement('span');
+    title.textContent = photo.activity_name || 'Aktiviteyi görüntüle';
+    link.append(image, title);
+    container.append(link);
+  });
+}
+
+function renderStravaSections(data) {
+  renderGear(data.athlete);
+  renderSegments(data.segments);
+  renderMonthlyStats(data.activities);
+  renderEddington(data.activities, data.historyLimited);
+  renderHeatmap(data.activities);
+  renderRewind(data.activities, data.historyLimited);
+  renderPhotos(data.photos);
+}
+
 document.querySelector('#disconnect-link')?.addEventListener('click', async (event) => {
   event.preventDefault();
   await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
@@ -193,6 +400,7 @@ fetch('/api/dashboard', { credentials: 'same-origin' })
   .then((data) => {
     renderDashboard(data.activities);
     renderAthlete(data.athlete);
+    renderStravaSections(data);
   })
   .catch((error) => {
     if (error.message !== 'not-connected') showNotice('Örnek veriler gösteriliyor. Canlı bağlantı için önce Strava’yı bağla.');

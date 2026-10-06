@@ -147,6 +147,10 @@ async function getDashboard(request, env) {
   const sessionId = readCookie(request, SESSION_COOKIE);
   if (!sessionId) return json({ error: "Strava bağlantısı gerekli" }, 401);
 
+  const cacheKey = `dashboard:${sessionId}`;
+  const cached = await env.TOKEN_STORE.get(cacheKey, "json");
+  if (cached) return json(cached);
+
   const saved = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
   if (!saved?.refresh_token) return json({ error: "Strava bağlantısı gerekli" }, 401);
 
@@ -162,17 +166,58 @@ async function getDashboard(request, env) {
   }), { expirationTtl: SESSION_SECONDS });
 
   const headers = { Authorization: `Bearer ${tokens.access_token}` };
-  const [athleteResponse, activitiesResponse] = await Promise.all([
+  const [athleteResponse, segmentsResponse] = await Promise.all([
     fetch("https://www.strava.com/api/v3/athlete", { headers }),
-    fetch("https://www.strava.com/api/v3/athlete/activities?per_page=100", { headers }),
+    fetch("https://www.strava.com/api/v3/segments/starred?per_page=100", { headers }),
   ]);
-  if (!athleteResponse.ok || !activitiesResponse.ok) {
-    console.error("Strava dashboard request failed:", athleteResponse.status, activitiesResponse.status);
+  if (!athleteResponse.ok) {
+    console.error("Strava athlete request failed with status:", athleteResponse.status);
     return json({ error: "Strava profil veya aktiviteleri alınamadı." }, 502);
   }
 
-  const [athlete, activities] = await Promise.all([athleteResponse.json(), activitiesResponse.json()]);
-  return json({
+  const athlete = await athleteResponse.json();
+  const activities = [];
+  const perPage = 100;
+  const maxPages = 10;
+  for (let page = 1; page <= maxPages; page += 1) {
+    const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?page=${page}&per_page=${perPage}`, { headers });
+    if (!response.ok) {
+      console.error("Strava activities request failed with status:", response.status);
+      return json({ error: "Strava aktiviteleri alınamadı." }, response.status === 429 ? 429 : 502);
+    }
+    const pageActivities = await response.json();
+    activities.push(...pageActivities);
+    if (pageActivities.length < perPage) break;
+  }
+
+  let segments = [];
+  if (segmentsResponse.ok) {
+    const value = await segmentsResponse.json();
+    segments = value.map((segment) => ({
+      id: segment.id,
+      name: segment.name,
+      distance: segment.distance,
+      average_grade: segment.average_grade,
+      climb_category: segment.climb_category,
+      star_count: segment.star_count,
+      athlete_segment_stats: segment.athlete_segment_stats,
+    }));
+  } else {
+    console.warn("Strava starred segments unavailable with status:", segmentsResponse.status);
+  }
+
+  const photoActivities = activities.filter((activity) => activity.total_photo_count > 0).slice(0, 8);
+  const photos = (await Promise.all(photoActivities.map(async (activity) => {
+    const response = await fetch(`https://www.strava.com/api/v3/activities/${activity.id}`, { headers });
+    if (!response.ok) return [];
+    const detail = await response.json();
+    const primary = detail.photos?.primary;
+    const urls = primary?.urls || {};
+    const image = urls["600"] || urls["500"] || urls["100"] || Object.values(urls)[0];
+    return image ? [{ activity_id: activity.id, activity_name: activity.name, image }] : [];
+  }))).flat();
+
+  const result = {
     athlete: {
       id: athlete.id,
       firstname: athlete.firstname,
@@ -185,7 +230,12 @@ async function getDashboard(request, env) {
       weight: athlete.weight,
       follower_count: athlete.follower_count,
       friend_count: athlete.friend_count,
+      bikes: (athlete.bikes || []).map((gear) => ({ id: gear.id, name: gear.name, distance: gear.distance, primary: gear.primary, type: "Bisiklet" })),
+      shoes: (athlete.shoes || []).map((gear) => ({ id: gear.id, name: gear.name, distance: gear.distance, primary: gear.primary, type: "Ayakkabı" })),
     },
+    segments,
+    photos,
+    historyLimited: activities.length === perPage * maxPages,
     activities: activities.map((activity) => ({
       id: activity.id,
       name: activity.name,
@@ -195,8 +245,13 @@ async function getDashboard(request, env) {
       moving_time: activity.moving_time,
       total_elevation_gain: activity.total_elevation_gain,
       average_speed: activity.average_speed,
+      gear_id: activity.gear_id,
+      total_photo_count: activity.total_photo_count,
+      polyline: activity.map?.summary_polyline || "",
     })),
-  });
+  };
+  await env.TOKEN_STORE.put(cacheKey, JSON.stringify(result), { expirationTtl: 600 });
+  return json(result);
 }
 
 async function logout(request, env) {
