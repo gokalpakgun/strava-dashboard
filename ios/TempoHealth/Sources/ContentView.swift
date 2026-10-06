@@ -81,7 +81,6 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(minHeight: 36)
-                .accessibilityLiveRegion(.polite)
 
             Spacer()
 
