@@ -207,15 +207,24 @@ async function getDashboard(request, env) {
   }
 
   const photoActivities = activities.filter((activity) => activity.total_photo_count > 0).slice(0, 8);
-  const photos = (await Promise.all(photoActivities.map(async (activity) => {
+  // Activity summaries normally include a simplified route; fetch details for
+  // a few recent activities when it is absent, where Strava may expose the
+  // full polyline instead. Reuse those detail requests for activity photos.
+  const routeActivities = activities.filter((activity) => !activity.map?.summary_polyline).slice(0, 4);
+  const detailActivities = [...new Map([...photoActivities, ...routeActivities].map((activity) => [activity.id, activity])).values()];
+  const details = await Promise.all(detailActivities.map(async (activity) => {
     const response = await fetch(`https://www.strava.com/api/v3/activities/${activity.id}`, { headers });
-    if (!response.ok) return [];
-    const detail = await response.json();
-    const primary = detail.photos?.primary;
+    if (!response.ok) return [activity.id, null];
+    return [activity.id, await response.json()];
+  }));
+  const detailsById = new Map(details);
+  const photos = photoActivities.flatMap((activity) => {
+    const detail = detailsById.get(activity.id);
+    const primary = detail?.photos?.primary;
     const urls = primary?.urls || {};
     const image = urls["600"] || urls["500"] || urls["100"] || Object.values(urls)[0];
     return image ? [{ activity_id: activity.id, activity_name: activity.name, image }] : [];
-  }))).flat();
+  });
 
   const result = {
     athlete: {
@@ -247,7 +256,7 @@ async function getDashboard(request, env) {
       average_speed: activity.average_speed,
       gear_id: activity.gear_id,
       total_photo_count: activity.total_photo_count,
-      polyline: activity.map?.summary_polyline || "",
+      polyline: activity.map?.summary_polyline || detailsById.get(activity.id)?.map?.polyline || detailsById.get(activity.id)?.map?.summary_polyline || "",
     })),
   };
   await env.TOKEN_STORE.put(cacheKey, JSON.stringify(result), { expirationTtl: 600 });

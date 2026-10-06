@@ -289,7 +289,7 @@ function renderHeatmap(activities) {
   const caption = document.querySelector('#heatmap-copy');
   group.replaceChildren();
   if (!allPoints.length) {
-    caption.textContent = 'Konum bilgisi olan Strava rotası bulunamadı.';
+    caption.textContent = 'Aktivitelerde GPS rotası bulunamadı. Strava’da aktivite haritası görünüyorsa hesabı yeniden bağla.';
     return;
   }
   const meanLat = allPoints.reduce((sum, [lat]) => sum + lat, 0) / allPoints.length;
