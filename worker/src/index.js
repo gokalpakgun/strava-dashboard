@@ -21,11 +21,11 @@ export default {
       if (url.pathname === "/api/dashboard" && request.method === "GET") {
         return getDashboard(request, env);
       }
-<<<<<<< HEAD
+
       if (url.pathname === "/api/coach" && request.method === "POST") {
-=======
-            if (url.pathname === "/api/coach" && request.method === "POST") {
->>>>>>> f69d4323fd03c237d74573df461900faf0c32204
+
+
+
         return getCoachReview(request, url, env);
       }
       if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
