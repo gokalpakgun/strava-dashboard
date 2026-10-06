@@ -300,13 +300,14 @@ function decodePolyline(encoded) {
 }
 
 let heatmapMap;
+let heatmapTracks = [];
 
-function renderHeatmap(activities) {
+function drawHeatmapRoute(selectedIndex = 'all') {
   const caption = document.querySelector('#heatmap-copy');
   const count = document.querySelector('#heatmap-count');
-  const tracks = activities.slice(0, 300).map((activity) => decodePolyline(activity.polyline || '')).filter((points) => points.length > 1);
-  const allPoints = tracks.flat();
-  if (!allPoints.length) {
+  const selected = selectedIndex === 'all' ? heatmapTracks : heatmapTracks.filter((route) => String(route.index) === selectedIndex);
+  const points = selected.flatMap((route) => route.points);
+  if (!points.length) {
     count.textContent = '0 rota';
     caption.textContent = 'Aktivitelerde GPS rotası bulunamadı. Strava’da aktivite haritası görünüyorsa hesabı yeniden bağla.';
     return;
@@ -317,14 +318,10 @@ function renderHeatmap(activities) {
     return;
   }
   if (!heatmapMap) {
-
-
-
-
-
-    heatmapMap = L.map('heatmap-map', { scrollWheelZoom: false, preferCanvas: true }).setView(allPoints[0], 12);    heatmapMap.attributionControl.setPrefix(false);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains: 'abc',
-
+    heatmapMap = L.map('heatmap-map', { scrollWheelZoom: false, preferCanvas: true }).setView(points[0], 12);
+    heatmapMap.attributionControl.setPrefix(false);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      subdomains: 'abc',
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap katkıda bulunanlar</a>',
     }).addTo(heatmapMap);
@@ -332,14 +329,42 @@ function renderHeatmap(activities) {
   heatmapMap.eachLayer((layer) => {
     if (layer instanceof L.Polyline) heatmapMap.removeLayer(layer);
   });
-  tracks.forEach((track) => {
-    L.polyline(track, { color: '#f36e45', weight: 2.4, opacity: 0.42, lineCap: 'round', lineJoin: 'round' }).addTo(heatmapMap);
+  selected.forEach((route) => {
+    L.polyline(route.points, { color: '#f36e45', weight: 2.4, opacity: 0.72, lineCap: 'round', lineJoin: 'round' }).addTo(heatmapMap);
   });
-  const bounds = L.latLngBounds(allPoints.map(([lat, lng]) => [lat, lng]));
+  const bounds = L.latLngBounds(points.map(([lat, lng]) => [lat, lng]));
   heatmapMap.fitBounds(bounds.pad(0.12), { maxZoom: 14 });
-  count.textContent = `${tracks.length} rota`;
-  caption.textContent = `${tracks.length} GPS rotası · son ${Math.min(activities.length, 300)} aktiviteden`;
+  count.textContent = selectedIndex === 'all' ? `${selected.length} rota` : '1 rota';
+  if (selectedIndex === 'all') {
+    caption.textContent = `${selected.length} GPS rotası gösteriliyor.`;
+  } else {
+    const { activity } = selected[0];
+    caption.textContent = `Seçili rota: ${formatDate(activity.start_date_local)} · ${activityType(activity).label} · ${(activity.distance / 1000).toFixed(1)} km`;
+  }
   requestAnimationFrame(() => heatmapMap.invalidateSize());
+}
+
+function renderHeatmap(activities) {
+  const select = document.querySelector('#heatmap-route-select');
+  heatmapTracks = activities.slice(0, 300).map((activity, index) => ({ activity, points: decodePolyline(activity.polyline || ''), index })).filter((route) => route.points.length > 1);
+  select.replaceChildren(new Option('Tüm rotalar', 'all'));
+  heatmapTracks.forEach(({ activity, index }) => {
+    const type = activityType(activity).label;
+    const date = formatDate(activity.start_date_local);
+    const distance = Number(activity.distance || 0) / 1000;
+    select.add(new Option(`${date} · ${activity.name || type} · ${distance.toFixed(1)} km`, String(index)));
+  });
+  select.disabled = heatmapTracks.length === 0;
+  if (!select.dataset.bound) {
+    select.addEventListener('change', () => drawHeatmapRoute(select.value));
+    select.dataset.bound = 'true';
+  }
+  if (!heatmapTracks.length) {
+    document.querySelector('#heatmap-count').textContent = '0 rota';
+    document.querySelector('#heatmap-copy').textContent = 'Aktivitelerde GPS rotası bulunamadı. Strava’da aktivite haritası görünüyorsa hesabı yeniden bağla.';
+    return;
+  }
+  drawHeatmapRoute(select.value || 'all');
 }
 
 function renderRewind(activities, historyLimited) {
@@ -400,6 +425,133 @@ function renderStravaSections(data) {
   renderRewind(data.activities, data.historyLimited);
   renderPhotos(data.photos);
 }
+
+const HEALTH_WATER_STORAGE_KEY = 'tempo.apple-health-water.v1';
+
+function readHealthWaterTotals() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(HEALTH_WATER_STORAGE_KEY) || '{}');
+    return Object.fromEntries(Object.entries(saved).filter(([day, ml]) => /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(ml) && ml > 0));
+  } catch {
+    return {};
+  }
+}
+
+function renderHealthWater(totals) {
+  const list = document.querySelector('#health-water-list');
+  const status = document.querySelector('#health-water-status');
+  const clear = document.querySelector('#health-water-clear');
+  const days = Object.entries(totals).sort(([a], [b]) => a.localeCompare(b));
+  list.replaceChildren();
+  clear.hidden = days.length === 0;
+  if (!days.length) {
+    const empty = document.createElement('p');
+    empty.className = 'data-empty';
+    empty.textContent = 'Apple Health verisi eklenmedi.';
+    list.append(empty);
+    return;
+  }
+  days.slice(-7).forEach(([day, ml]) => {
+    const card = document.createElement('div');
+    card.className = 'water-day';
+    const date = document.createElement('span');
+    date.textContent = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' }).format(new Date(`${day}T12:00:00`));
+    const amount = document.createElement('strong');
+    amount.textContent = `${Math.round(ml).toLocaleString('tr-TR')} ml`;
+    card.append(date, amount);
+    list.append(card);
+  });
+  const lastDay = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${days[days.length - 1][0]}T12:00:00`));
+  status.textContent = `${days.length.toLocaleString('tr-TR')} gün içe aktarıldı · son kayıt ${lastDay}. Günlük toplamlar yalnızca bu tarayıcıda tutuluyor.`;
+}
+
+function xmlAttribute(tag, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return tag.match(new RegExp(`(?:^|\\s)${escapedName}="([^"]*)"`))?.[1] ?? '';
+}
+
+async function parseHealthWaterXml(file) {
+  const totals = Object.create(null);
+  let recordCount = 0;
+  const addRecord = (tag) => {
+    if (xmlAttribute(tag, 'type') !== 'HKQuantityTypeIdentifierDietaryWater') return;
+    const raw = Number(xmlAttribute(tag, 'value'));
+    const unit = xmlAttribute(tag, 'unit').toLowerCase();
+    const day = xmlAttribute(tag, 'startDate').slice(0, 10);
+    const toMl = { ml: 1, l: 1000, cl: 10, fl_oz: 29.5735295625, 'fl oz': 29.5735295625 }[unit];
+    if (!Number.isFinite(raw) || raw <= 0 || !toMl || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    totals[day] = (totals[day] || 0) + raw * toMl;
+    recordCount += 1;
+  };
+
+  if (typeof file.stream !== 'function') {
+    const xml = await file.text();
+    for (const match of xml.matchAll(/<Record\b[^>]*>/g)) addRecord(match[0]);
+    return { totals, recordCount };
+  }
+
+  const reader = file.stream().getReader();
+  const decoder = new TextDecoder();
+  let carry = '';
+  const consume = (chunk) => {
+    const text = carry + chunk;
+    let cursor = 0;
+    while (true) {
+      const start = text.indexOf('<Record', cursor);
+      if (start < 0) break;
+      const end = text.indexOf('>', start);
+      if (end < 0) {
+        carry = text.slice(start);
+        return;
+      }
+      addRecord(text.slice(start, end + 1));
+      cursor = end + 1;
+    }
+    carry = text.slice(Math.max(cursor, text.length - 7));
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      consume(decoder.decode(value, { stream: true }));
+    }
+    consume(decoder.decode());
+  } finally {
+    reader.releaseLock();
+  }
+  return { totals, recordCount };
+}
+
+document.querySelector('#health-water-file')?.addEventListener('change', async (event) => {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  if (!file) return;
+  const status = document.querySelector('#health-water-status');
+  status.textContent = 'Dosya bu cihazda taranıyor; sunucuya aktarılmıyor…';
+  try {
+    const { totals, recordCount } = await parseHealthWaterXml(file);
+    if (!recordCount) {
+      status.textContent = 'Bu XML dosyasında Apple Health su kaydı bulunamadı. Health uygulamasındaki Su kayıtlarını kontrol et.';
+      return;
+    }
+    localStorage.setItem(HEALTH_WATER_STORAGE_KEY, JSON.stringify(totals));
+    renderHealthWater(totals);
+    status.textContent = `${recordCount.toLocaleString('tr-TR')} su kaydı işlendi · ham XML dosyası gönderilmedi, yalnızca günlük toplamlar bu tarayıcıda saklanıyor.`;
+  } catch (error) {
+    console.error('Apple Health water import failed:', error);
+    status.textContent = 'Dosya okunamadı. Apple Health dışa aktarımındaki export.xml dosyasını seçtiğinden emin ol.';
+  } finally {
+    input.value = '';
+  }
+});
+
+document.querySelector('#health-water-clear')?.addEventListener('click', () => {
+  localStorage.removeItem(HEALTH_WATER_STORAGE_KEY);
+  renderHealthWater({});
+  document.querySelector('#health-water-status').textContent = 'Bu tarayıcıdaki Apple Health su toplamları silindi.';
+});
+
+renderHealthWater(readHealthWaterTotals());
 
 document.querySelector('#disconnect-link')?.addEventListener('click', async (event) => {
   event.preventDefault();
