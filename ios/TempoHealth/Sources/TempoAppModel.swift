@@ -272,9 +272,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabled")
                 if let observerQuery { healthStore.stop(observerQuery) }
                 observerQuery = nil
-                if let waterType {
-                    healthStore.disableBackgroundDelivery(for: waterType) { _, _ in }
-                }
+                healthStore.disableBackgroundDelivery(for: waterType) { _, _ in }
                 status = "Tempo bağlantısının süresi doldu. Strava ile yeniden giriş yap."
                 return
             }
