@@ -242,6 +242,7 @@ private struct AccountFormView: View {
     @State private var email = ""
     @State private var username = ""
     @State private var password = ""
+    @State private var showsPasswordReset = false
 
     private var canSubmit: Bool {
         !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -270,9 +271,14 @@ private struct AccountFormView: View {
                     }
 
                     VStack(spacing: 16) {
-                        AccountFormFieldLabel(title: "E-posta") {
-                            AccountTextField(title: "ornek@eposta.com", icon: "envelope", text: $email, contentType: .emailAddress)
-                                .keyboardType(.emailAddress)
+                        AccountFormFieldLabel(title: mode == .signUp ? "E-posta" : "E-posta veya kullanıcı adı") {
+                            AccountTextField(
+                                title: mode == .signUp ? "ornek@eposta.com" : "E-posta veya kullanıcı adın",
+                                icon: mode == .signUp ? "envelope" : "person",
+                                text: $email,
+                                contentType: mode == .signUp ? .emailAddress : .username
+                            )
+                            .keyboardType(mode == .signUp ? .emailAddress : .default)
                         }
 
                         if mode == .signUp {
@@ -283,6 +289,18 @@ private struct AccountFormView: View {
 
                         AccountFormFieldLabel(title: "Şifre") {
                             AccountSecureField(title: mode == .signUp ? "En az 8 karakter" : "Şifren", text: $password)
+                        }
+
+                        if mode == .signIn {
+                            HStack {
+                                Spacer()
+                                Button("Şifremi unuttum") {
+                                    account.errorMessage = ""
+                                    showsPasswordReset = true
+                                }
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(TempoTheme.green)
+                            }
                         }
 
                         if mode == .signUp {
@@ -310,7 +328,7 @@ private struct AccountFormView: View {
                                 if mode == .signUp {
                                     await account.signUp(email: cleanEmail, username: username, password: password)
                                 } else {
-                                    await account.signIn(email: cleanEmail, password: password)
+                                    await account.signIn(identifier: cleanEmail, password: password)
                                 }
                             }
                         } label: {
@@ -360,6 +378,95 @@ private struct AccountFormView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .tempoGlassBackButton()
+        .sheet(isPresented: $showsPasswordReset) {
+            PasswordResetSheet()
+                .environmentObject(account)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+private struct PasswordResetSheet: View {
+    @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var email = ""
+    @State private var requestSent = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                TempoTheme.background.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 20) {
+                    if requestSent {
+                        VStack(spacing: 15) {
+                            Image(systemName: "envelope.badge.fill")
+                                .font(.system(size: 46))
+                                .foregroundStyle(TempoTheme.green)
+                            Text("E-postanı kontrol et")
+                                .font(.title2.bold())
+                            Text("Bu adresle eşleşen bir Tempo hesabı varsa şifre sıfırlama bağlantısını gönderdik.")
+                                .font(.subheadline)
+                                .foregroundStyle(TempoTheme.secondary)
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(3)
+                            Button("Tamam") { dismiss() }
+                                .buttonStyle(AccountPrimaryButtonStyle())
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("Şifreni sıfırla")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                            Text("Tempo hesabına kayıtlı e-posta adresini gir. Sana tek kullanımlık bir bağlantı gönderelim.")
+                                .font(.subheadline)
+                                .foregroundStyle(TempoTheme.secondary)
+                                .lineSpacing(3)
+                        }
+
+                        AccountFormFieldLabel(title: "E-posta") {
+                            AccountTextField(title: "ornek@eposta.com", icon: "envelope", text: $email, contentType: .emailAddress)
+                                .keyboardType(.emailAddress)
+                        }
+
+                        if !account.errorMessage.isEmpty {
+                            Label(account.errorMessage, systemImage: "exclamationmark.circle.fill")
+                                .font(.footnote)
+                                .foregroundStyle(TempoTheme.orange)
+                        }
+
+                        Button {
+                            Task {
+                                let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                                if await account.requestPasswordReset(email: cleanEmail) {
+                                    requestSent = true
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                if account.isBusy { ProgressView().tint(.black) }
+                                Text(account.isBusy ? "Gönderiliyor…" : "Sıfırlama bağlantısı gönder")
+                                Spacer()
+                                if !account.isBusy { Image(systemName: "paperplane.fill") }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(AccountPrimaryButtonStyle())
+                        .disabled(account.isBusy || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    Spacer()
+                }
+                .padding(22)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Kapat") { dismiss() }
+                        .foregroundStyle(TempoTheme.secondary)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear { account.errorMessage = "" }
     }
 }
 

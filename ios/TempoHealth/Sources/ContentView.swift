@@ -47,8 +47,7 @@ private struct TempoMainTab: Identifiable {
         TempoMainTab(id: 1, title: "Aktivite", icon: "figure.run", selectedIcon: "figure.run"),
         TempoMainTab(id: 2, title: "Sporlar", icon: "trophy", selectedIcon: "trophy.fill"),
         TempoMainTab(id: 3, title: "Keşfet", icon: "map", selectedIcon: "map.fill"),
-        TempoMainTab(id: 4, title: "Sağlık", icon: "heart.text.square", selectedIcon: "heart.text.square.fill"),
-        TempoMainTab(id: 5, title: "Profil", icon: "person.crop.circle", selectedIcon: "person.crop.circle.fill")
+        TempoMainTab(id: 4, title: "Daha Fazla", icon: "ellipsis.circle", selectedIcon: "ellipsis.circle.fill")
     ]
 }
 
@@ -66,11 +65,6 @@ private struct TempoMainShell: View {
             SportsHubScreen()
         case 3:
             NearbyFacilitiesScreen()
-        case 4:
-            NavigationStack {
-                HealthScreen()
-                    .toolbar(.hidden, for: .navigationBar)
-            }
         default:
             MoreScreen()
         }
@@ -1029,6 +1023,7 @@ private struct MoreScreen: View {
                     MoreLink(title: "Başarılar", subtitle: "Seviye ve rozetlerin", icon: "medal.fill", color: TempoTheme.orange, destination: AnyView(AchievementsScreen()))
                     MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
                     MoreLink(title: "Rotalar", subtitle: "GPS ısı haritan", icon: "map.fill", color: TempoTheme.orange, destination: AnyView(RoutesScreen()))
+                    MoreLink(title: "Apple Sağlık", subtitle: "Uyku, su ve hareket", icon: "heart.text.square.fill", color: .pink, destination: AnyView(HealthScreen()))
                     MoreLink(title: "Aylık", subtitle: "Son 6 ay", icon: "chart.bar.fill", color: TempoTheme.green, destination: AnyView(MonthlyStatsScreen()))
                     MoreLink(title: "Ekipman", subtitle: "Bisiklet ve ayakkabı", icon: "bicycle", color: TempoTheme.orange, destination: AnyView(GearScreen()))
                     MoreLink(title: "Segmentler", subtitle: "Favorilerin", icon: "flag.checkered", color: TempoTheme.purple, destination: AnyView(SegmentsScreen()))
@@ -1345,7 +1340,7 @@ private struct TempoPage<Content: View>: View {
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
-            ScrollView { VStack(spacing: 16) { content }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 34) }
+            ScrollView { VStack(spacing: 16) { content }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 92) }
         }
     }
 }

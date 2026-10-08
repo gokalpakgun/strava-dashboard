@@ -161,8 +161,31 @@ final class TempoAccountStore: ObservableObject {
     }
 
     @discardableResult
-    func signIn(email: String, password: String) async -> Bool {
-        await authenticate(path: "/api/account/login", payload: AccountCredentials(email: email, username: nil, password: password))
+    func signIn(identifier: String, password: String) async -> Bool {
+        await authenticate(
+            path: "/api/account/login",
+            payload: AccountLoginRequest(identifier: identifier, password: password)
+        )
+    }
+
+    @discardableResult
+    func requestPasswordReset(email: String) async -> Bool {
+        guard !isBusy else { return false }
+        isBusy = true
+        errorMessage = ""
+        defer { isBusy = false }
+        do {
+            _ = try await request(
+                path: "/api/account/password/forgot",
+                method: "POST",
+                body: PasswordResetRequest(email: email),
+                authenticated: false
+            )
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 
     @discardableResult
@@ -230,7 +253,7 @@ final class TempoAccountStore: ObservableObject {
         }
     }
 
-    private func authenticate(path: String, payload: AccountCredentials) async -> Bool {
+    private func authenticate<Payload: Encodable>(path: String, payload: Payload) async -> Bool {
         guard !isBusy else { return false }
         isBusy = true
         errorMessage = ""
@@ -272,7 +295,7 @@ final class TempoAccountStore: ObservableObject {
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sunucudan yanıt alınamadı.") }
-        let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil)
+        let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil)
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 && authenticated { clearLocalSession() }
             throw AccountError.server(envelope.error ?? "İşlem tamamlanamadı.")
@@ -294,6 +317,15 @@ private struct AccountCredentials: Encodable {
     let password: String
 }
 
+private struct AccountLoginRequest: Encodable {
+    let identifier: String
+    let password: String
+}
+
+private struct PasswordResetRequest: Encodable {
+    let email: String
+}
+
 private struct ProfileUpdate: Encodable {
     let displayName: String?
     let username: String?
@@ -307,6 +339,7 @@ private struct AccountEnvelope: Decodable {
     let token: String?
     let user: TempoUserProfile?
     let error: String?
+    let message: String?
 }
 
 private enum AccountError: LocalizedError {

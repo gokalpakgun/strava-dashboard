@@ -1,4 +1,4 @@
-import { handleAccountRequest } from "./account.js";
+import { handleAccountRequest, handlePasswordResetPage } from "./account.js";
 
 const SESSION_COOKIE = "tempo_session";
 const STATE_COOKIE = "tempo_oauth_state";
@@ -13,6 +13,9 @@ export default {
       if (url.pathname.startsWith("/api/account/")) {
         const accountResponse = await handleAccountRequest(request, env, url);
         if (accountResponse) return accountResponse;
+      }
+      if (url.pathname === "/reset-password" && (request.method === "GET" || request.method === "POST")) {
+        return handlePasswordResetPage(request, env, url);
       }
       if (url.pathname === "/auth/start" && request.method === "GET") {
         return startAuthorization(url, env);

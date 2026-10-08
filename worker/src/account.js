@@ -17,6 +17,12 @@ export async function handleAccountRequest(request, env, url) {
   if (url.pathname === "/api/account/login" && request.method === "POST") {
     return signIn(request, env);
   }
+  if (url.pathname === "/api/account/password/forgot" && request.method === "POST") {
+    return forgotPassword(request, env, url);
+  }
+  if (url.pathname === "/api/account/password/reset" && request.method === "POST") {
+    return resetPasswordAPI(request, env);
+  }
   if (url.pathname === "/api/account/me" && request.method === "GET") {
     return getMe(request, env);
   }
@@ -86,28 +92,177 @@ async function signIn(request, env) {
   const parsed = await readBody(request, 8192);
   if (parsed.response) return parsed.response;
 
-  const email = normalizeEmail(parsed.value.email);
+  const identifier = typeof parsed.value.identifier === "string"
+    ? parsed.value.identifier.trim().toLowerCase()
+    : normalizeEmail(parsed.value.email);
   const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
-  if (!isValidEmail(email) || password.length < 1 || password.length > 128) {
-    return responseJSON({ error: "E-posta veya şifre hatalı." }, 401);
+  const identifierIsEmail = identifier.includes("@");
+  const validIdentifier = identifierIsEmail ? isValidEmail(identifier) : isValidUsername(identifier);
+  if (!validIdentifier || password.length < 1 || password.length > 128) {
+    return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
   const limited = await rateLimit(request, env, "login", 10);
   if (limited) return limited;
 
-  const userId = await env.TOKEN_STORE.get("account-email:" + await sha256Hex(email));
+  const userId = identifierIsEmail
+    ? await env.TOKEN_STORE.get("account-email:" + await sha256Hex(identifier))
+    : await env.TOKEN_STORE.get("account-username:" + normalizeUsername(identifier));
   const user = userId ? await env.TOKEN_STORE.get("account-user:" + userId, "json") : null;
   if (!user?.passwordHash || !user?.passwordSalt) {
-    return responseJSON({ error: "E-posta veya şifre hatalı." }, 401);
+    return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
   const candidate = await derivePassword(password, user.passwordSalt, user.passwordIterations || PASSWORD_ITERATIONS);
   if (!constantTimeEqual(candidate, user.passwordHash)) {
-    return responseJSON({ error: "E-posta veya şifre hatalı." }, 401);
+    return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
   const session = await createSession(env, user.id);
   return responseJSON({ token: session.token, user: publicUser(user) });
+}
+
+async function forgotPassword(request, env, url) {
+  if (!env.RESEND_API_KEY) {
+    return responseJSON({ error: "Şifre sıfırlama e-posta servisi henüz hazır değil." }, 503);
+  }
+
+  const parsed = await readBody(request, 4096);
+  if (parsed.response) return parsed.response;
+  const email = normalizeEmail(parsed.value.email);
+  if (!isValidEmail(email)) return responseJSON({ error: "Geçerli bir e-posta adresi gir." }, 400);
+
+  const limited = await rateLimit(request, env, "password-reset", 5);
+  if (limited) return limited;
+
+  const generic = { message: "Hesap eşleşirse şifre sıfırlama bağlantısı gönderildi." };
+  const userId = await env.TOKEN_STORE.get("account-email:" + await sha256Hex(email));
+  if (!userId) return responseJSON(generic);
+
+  const token = randomHex(32);
+  const tokenHash = await sha256Hex(token);
+  await env.TOKEN_STORE.put("account-reset:" + tokenHash, userId, { expirationTtl: 1800 });
+
+  const resetLink = url.origin + "/reset-password?token=" + token;
+  const sent = await sendPasswordResetEmail(env, email, resetLink);
+  if (!sent) {
+    await env.TOKEN_STORE.delete("account-reset:" + tokenHash);
+    return responseJSON({ error: "Sıfırlama e-postası şu anda gönderilemedi. Biraz sonra tekrar dene." }, 502);
+  }
+  return responseJSON(generic);
+}
+
+async function sendPasswordResetEmail(env, email, resetLink) {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + env.RESEND_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM || "Tempo <noreply@apitempo.com>",
+      to: [email],
+      subject: "Tempo şifreni sıfırla",
+      html: "<div style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:560px;margin:auto;padding:28px;color:#132019\"><h1 style=\"font-size:26px\">Şifreni sıfırla</h1><p>Tempo hesabın için yeni bir şifre oluşturmak üzere aşağıdaki düğmeye dokun.</p><p style=\"margin:28px 0\"><a href=\"" + resetLink + "\" style=\"background:#45d978;color:#07120b;text-decoration:none;padding:14px 20px;border-radius:14px;font-weight:700\">Yeni şifre oluştur</a></p><p style=\"color:#66736b;font-size:13px\">Bu bağlantı 30 dakika geçerlidir. Bu isteği sen yapmadıysan e-postayı yok sayabilirsin.</p></div>",
+      text: "Tempo şifreni sıfırlamak için bu bağlantıyı aç: " + resetLink + " Bağlantı 30 dakika geçerlidir.",
+    }),
+  });
+  if (!response.ok) console.error("Password reset email failed:", response.status);
+  return response.ok;
+}
+
+async function resetPasswordAPI(request, env) {
+  const parsed = await readBody(request, 8192);
+  if (parsed.response) return parsed.response;
+  const result = await resetPasswordValues(parsed.value.token, parsed.value.password, env);
+  return result.ok
+    ? responseJSON({ message: "Şifren güncellendi." })
+    : responseJSON({ error: result.error }, result.status);
+}
+
+async function resetPasswordValues(tokenValue, passwordValue, env) {
+  const token = typeof tokenValue === "string" ? tokenValue.trim() : "";
+  const password = typeof passwordValue === "string" ? passwordValue : "";
+  if (!/^[a-f0-9]{64}$/i.test(token)) {
+    return { ok: false, status: 400, error: "Sıfırlama bağlantısı geçersiz." };
+  }
+  if (password.length < 8 || password.length > 128) {
+    return { ok: false, status: 400, error: "Şifre 8–128 karakter olmalı." };
+  }
+
+  const resetKey = "account-reset:" + await sha256Hex(token);
+  const userId = await env.TOKEN_STORE.get(resetKey);
+  if (!userId) {
+    return { ok: false, status: 400, error: "Sıfırlama bağlantısının süresi dolmuş veya bağlantı daha önce kullanılmış." };
+  }
+
+  const user = await env.TOKEN_STORE.get("account-user:" + userId, "json");
+  if (!user) {
+    await env.TOKEN_STORE.delete(resetKey);
+    return { ok: false, status: 400, error: "Tempo hesabı bulunamadı." };
+  }
+
+  const salt = randomBase64(16);
+  user.passwordSalt = salt;
+  user.passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS);
+  user.passwordIterations = PASSWORD_ITERATIONS;
+  user.updatedAt = new Date().toISOString();
+  await Promise.all([
+    env.TOKEN_STORE.put("account-user:" + user.id, JSON.stringify(user)),
+    env.TOKEN_STORE.delete(resetKey),
+  ]);
+  return { ok: true, status: 200 };
+}
+
+export async function handlePasswordResetPage(request, env, url) {
+  if (!env.TOKEN_STORE) return passwordResetDocument("", "Hesap depolama bağlantısı hazır değil.", false);
+  if (request.method === "GET") {
+    const token = url.searchParams.get("token") || "";
+    if (!/^[a-f0-9]{64}$/i.test(token)) {
+      return passwordResetDocument("", "Sıfırlama bağlantısı geçersiz.", false);
+    }
+    return passwordResetDocument(token, "", false);
+  }
+  if (request.method === "POST") {
+    const form = await request.formData();
+    const password = String(form.get("password") || "");
+    const confirmation = String(form.get("confirmation") || "");
+    if (password !== confirmation) {
+      return passwordResetDocument(String(form.get("token") || ""), "Şifreler eşleşmiyor.", false);
+    }
+    const result = await resetPasswordValues(form.get("token"), password, env);
+    return passwordResetDocument("", result.ok ? "Şifren güncellendi. Artık Tempo uygulamasından giriş yapabilirsin." : result.error, result.ok);
+  }
+  return new Response("Method not allowed", { status: 405, headers: { "Allow": "GET, POST" } });
+}
+
+function passwordResetDocument(token, message, success) {
+  const safeToken = /^[a-f0-9]{64}$/i.test(token) ? token : "";
+  const safeMessage = escapeHTML(message || "");
+  const content = success
+    ? "<div class=\"result ok\"><div class=\"icon\">✓</div><h1>Şifren hazır</h1><p>" + safeMessage + "</p></div>"
+    : "<h1>Yeni şifre oluştur</h1><p class=\"lead\">Tempo hesabın için güçlü bir şifre belirle.</p>" +
+      (safeMessage ? "<div class=\"message\">" + safeMessage + "</div>" : "") +
+      (safeToken ? "<form method=\"post\" action=\"/reset-password\"><input type=\"hidden\" name=\"token\" value=\"" + safeToken + "\"><label>Yeni şifre</label><input name=\"password\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><label>Yeni şifre tekrar</label><input name=\"confirmation\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><button type=\"submit\">Şifreyi güncelle</button></form>" : "");
+  const html = "<!doctype html><html lang=\"tr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Tempo şifre sıfırlama</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,#08171c,#07100c);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#f5fff7;padding:20px}.card{width:min(100%,440px);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:28px;padding:28px;box-shadow:0 22px 70px rgba(0,0,0,.35)}.brand{color:#64ef8e;font-weight:800;margin-bottom:28px}.brand span{color:#91a49a;font-weight:500;margin-left:8px}h1{font-size:30px;margin:0 0 8px}.lead,p{color:#a8b5ad;line-height:1.5}.message{color:#ff9b78;background:rgba(255,105,65,.1);padding:12px;border-radius:13px;margin:18px 0}label{display:block;font-size:13px;font-weight:650;margin:16px 0 7px}input{width:100%;height:54px;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:rgba(255,255,255,.06);color:white;padding:0 15px;font-size:16px}button{width:100%;height:56px;border:0;border-radius:16px;background:#64ef8e;color:#061109;font-size:16px;font-weight:750;margin-top:22px}.result{text-align:center}.icon{width:66px;height:66px;border-radius:50%;background:#64ef8e;color:#061109;display:grid;place-items:center;font-size:32px;font-weight:800;margin:0 auto 18px}</style></head><body><main class=\"card\"><div class=\"brand\">TEMPO <span>Sağlık ve spor</span></div>" + content + "</main></body></html>";
+  return new Response(html, {
+    status: 200,
+    headers: {
+      ...securityHeaders(),
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    },
+  });
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[character]));
 }
 
 async function getMe(request, env) {
