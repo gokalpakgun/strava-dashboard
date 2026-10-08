@@ -22,65 +22,229 @@ struct TempoLaunchView: View {
     }
 }
 
+struct TempoBrandMark: View {
+    var size: CGFloat = 76
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.29, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.12, green: 0.19, blue: 0.31), Color(red: 0.035, green: 0.07, blue: 0.12)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            RoundedRectangle(cornerRadius: size * 0.29, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [TempoTheme.green.opacity(0.72), TempoTheme.blue.opacity(0.54), .white.opacity(0.06)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: size * 0.42, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [TempoTheme.green, TempoTheme.blue],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+        }
+        .frame(width: size, height: size)
+        .shadow(color: TempoTheme.green.opacity(0.14), radius: 22, y: 10)
+    }
+}
+
+struct TempoAmbientBackground: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                TempoTheme.background
+                RadialGradient(
+                    colors: [TempoTheme.green.opacity(0.14), .clear],
+                    center: .topTrailing,
+                    startRadius: 10,
+                    endRadius: proxy.size.width * 0.82
+                )
+                RadialGradient(
+                    colors: [TempoTheme.blue.opacity(0.10), .clear],
+                    center: .bottomLeading,
+                    startRadius: 20,
+                    endRadius: proxy.size.width * 0.92
+                )
+                Canvas { context, size in
+                    let spacing: CGFloat = 30
+                    var path = Path()
+                    stride(from: CGFloat.zero, through: size.width, by: spacing).forEach { x in
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: size.height))
+                    }
+                    stride(from: CGFloat.zero, through: size.height, by: spacing).forEach { y in
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: size.width, y: y))
+                    }
+                    context.stroke(path, with: .color(.white.opacity(0.018)), lineWidth: 0.5)
+                }
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
 struct AccountWelcomeView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                TempoTheme.background.ignoresSafeArea()
-                Circle()
-                    .fill(TempoTheme.green.opacity(0.15))
-                    .frame(width: 370, height: 370)
-                    .blur(radius: 80)
-                    .offset(x: 160, y: -320)
+                TempoAmbientBackground()
 
-                VStack(alignment: .leading, spacing: 26) {
-                    Spacer()
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .fill(LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        Image(systemName: "figure.run.circle.fill")
-                            .font(.system(size: 43, weight: .semibold))
-                            .foregroundStyle(.black)
-                    }
-                    .frame(width: 88, height: 88)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("TEMPO").font(.caption.bold()).tracking(4).foregroundStyle(TempoTheme.green)
-                        Text("Spor hayatını\nkendine göre kur.")
-                            .font(.system(size: 41, weight: .bold, design: .rounded))
-                            .tracking(-1)
-                        Text("Sporlarını seç, Strava ve Apple Sağlık verilerini bağla, yakınındaki sahaları keşfet.")
-                            .foregroundStyle(TempoTheme.secondary)
-                            .lineSpacing(4)
-                    }
-
-                    VStack(spacing: 10) {
-                        NavigationLink(destination: AccountFormView(mode: .signUp)) {
-                            Label("Hesap oluştur", systemImage: "person.badge.plus")
-                                .frame(maxWidth: .infinity)
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        HStack {
+                            HStack(spacing: 11) {
+                                TempoBrandMark(size: 48)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("TEMPO")
+                                        .font(.caption.bold())
+                                        .tracking(3.2)
+                                        .foregroundStyle(TempoTheme.green)
+                                    Text("ACTIVE INTELLIGENCE")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .tracking(1.2)
+                                        .foregroundStyle(TempoTheme.secondary)
+                                }
+                            }
+                            Spacer()
+                            Label("Güvenli", systemImage: "lock.fill")
+                                .font(.caption2.bold())
+                                .foregroundStyle(TempoTheme.green)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 8)
+                                .background(TempoTheme.green.opacity(0.10), in: Capsule())
+                                .overlay(Capsule().stroke(TempoTheme.green.opacity(0.16)))
                         }
-                        .buttonStyle(AccountPrimaryButtonStyle())
 
-                        NavigationLink(destination: AccountFormView(mode: .signIn)) {
-                            Text("Zaten hesabım var")
-                                .frame(maxWidth: .infinity)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("HAREKETİNİ ANLA")
+                                .font(.caption.bold())
+                                .tracking(2)
+                                .foregroundStyle(TempoTheme.green)
+                            Text("Spor hayatının\nakıllı merkezi.")
+                                .font(.system(size: 42, weight: .bold, design: .rounded))
+                                .tracking(-1.3)
+                                .minimumScaleFactor(0.82)
+                            Text("Antrenmanını, sağlığını ve gelişimini tek profilde birleştir. Tempo verilerinden sana özel bir ritim oluşturur.")
+                                .font(.body)
+                                .foregroundStyle(TempoTheme.secondary)
+                                .lineSpacing(4)
                         }
-                        .buttonStyle(AccountOutlineButtonStyle())
+
+                        VStack(spacing: 0) {
+                            WelcomeValueRow(
+                                icon: "chart.line.uptrend.xyaxis",
+                                color: TempoTheme.green,
+                                title: "Gelişimini takip et",
+                                subtitle: "Aktivite, sağlık ve performans verilerin"
+                            )
+                            Divider().overlay(.white.opacity(0.07)).padding(.leading, 61)
+                            WelcomeValueRow(
+                                icon: "sparkles",
+                                color: TempoTheme.purple,
+                                title: "Kişisel spor koçun",
+                                subtitle: "Verilerine göre değerlendirme ve öneriler"
+                            )
+                            Divider().overlay(.white.opacity(0.07)).padding(.leading, 61)
+                            WelcomeValueRow(
+                                icon: "map.fill",
+                                color: TempoTheme.blue,
+                                title: "Yakınındaki sporu keşfet",
+                                subtitle: "Rotalar, sahalar ve spor alanları"
+                            )
+                        }
+                        .padding(.horizontal, 16)
+                        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                                .stroke(.white.opacity(0.07))
+                        )
+
+                        VStack(spacing: 11) {
+                            NavigationLink(destination: AccountFormView(mode: .signUp)) {
+                                HStack {
+                                    Label("Tempo hesabı oluştur", systemImage: "person.badge.plus")
+                                    Spacer()
+                                    Image(systemName: "arrow.right")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(AccountPrimaryButtonStyle())
+
+                            NavigationLink(destination: AccountFormView(mode: .signIn)) {
+                                HStack {
+                                    Label("Hesabıma giriş yap", systemImage: "person.crop.circle")
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(TempoTheme.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(AccountOutlineButtonStyle())
+                        }
+
+                        HStack(spacing: 7) {
+                            Image(systemName: "shield.checkered")
+                            Text("Verilerin yalnızca deneyimini kişiselleştirmek için kullanılır.")
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(TempoTheme.secondary)
+                        .frame(maxWidth: .infinity)
                     }
-                    Spacer().frame(height: 18)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 18)
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 24)
             }
             .toolbar(.hidden, for: .navigationBar)
         }
     }
 }
 
+private struct WelcomeValueRow: View {
+    let icon: String
+    let color: Color
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 42, height: 42)
+                .background(color.opacity(0.11), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.bold())
+                Text(subtitle).font(.caption).foregroundStyle(TempoTheme.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 14)
+    }
+}
+
 private enum AccountFormMode {
     case signUp, signIn
 
-    var title: String { self == .signUp ? "Hesap oluştur" : "Tekrar hoş geldin" }
-    var subtitle: String { self == .signUp ? "Tempo profilini birkaç adımda hazırlayalım." : "Profiline ve spor verilerine devam et." }
+    var title: String { self == .signUp ? "Hesabını oluştur" : "Tekrar hoş geldin" }
+    var subtitle: String { self == .signUp ? "Tempo deneyimini sana göre hazırlayalım." : "Profiline ve spor verilerine kaldığın yerden devam et." }
+    var actionTitle: String { self == .signUp ? "Hesap oluştur" : "Giriş yap" }
+    var eyebrow: String { self == .signUp ? "YENİ TEMPO PROFİLİ" : "TEMPO HESABI" }
+    var alternatePrompt: String { self == .signUp ? "Zaten bir hesabın var mı?" : "Tempo’ya yeni misin?" }
+    var alternateTitle: String { self == .signUp ? "Giriş yap" : "Hesap oluştur" }
 }
 
 private struct AccountFormView: View {
@@ -90,59 +254,140 @@ private struct AccountFormView: View {
     @State private var username = ""
     @State private var password = ""
 
+    private var canSubmit: Bool {
+        !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !password.isEmpty &&
+        (mode == .signIn || !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
     var body: some View {
         ZStack {
-            TempoTheme.background.ignoresSafeArea()
-            ScrollView {
+            TempoAmbientBackground()
+
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(mode.title).font(.system(size: 34, weight: .bold, design: .rounded))
-                        Text(mode.subtitle).foregroundStyle(TempoTheme.secondary)
+                    HStack {
+                        TempoBrandMark(size: 58)
+                        Spacer()
+                        Label("Şifreli bağlantı", systemImage: "lock.shield.fill")
+                            .font(.caption2.bold())
+                            .foregroundStyle(TempoTheme.green)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 8)
+                            .background(TempoTheme.green.opacity(0.10), in: Capsule())
                     }
 
-                    VStack(spacing: 13) {
-                        AccountTextField(title: "E-posta", icon: "envelope.fill", text: $email, contentType: .emailAddress)
-                            .keyboardType(.emailAddress)
-                        if mode == .signUp {
-                            AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(mode.eyebrow)
+                            .font(.caption.bold())
+                            .tracking(1.7)
+                            .foregroundStyle(TempoTheme.green)
+                        Text(mode.title)
+                            .font(.system(size: 35, weight: .bold, design: .rounded))
+                            .tracking(-0.8)
+                        Text(mode.subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(TempoTheme.secondary)
+                            .lineSpacing(3)
+                    }
+
+                    VStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("E-POSTA").font(.caption2.bold()).tracking(1.1).foregroundStyle(TempoTheme.secondary)
+                            AccountTextField(title: "ornek@eposta.com", icon: "envelope.fill", text: $email, contentType: .emailAddress)
+                                .keyboardType(.emailAddress)
                         }
-                        AccountSecureField(title: "Şifre", text: $password)
-                    }
 
-                    if mode == .signUp {
-                        Text("Şifre en az 8 karakter olmalı. Kullanıcı adı 3–24 karakter ve yalnızca harf, rakam veya alt çizgi içerebilir.")
-                            .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
-                    }
-
-                    if !account.errorMessage.isEmpty {
-                        Label(account.errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .font(.footnote)
-                            .foregroundStyle(TempoTheme.orange)
-                    }
-
-                    Button {
-                        Task {
-                            if mode == .signUp {
-                                await account.signUp(email: email, username: username, password: password)
-                            } else {
-                                await account.signIn(email: email, password: password)
+                        if mode == .signUp {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("KULLANICI ADI").font(.caption2.bold()).tracking(1.1).foregroundStyle(TempoTheme.secondary)
+                                AccountTextField(title: "kullaniciadi", icon: "at", text: $username, contentType: .username)
                             }
                         }
-                    } label: {
-                        HStack {
-                            if account.isBusy { ProgressView().tint(.black) }
-                            Text(account.isBusy ? "İşlem yapılıyor…" : mode.title)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("ŞİFRE").font(.caption2.bold()).tracking(1.1).foregroundStyle(TempoTheme.secondary)
+                            AccountSecureField(title: mode == .signUp ? "En az 8 karakter" : "Şifren", text: $password)
                         }
-                        .frame(maxWidth: .infinity)
+
+                        if mode == .signUp {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "info.circle.fill").foregroundStyle(TempoTheme.blue)
+                                Text("Şifren en az 8 karakter; kullanıcı adın 3–24 karakter olmalı.")
+                                    .foregroundStyle(TempoTheme.secondary)
+                            }
+                            .font(.caption)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        if !account.errorMessage.isEmpty {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                Text(account.errorMessage).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(TempoTheme.orange)
+                            .padding(13)
+                            .background(TempoTheme.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(TempoTheme.orange.opacity(0.18)))
+                        }
+
+                        Button {
+                            Task {
+                                let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                                if mode == .signUp {
+                                    await account.signUp(email: cleanEmail, username: username, password: password)
+                                } else {
+                                    await account.signIn(email: cleanEmail, password: password)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                if account.isBusy {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Image(systemName: mode == .signUp ? "person.badge.plus" : "arrow.right.to.line")
+                                }
+                                Text(account.isBusy ? "Güvenli bağlantı kuruluyor…" : mode.actionTitle)
+                                Spacer()
+                                if !account.isBusy { Image(systemName: "arrow.right") }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(AccountPrimaryButtonStyle())
+                        .disabled(account.isBusy || !canSubmit)
+                        .opacity(canSubmit ? 1 : 0.58)
                     }
-                    .buttonStyle(AccountPrimaryButtonStyle())
-                    .disabled(account.isBusy || email.isEmpty || password.isEmpty || (mode == .signUp && username.isEmpty))
+                    .padding(18)
+                    .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.07)))
+
+                    HStack(spacing: 5) {
+                        Text(mode.alternatePrompt).foregroundStyle(TempoTheme.secondary)
+                        NavigationLink(mode.alternateTitle, destination: AccountFormView(mode: mode == .signUp ? .signIn : .signUp))
+                            .fontWeight(.bold)
+                            .foregroundStyle(TempoTheme.green)
+                    }
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity)
+
+                    if mode == .signUp {
+                        Text("Devam ederek Tempo’nun gizlilik ve hesap koşullarını kabul etmiş olursun.")
+                            .font(.caption2)
+                            .foregroundStyle(TempoTheme.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
-                .padding(22)
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 32)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .navigationBarTitleDisplayMode(.inline)
+        .tempoGlassBackButton()
     }
 }
 
