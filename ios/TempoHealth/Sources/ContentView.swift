@@ -144,194 +144,174 @@ private struct WelcomeScreen: View {
             TempoAmbientBackground()
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack {
-                        HStack(spacing: 11) {
-                            TempoBrandMark(size: 50)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("TEMPO").font(.caption.bold()).tracking(3).foregroundStyle(TempoTheme.green)
-                                Text("BAĞLANTI MERKEZİ").font(.system(size: 8, weight: .bold)).tracking(1.1).foregroundStyle(TempoTheme.secondary)
-                            }
+                VStack(spacing: 27) {
+                    HStack(spacing: 11) {
+                        TempoBrandMark(size: 48)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Tempo").font(.title3.bold())
+                            Text("Aktivitelerini bağla")
+                                .font(.caption)
+                                .foregroundStyle(TempoTheme.secondary)
                         }
                         Spacer()
-                        HStack(spacing: 6) {
-                            Circle().fill(TempoTheme.green).frame(width: 7, height: 7)
-                            Text("Hesap hazır").font(.caption2.bold())
-                        }
-                        .foregroundStyle(TempoTheme.green)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 8)
-                        .background(TempoTheme.green.opacity(0.09), in: Capsule())
-                        .overlay(Capsule().stroke(TempoTheme.green.opacity(0.15)))
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("SON BİR ADIM")
-                            .font(.caption.bold())
-                            .tracking(2)
-                            .foregroundStyle(TempoTheme.orange)
-                        Text("Aktivitelerini\nTempo’ya taşı.")
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
-                            .tracking(-1.1)
-                            .minimumScaleFactor(0.82)
-                        Text("Strava hesabını güvenli biçimde bağla; antrenmanların, rotaların ve performans geçmişin otomatik olarak hazırlansın.")
+                    VStack(spacing: 11) {
+                        Text("Antrenmanların\nseni bekliyor.")
+                            .font(.system(size: 39, weight: .bold, design: .rounded))
+                            .tracking(-1)
+                            .multilineTextAlignment(.center)
+                        Text("Strava hesabını bağla; aktivitelerin, rotaların ve performans geçmişin Tempo’da hazır olsun.")
                             .font(.body)
                             .foregroundStyle(TempoTheme.secondary)
+                            .multilineTextAlignment(.center)
                             .lineSpacing(4)
                     }
+                    .frame(maxWidth: .infinity)
 
-                    VStack(alignment: .leading, spacing: 17) {
-                        HStack(spacing: 14) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                                    .fill(TempoTheme.orange.opacity(0.14))
-                                Image(systemName: "figure.run")
-                                    .font(.system(size: 25, weight: .semibold))
-                                    .foregroundStyle(TempoTheme.orange)
-                            }
-                            .frame(width: 58, height: 58)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Strava").font(.title3.bold())
-                                Text("Aktivite hesabı").font(.caption).foregroundStyle(TempoTheme.secondary)
-                            }
-                            Spacer()
-                            Label("OAuth", systemImage: "checkmark.shield.fill")
-                                .font(.caption2.bold())
-                                .foregroundStyle(TempoTheme.green)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 7)
-                                .background(TempoTheme.green.opacity(0.09), in: Capsule())
-                        }
-
-                        Divider().overlay(.white.opacity(0.08))
-
-                        HStack(spacing: 0) {
-                            StravaDataPreview(icon: "chart.xyaxis.line", title: "İstatistik", subtitle: "Mesafe · tempo")
-                            StravaDataPreview(icon: "map.fill", title: "Rotalar", subtitle: "Harita · ısı")
-                            StravaDataPreview(icon: "sparkles", title: "AI Koç", subtitle: "Kişisel analiz")
-                        }
-                    }
-                    .padding(18)
-                    .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [TempoTheme.orange.opacity(0.28), .white.opacity(0.06)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
+                    ConnectedAppsCard()
 
                     VStack(spacing: 12) {
                         Button(action: model.connectStrava) {
-                            HStack(spacing: 11) {
+                            HStack {
                                 if model.isBusy {
                                     ProgressView().tint(.white)
                                 } else {
-                                    Image(systemName: "link")
+                                    Image(systemName: "figure.run")
                                 }
-                                Text(model.isBusy ? "Strava bağlantısı kuruluyor…" : "Strava’yı güvenli bağla")
+                                Text(model.isBusy ? "Strava açılıyor…" : "Strava ile devam et")
                                 Spacer()
                                 if !model.isBusy {
-                                    Image(systemName: "arrow.up.right")
+                                    Image(systemName: "arrow.right")
                                 }
                             }
                             .font(.headline)
                             .foregroundStyle(.white)
                             .padding(.horizontal, 19)
-                            .frame(height: 60)
+                            .frame(height: 59)
                             .background(
                                 LinearGradient(
-                                    colors: [TempoTheme.orange, Color(red: 0.88, green: 0.24, blue: 0.12)],
+                                    colors: [TempoTheme.orange, Color(red: 0.91, green: 0.28, blue: 0.16)],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 ),
                                 in: RoundedRectangle(cornerRadius: 19, style: .continuous)
                             )
-                            .shadow(color: TempoTheme.orange.opacity(0.22), radius: 16, y: 8)
                         }
                         .buttonStyle(.plain)
                         .disabled(model.isBusy)
-                        .opacity(model.isBusy ? 0.82 : 1)
+                        .opacity(model.isBusy ? 0.78 : 1)
 
-                        HStack(alignment: .top, spacing: 9) {
-                            Image(systemName: "lock.shield.fill").foregroundStyle(TempoTheme.green)
-                            Text("Strava şifren Tempo ile paylaşılmaz. Yetkilendirme doğrudan Strava’nın güvenli ekranında tamamlanır.")
-                                .lineSpacing(2)
+                        HStack(spacing: 7) {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(TempoTheme.green)
+                            Text("Giriş ve izin işlemleri Strava’da tamamlanır.")
                         }
                         .font(.caption)
                         .foregroundStyle(TempoTheme.secondary)
-                        .padding(.horizontal, 4)
                     }
 
                     if !model.status.isEmpty {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 9) {
                             if model.isBusy {
                                 ProgressView().tint(TempoTheme.green)
                             } else {
-                                Image(systemName: "info.circle.fill").foregroundStyle(TempoTheme.blue)
+                                Image(systemName: "info.circle")
                             }
-                            Text(model.status).frame(maxWidth: .infinity, alignment: .leading)
+                            Text(model.status)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundStyle(TempoTheme.secondary)
-                        .padding(14)
-                        .background(TempoTheme.card.opacity(0.82), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     }
 
-                    HStack {
-                        ConnectionStep(number: "1", title: "Strava’da onayla")
-                        Rectangle().fill(.white.opacity(0.10)).frame(height: 1)
-                        ConnectionStep(number: "2", title: "Tempo’ya dön")
-                        Rectangle().fill(.white.opacity(0.10)).frame(height: 1)
-                        ConnectionStep(number: "3", title: "Verilerin hazır")
-                    }
-                    .padding(.top, 2)
+                    Text("Bağlantıyı daha sonra Profil bölümünden yönetebilirsin.")
+                        .font(.caption2)
+                        .foregroundStyle(TempoTheme.secondary)
+                        .multilineTextAlignment(.center)
                 }
-                .padding(.horizontal, 21)
-                .padding(.top, 18)
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
                 .padding(.bottom, 30)
             }
         }
     }
 }
 
-private struct StravaDataPreview: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-
+private struct ConnectedAppsCard: View {
     var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon).foregroundStyle(TempoTheme.orange)
-            Text(title).font(.caption.bold())
-            Text(subtitle).font(.system(size: 9)).foregroundStyle(TempoTheme.secondary).lineLimit(1)
+        VStack(spacing: 21) {
+            HStack(spacing: 14) {
+                TempoBrandMark(size: 65)
+
+                ZStack {
+                    Capsule()
+                        .fill(.white.opacity(0.09))
+                        .frame(height: 2)
+                    Circle()
+                        .fill(TempoTheme.green)
+                        .frame(width: 22, height: 22)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.black)
+                }
+                .frame(maxWidth: .infinity)
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(TempoTheme.orange.opacity(0.14))
+                    Image(systemName: "figure.run")
+                        .font(.system(size: 29, weight: .semibold))
+                        .foregroundStyle(TempoTheme.orange)
+                }
+                .frame(width: 65, height: 65)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(TempoTheme.orange.opacity(0.18))
+                )
+            }
+            .padding(.horizontal, 18)
+
+            VStack(spacing: 8) {
+                Text("Tempo + Strava")
+                    .font(.title3.bold())
+                Text("Bir kez bağla, yeni aktivitelerin otomatik olarak güncellensin.")
+                    .font(.subheadline)
+                    .foregroundStyle(TempoTheme.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+
+            HStack(spacing: 8) {
+                ImportPill(icon: "chart.line.uptrend.xyaxis", title: "İstatistik")
+                ImportPill(icon: "map", title: "Rotalar")
+                ImportPill(icon: "sparkles", title: "Koç")
+            }
         }
-        .frame(maxWidth: .infinity)
+        .padding(20)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.075)))
     }
 }
 
-private struct ConnectionStep: View {
-    let number: String
+private struct ImportPill: View {
+    let icon: String
     let title: String
 
     var body: some View {
-        VStack(spacing: 7) {
-            Text(number)
-                .font(.caption2.bold())
-                .foregroundStyle(.black)
-                .frame(width: 23, height: 23)
-                .background(TempoTheme.green, in: Circle())
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(TempoTheme.green)
             Text(title)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(TempoTheme.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(.white.opacity(0.82))
         }
+        .font(.caption.weight(.semibold))
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(.white.opacity(0.045), in: Capsule())
     }
 }
 
