@@ -339,23 +339,210 @@ struct AccountOnboardingView: View {
 
 struct AccountProfileCard: View {
     @EnvironmentObject private var account: TempoAccountStore
+    @EnvironmentObject private var model: TempoAppModel
+
+    private var achievement: TempoAchievement { model.dashboard?.achievement ?? .empty }
 
     var body: some View {
         if let profile = account.profile {
-            HStack(spacing: 16) {
-                AccountAvatarView(data: profile.avatarData, size: 72)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(profile.displayName.isEmpty ? profile.username : profile.displayName).font(.title2.bold())
-                    Text("@\(profile.username)").font(.subheadline).foregroundStyle(TempoTheme.green)
-                    Text(profile.sports.compactMap(TempoSportChoice.init(rawValue:)).map(\.title).prefix(3).joined(separator: " · "))
-                        .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
+            NavigationLink(destination: AchievementsScreen()) {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 16) {
+                        ZStack(alignment: .bottomTrailing) {
+                            AccountAvatarView(data: profile.avatarData, size: 76)
+                            Text("\(achievement.level)")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.black)
+                                .frame(width: 27, height: 27)
+                                .background(TempoTheme.green, in: Circle())
+                                .overlay(Circle().stroke(TempoTheme.card, lineWidth: 3))
+                        }
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(profile.displayName.isEmpty ? profile.username : profile.displayName).font(.title2.bold())
+                            Text("@\(profile.username)").font(.subheadline).foregroundStyle(TempoTheme.green)
+                            Text(profile.sports.compactMap(TempoSportChoice.init(rawValue:)).map(\.title).prefix(3).joined(separator: " · "))
+                                .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
+                    }
+
+                    Divider().overlay(.white.opacity(0.08))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("SEVİYE \(achievement.level) · \(achievement.title.uppercased())")
+                                .font(.caption.bold()).tracking(1.1).foregroundStyle(TempoTheme.green)
+                            Spacer()
+                            Text(achievement.nextLevelXp > 0 ? "\(achievement.currentLevelXp) / \(achievement.nextLevelXp) XP" : "MAKSİMUM")
+                                .font(.caption2).foregroundStyle(TempoTheme.secondary)
+                        }
+                        ProgressView(value: achievement.safeProgress)
+                            .tint(TempoTheme.green)
+                            .background(.white.opacity(0.08))
+                            .clipShape(Capsule())
+                    }
+
+                    if !achievement.unlockedBadges.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(Array(achievement.unlockedBadges.reversed().prefix(3))) { badge in
+                                HStack(spacing: 6) {
+                                    Image(systemName: badge.symbol).foregroundStyle(badge.tempoColor)
+                                    Text(badge.title).lineLimit(1).minimumScaleFactor(0.7)
+                                }
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 9).padding(.vertical, 7)
+                                .background(badge.tempoColor.opacity(0.12), in: Capsule())
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
                 }
-                Spacer()
-                Image(systemName: "checkmark.seal.fill").foregroundStyle(TempoTheme.green)
+                .foregroundStyle(.white)
+                .padding(18)
+                .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.055)))
             }
-            .padding(18)
-            .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .buttonStyle(.plain)
         }
+    }
+}
+
+struct AchievementsScreen: View {
+    @EnvironmentObject private var model: TempoAppModel
+    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+    private var achievement: TempoAchievement { model.dashboard?.achievement ?? .empty }
+
+    var body: some View {
+        ZStack {
+            TempoTheme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 18) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("TEMPO BAŞARILARI").font(.caption.bold()).tracking(1.6).foregroundStyle(TempoTheme.green)
+                        Text("Seviye ve rozetlerin").font(.system(size: 31, weight: .bold, design: .rounded))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    levelCard
+
+                    HStack {
+                        Text("ROZETLER").font(.caption.bold()).tracking(1.4).foregroundStyle(TempoTheme.green)
+                        Spacer()
+                        Text("\(achievement.unlockedBadgeCount) / \(achievement.totalBadgeCount) açıldı")
+                            .font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+
+                    if achievement.badges.isEmpty {
+                        VStack(spacing: 12) {
+                            ProgressView().tint(TempoTheme.green)
+                            Text("Strava aktivitelerin hazırlanıyor…").font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        }
+                        .padding(30).frame(maxWidth: .infinity)
+                        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(achievement.badges.sorted { left, right in
+                                if left.unlocked != right.unlocked { return left.unlocked && !right.unlocked }
+                                return left.safeProgress > right.safeProgress
+                            }) { badge in
+                                AchievementBadgeCard(badge: badge)
+                            }
+                        }
+                    }
+
+                    Text("XP ve rozetler Strava’daki erişilebilir aktivitelerinden hesaplanır. Geçmiş sınırlandırılmışsa sonuçlar eksik olabilir.")
+                        .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 34)
+            }
+        }
+        .navigationTitle("Başarılar")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var levelCard: some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle().stroke(.white.opacity(0.08), lineWidth: 14)
+                Circle()
+                    .trim(from: 0, to: achievement.safeProgress)
+                    .stroke(
+                        LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 2) {
+                    Text("SEVİYE").font(.caption2.bold()).tracking(1.3).foregroundStyle(TempoTheme.secondary)
+                    Text("\(achievement.level)").font(.system(size: 52, weight: .bold, design: .rounded))
+                    Text(achievement.title).font(.caption.bold()).foregroundStyle(TempoTheme.green)
+                }
+            }
+            .frame(width: 178, height: 178)
+
+            VStack(spacing: 8) {
+                HStack {
+                    Text("\(achievement.totalXp.formatted()) toplam XP").font(.subheadline.bold())
+                    Spacer()
+                    Text(achievement.nextLevelXp > 0 ? "Sonraki seviyeye \(max(achievement.nextLevelXp - achievement.currentLevelXp, 0)) XP" : "En yüksek seviye")
+                        .font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
+                ProgressView(value: achievement.safeProgress).tint(TempoTheme.green)
+            }
+        }
+        .padding(22)
+        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 27, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(.white.opacity(0.055)))
+    }
+}
+
+private struct AchievementBadgeCard: View {
+    let badge: TempoBadge
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: badge.symbol)
+                    .font(.title2)
+                    .foregroundStyle(badge.unlocked ? badge.tempoColor : TempoTheme.secondary)
+                    .frame(width: 45, height: 45)
+                    .background((badge.unlocked ? badge.tempoColor : Color.white).opacity(0.12), in: Circle())
+                Spacer()
+                Image(systemName: badge.unlocked ? "checkmark.seal.fill" : "lock.fill")
+                    .foregroundStyle(badge.unlocked ? TempoTheme.green : TempoTheme.secondary)
+            }
+            Text(badge.title).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
+            Text(badge.description).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+            VStack(alignment: .leading, spacing: 6) {
+                ProgressView(value: badge.safeProgress).tint(badge.unlocked ? badge.tempoColor : TempoTheme.secondary)
+                Text(badge.unlocked ? "Tamamlandı" : badge.progressText)
+                    .font(.caption2).foregroundStyle(badge.unlocked ? badge.tempoColor : TempoTheme.secondary)
+            }
+        }
+        .padding(15)
+        .frame(maxWidth: .infinity, minHeight: 205, alignment: .topLeading)
+        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(badge.unlocked ? badge.tempoColor.opacity(0.28) : .white.opacity(0.045)))
+        .opacity(badge.unlocked ? 1 : 0.72)
+    }
+}
+
+private extension TempoBadge {
+    var tempoColor: Color {
+        switch tint {
+        case "orange": return TempoTheme.orange
+        case "blue": return TempoTheme.blue
+        case "purple": return TempoTheme.purple
+        case "pink": return .pink
+        default: return TempoTheme.green
+        }
+    }
+
+    var progressText: String {
+        let currentText = current.formatted(.number.precision(.fractionLength(current.rounded() == current ? 0 : 1)))
+        let targetText = target.formatted(.number.precision(.fractionLength(target.rounded() == target ? 0 : 1)))
+        return "\(currentText) / \(targetText) \(unit)"
     }
 }
 

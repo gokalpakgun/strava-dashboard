@@ -5,6 +5,7 @@ struct TempoDashboard: Decodable {
     let athlete: TempoAthlete
     let segments: [TempoSegment]
     let photos: [TempoPhoto]
+    let achievement: TempoAchievement?
     let historyLimited: Bool
     let activities: [TempoActivity]
 }
@@ -137,6 +138,49 @@ enum TempoSport: Equatable {
         case .other: return "figure.mixed.cardio"
         }
     }
+}
+
+
+struct TempoAchievement: Decodable {
+    let level: Int
+    let title: String
+    let totalXp: Int
+    let currentLevelXp: Int
+    let nextLevelXp: Int
+    let progress: Double
+    let unlockedBadgeCount: Int
+    let totalBadgeCount: Int
+    let badges: [TempoBadge]
+
+    static let empty = TempoAchievement(
+        level: 1,
+        title: "Başlangıç",
+        totalXp: 0,
+        currentLevelXp: 0,
+        nextLevelXp: 200,
+        progress: 0,
+        unlockedBadgeCount: 0,
+        totalBadgeCount: 0,
+        badges: []
+    )
+
+    var safeProgress: Double { min(max(progress, 0), 1) }
+    var unlockedBadges: [TempoBadge] { badges.filter(\.unlocked) }
+}
+
+struct TempoBadge: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let description: String
+    let symbol: String
+    let tint: String
+    let unlocked: Bool
+    let progress: Double
+    let current: Double
+    let target: Double
+    let unit: String
+
+    var safeProgress: Double { min(max(progress, 0), 1) }
 }
 
 struct TempoMonthStat: Identifiable {

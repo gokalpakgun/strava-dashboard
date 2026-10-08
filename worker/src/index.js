@@ -218,7 +218,7 @@ async function getDashboard(request, env) {
   const sessionKey = `session:${sessionId}`;
   const saved = await env.TOKEN_STORE.get(sessionKey, "json");
   if (!saved?.refresh_token) return json({ error: "Strava bağlantısı gerekli" }, 401);
-  return buildDashboard(env, { sessionKey, cacheKey: `dashboard:${sessionId}`, saved, sessionTtl: SESSION_SECONDS });
+  return buildDashboard(env, { sessionKey, cacheKey: `dashboard:v2:${sessionId}`, saved, sessionTtl: SESSION_SECONDS });
 }
 
 async function getMobileDashboard(request, env) {
@@ -227,7 +227,7 @@ async function getMobileDashboard(request, env) {
   if (context.response) return context.response;
   return buildDashboard(env, {
     sessionKey: `mobile-strava:${context.athleteId}`,
-    cacheKey: `mobile-dashboard:${context.athleteId}`,
+    cacheKey: `mobile-dashboard:v2:${context.athleteId}`,
     saved: context.saved,
     sessionTtl: MOBILE_TOKEN_SECONDS,
   });
@@ -342,6 +342,7 @@ async function buildDashboard(env, { sessionKey, cacheKey, saved, sessionTtl }) 
     },
     segments,
     photos,
+    achievement: buildAchievement(activities),
     historyLimited: activities.length === perPage * maxPages,
     activities: activities.map((activity) => ({
       id: activity.id,
@@ -359,6 +360,152 @@ async function buildDashboard(env, { sessionKey, cacheKey, saved, sessionTtl }) 
   };
   await env.TOKEN_STORE.put(cacheKey, JSON.stringify(result), { expirationTtl: 600 });
   return json(result);
+}
+
+
+function buildAchievement(activities) {
+  const source = Array.isArray(activities) ? activities : [];
+  const totals = {
+    activityCount: 0,
+    movingHours: 0,
+    elevationM: 0,
+    runKm: 0,
+    rideKm: 0,
+    longestActivityKm: 0,
+  };
+  const activeDays = new Set();
+  const sports = new Set();
+  let totalXP = 0;
+  let earlyBirdCount = 0;
+
+  for (const activity of source) {
+    const movingMinutes = finiteNonNegative(activity.moving_time) / 60;
+    const distanceKm = finiteNonNegative(activity.distance) / 1000;
+    const elevationM = finiteNonNegative(activity.total_elevation_gain);
+    if (movingMinutes <= 0 && distanceKm <= 0) continue;
+
+    totals.activityCount += 1;
+    totals.movingHours += movingMinutes / 60;
+    totals.elevationM += elevationM;
+    totals.longestActivityKm = Math.max(totals.longestActivityKm, distanceKm);
+
+    const sport = achievementSport(activity.sport_type || activity.type);
+    if (sport !== "other") sports.add(sport);
+    if (sport === "run") totals.runKm += distanceKm;
+    if (sport === "ride") totals.rideKm += distanceKm;
+
+    const localDate = String(activity.start_date_local || "");
+    const day = localDate.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) activeDays.add(day);
+    const hour = Number(localDate.slice(11, 13));
+    if (Number.isFinite(hour) && hour >= 4 && hour < 8) earlyBirdCount += 1;
+
+    const minuteXP = Math.min(Math.floor(movingMinutes) * 2, 360);
+    let distanceXP = Math.floor(distanceKm);
+    if (["run", "walk", "hike"].includes(sport)) distanceXP = Math.floor(distanceKm * 8);
+    else if (sport === "ride") distanceXP = Math.floor(distanceKm * 2);
+    else if (sport === "swim") distanceXP = Math.floor(distanceKm * 25);
+    distanceXP = Math.min(distanceXP, 300);
+    const elevationXP = Math.min(Math.floor(elevationM / 20), 100);
+    totalXP += 25 + minuteXP + distanceXP + elevationXP;
+  }
+
+  totalXP = Math.max(0, Math.round(totalXP));
+  const streak = longestAchievementStreak(activeDays);
+  let level = 1;
+  while (level < 50 && totalXP >= achievementLevelThreshold(level + 1)) level += 1;
+  const levelStartXP = achievementLevelThreshold(level);
+  const nextLevelTotalXP = level < 50 ? achievementLevelThreshold(level + 1) : levelStartXP;
+  const nextLevelXP = level < 50 ? nextLevelTotalXP - levelStartXP : 0;
+  const currentLevelXP = level < 50 ? totalXP - levelStartXP : 0;
+  const progress = level < 50 && nextLevelXP > 0 ? Math.min(currentLevelXP / nextLevelXP, 1) : 1;
+
+  const badge = (id, title, description, symbol, tint, current, target, unit) => ({
+    id,
+    title,
+    description,
+    symbol,
+    tint,
+    unlocked: current >= target,
+    progress: Math.min(Math.max(current / target, 0), 1),
+    current: Math.round(current * 10) / 10,
+    target,
+    unit,
+  });
+
+  const badges = [
+    badge("first_activity", "İlk Adım", "İlk Strava aktiviteni tamamla.", "flag.checkered", "green", totals.activityCount, 1, "aktivite"),
+    badge("activity_10", "Ritim Yakala", "10 aktivite tamamla.", "10.circle.fill", "blue", totals.activityCount, 10, "aktivite"),
+    badge("active_10_hours", "10 Saat Aktif", "Toplam 10 saat hareket et.", "clock.fill", "purple", totals.movingHours, 10, "saat"),
+    badge("run_50", "Koşu 50", "Toplam 50 km koş.", "figure.run", "orange", totals.runKm, 50, "km"),
+    badge("ride_250", "Pedal 250", "Toplam 250 km bisiklete bin.", "bicycle", "blue", totals.rideKm, 250, "km"),
+    badge("elevation_5000", "Dağcı", "Toplam 5.000 metre yüksel.", "mountain.2.fill", "purple", totals.elevationM, 5000, "m"),
+    badge("streak_7", "Yedi Gün Seri", "7 gün aralıksız aktivite kaydet.", "calendar.badge.checkmark", "green", streak, 7, "gün"),
+    badge("multi_sport", "Çok Yönlü", "En az 3 farklı spor türü yap.", "square.grid.2x2.fill", "pink", sports.size, 3, "spor"),
+    badge("activity_100", "Yüzler Kulübü", "100 aktivite tamamla.", "trophy.fill", "orange", totals.activityCount, 100, "aktivite"),
+    badge("century", "Asırlık Sürüş", "Tek aktivitede 100 km tamamla.", "medal.fill", "green", totals.longestActivityKm, 100, "km"),
+    badge("early_bird", "Erken Kuş", "Saat 08.00’den önce 5 aktiviteye başla.", "sunrise.fill", "orange", earlyBirdCount, 5, "aktivite"),
+  ];
+
+  return {
+    level,
+    title: achievementLevelTitle(level),
+    total_xp: totalXP,
+    current_level_xp: Math.max(0, currentLevelXP),
+    next_level_xp: nextLevelXP,
+    progress: Math.round(progress * 1000) / 1000,
+    unlocked_badge_count: badges.filter((item) => item.unlocked).length,
+    total_badge_count: badges.length,
+    badges,
+  };
+}
+
+function achievementSport(value) {
+  const type = String(value || "").toLowerCase();
+  if (type.includes("run")) return "run";
+  if (type.includes("ride") || type.includes("cycle") || type.includes("bike")) return "ride";
+  if (type.includes("walk")) return "walk";
+  if (type.includes("hike")) return "hike";
+  if (type.includes("swim")) return "swim";
+  if (type.includes("tennis")) return "tennis";
+  if (type.includes("basketball")) return "basketball";
+  if (type.includes("soccer") || type.includes("football")) return "football";
+  if (type.includes("volleyball")) return "volleyball";
+  if (type.includes("padel")) return "padel";
+  if (type.includes("badminton")) return "badminton";
+  if (type.includes("yoga")) return "yoga";
+  if (type.includes("workout") || type.includes("weight") || type.includes("crossfit")) return "fitness";
+  return "other";
+}
+
+function longestAchievementStreak(activeDays) {
+  const values = [...activeDays]
+    .map((day) => Math.floor(Date.parse(day + "T00:00:00Z") / 86400000))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  let longest = 0;
+  let current = 0;
+  let previous = null;
+  for (const value of values) {
+    if (previous === null || value === previous + 1) current += 1;
+    else if (value !== previous) current = 1;
+    longest = Math.max(longest, current);
+    previous = value;
+  }
+  return longest;
+}
+
+function achievementLevelThreshold(level) {
+  return 100 * level * (level - 1);
+}
+
+function achievementLevelTitle(level) {
+  if (level >= 40) return "Efsane";
+  if (level >= 25) return "Zirve";
+  if (level >= 15) return "Dayanıklılık";
+  if (level >= 8) return "Atılım";
+  if (level >= 3) return "Ritim";
+  return "Başlangıç";
 }
 
 async function startMobileAuthorization(url, env) {
@@ -869,7 +1016,7 @@ async function getMobileCoachReview(request, env) {
   if (input.response) return input.response;
   const dashboardResponse = await buildDashboard(env, {
     sessionKey: `mobile-strava:${context.athleteId}`,
-    cacheKey: `mobile-dashboard:${context.athleteId}`,
+    cacheKey: `mobile-dashboard:v2:${context.athleteId}`,
     saved: context.saved,
     sessionTtl: MOBILE_TOKEN_SECONDS,
   });
