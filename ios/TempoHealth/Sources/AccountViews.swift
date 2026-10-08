@@ -155,6 +155,8 @@ struct AccountOnboardingView: View {
     @State private var selectedSports = Set<TempoSportChoice>()
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarData: Data?
+    @State private var isPreparingPhoto = false
+    @State private var photoError = ""
     @State private var loaded = false
 
     var body: some View {
@@ -177,10 +179,16 @@ struct AccountOnboardingView: View {
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
-                if let data = try? await item.loadTransferable(type: Data.self),
-                   let image = UIImage(data: data),
-                   let resized = image.tempoProfileJPEG() {
-                    avatarData = resized
+                isPreparingPhoto = true
+                photoError = ""
+                defer {
+                    isPreparingPhoto = false
+                    photoItem = nil
+                }
+                do {
+                    avatarData = try await item.tempoProfileJPEGData()
+                } catch {
+                    photoError = "Fotoğraf hazırlanamadı. Başka bir fotoğraf seçip tekrar dene."
                 }
             }
         }
@@ -207,7 +215,7 @@ struct AccountOnboardingView: View {
         VStack(alignment: .leading, spacing: 22) {
             OnboardingTitle(title: "Profilini oluşturalım", subtitle: "İnsanların seni nasıl göreceğini seç.")
             VStack(spacing: 12) {
-                PhotosPicker(selection: $photoItem, matching: .images) {
+                PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                     ZStack(alignment: .bottomTrailing) {
                         AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 116)
                         Image(systemName: "camera.fill")
@@ -232,11 +240,14 @@ struct AccountOnboardingView: View {
                     }
                 }
             } label: {
-                Label(account.isBusy ? "Kaydediliyor…" : "Devam et", systemImage: "arrow.right")
-                    .frame(maxWidth: .infinity)
+                Label(
+                    isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (account.isBusy ? "Kaydediliyor…" : "Devam et"),
+                    systemImage: "arrow.right"
+                )
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(AccountPrimaryButtonStyle())
-            .disabled(account.isBusy || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(account.isBusy || isPreparingPhoto || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 
@@ -307,6 +318,10 @@ struct AccountOnboardingView: View {
 
     @ViewBuilder
     private var accountError: some View {
+        if !photoError.isEmpty {
+            Label(photoError, systemImage: "photo.badge.exclamationmark")
+                .font(.footnote).foregroundStyle(TempoTheme.orange)
+        }
         if !account.errorMessage.isEmpty {
             Label(account.errorMessage, systemImage: "exclamationmark.circle.fill")
                 .font(.footnote).foregroundStyle(TempoTheme.orange)
@@ -353,6 +368,8 @@ struct AccountSettingsScreen: View {
     @State private var selectedSports = Set<TempoSportChoice>()
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarData: Data?
+    @State private var isPreparingPhoto = false
+    @State private var photoError = ""
     @State private var loaded = false
     @State private var confirmDelete = false
 
@@ -363,7 +380,7 @@ struct AccountSettingsScreen: View {
                 VStack(alignment: .leading, spacing: 18) {
                     OnboardingTitle(title: "Tempo Hesabı", subtitle: "Profilini ve ilgilendiğin sporları düzenle.")
 
-                    PhotosPicker(selection: $photoItem, matching: .images) {
+                    PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                         HStack(spacing: 16) {
                             AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 82)
                             VStack(alignment: .leading, spacing: 4) {
@@ -382,6 +399,10 @@ struct AccountSettingsScreen: View {
                     Text("SPORLARIM").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
                     SportSelectionGrid(selection: $selectedSports)
 
+                    if !photoError.isEmpty {
+                        Label(photoError, systemImage: "photo.badge.exclamationmark")
+                            .font(.footnote).foregroundStyle(TempoTheme.orange)
+                    }
                     if !account.errorMessage.isEmpty {
                         Text(account.errorMessage).font(.footnote).foregroundStyle(TempoTheme.orange)
                     }
@@ -389,10 +410,11 @@ struct AccountSettingsScreen: View {
                     Button {
                         Task { await account.updateProfile(displayName: displayName, username: username, sports: selectedSports, avatarData: avatarData) }
                     } label: {
-                        Text(account.isBusy ? "Kaydediliyor…" : "Değişiklikleri kaydet").frame(maxWidth: .infinity)
+                        Text(isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (account.isBusy ? "Kaydediliyor…" : "Değişiklikleri kaydet"))
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(AccountPrimaryButtonStyle())
-                    .disabled(account.isBusy || displayName.isEmpty || selectedSports.isEmpty)
+                    .disabled(account.isBusy || isPreparingPhoto || displayName.isEmpty || selectedSports.isEmpty)
 
                     Divider().overlay(.white.opacity(0.08)).padding(.vertical, 6)
 
@@ -418,10 +440,16 @@ struct AccountSettingsScreen: View {
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
-                if let data = try? await item.loadTransferable(type: Data.self),
-                   let image = UIImage(data: data),
-                   let resized = image.tempoProfileJPEG() {
-                    avatarData = resized
+                isPreparingPhoto = true
+                photoError = ""
+                defer {
+                    isPreparingPhoto = false
+                    photoItem = nil
+                }
+                do {
+                    avatarData = try await item.tempoProfileJPEGData()
+                } catch {
+                    photoError = "Fotoğraf hazırlanamadı. Başka bir fotoğraf seçip tekrar dene."
                 }
             }
         }
@@ -558,7 +586,11 @@ private struct AccountAvatarView: View {
     var body: some View {
         Group {
             if let data, let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFill()
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipped()
             } else {
                 ZStack {
                     TempoTheme.raised
@@ -605,16 +637,43 @@ private extension TempoUserProfile {
     }
 }
 
+private enum ProfilePhotoError: Error {
+    case unreadable
+}
+
+private extension PhotosPickerItem {
+    func tempoProfileJPEGData() async throws -> Data {
+        guard let data = try await loadTransferable(type: Data.self),
+              let image = UIImage(data: data),
+              let jpeg = image.tempoProfileJPEG() else {
+            throw ProfilePhotoError.unreadable
+        }
+        return jpeg
+    }
+}
+
 private extension UIImage {
     func tempoProfileJPEG() -> Data? {
-        let side = min(size.width, size.height)
-        let origin = CGPoint(x: (size.width - side) / 2, y: (size.height - side) / 2)
-        guard let cgImage = cgImage?.cropping(to: CGRect(origin: origin, size: CGSize(width: side, height: side))) else {
-            return jpegData(compressionQuality: 0.72)
+        guard size.width > 0, size.height > 0 else { return nil }
+
+        let outputSide: CGFloat = 384
+        let outputSize = CGSize(width: outputSide, height: outputSide)
+        let scaleToFill = max(outputSide / size.width, outputSide / size.height)
+        let drawSize = CGSize(width: size.width * scaleToFill, height: size.height * scaleToFill)
+        let drawOrigin = CGPoint(
+            x: (outputSide - drawSize.width) / 2,
+            y: (outputSide - drawSize.height) / 2
+        )
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: outputSize, format: format)
+        let square = renderer.image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: outputSize))
+            draw(in: CGRect(origin: drawOrigin, size: drawSize))
         }
-        let square = UIImage(cgImage: cgImage, scale: scale, orientation: imageOrientation)
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512))
-        let resized = renderer.image { _ in square.draw(in: CGRect(x: 0, y: 0, width: 512, height: 512)) }
-        return resized.jpegData(compressionQuality: 0.72)
+        return square.jpegData(compressionQuality: 0.68)
     }
 }
