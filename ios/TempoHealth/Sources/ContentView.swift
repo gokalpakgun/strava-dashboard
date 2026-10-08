@@ -491,7 +491,7 @@ private struct MoreScreen: View {
         NavigationStack {
             TempoPage {
                 AccountProfileCard()
-                if let athlete = model.dashboard?.athlete { ProfileHeader(athlete: athlete) }
+                if let dashboard = model.dashboard { StravaConnectionCard(dashboard: dashboard) }
                 else { PageTitle(title: "Profil", subtitle: "Tempo hesabın") }
                 LazyVGrid(columns: columns, spacing: 12) {
                     MoreLink(title: "Tempo Hesabı", subtitle: "Profil ve sporların", icon: "person.crop.circle.badge.checkmark", color: TempoTheme.green, destination: AnyView(AccountSettingsScreen()))
@@ -848,26 +848,73 @@ private struct PageTitle: View {
     }
 }
 
-private struct ProfileHeader: View {
-    let athlete: TempoAthlete
+private struct StravaConnectionCard: View {
+    let dashboard: TempoDashboard
+
+    private var athlete: TempoAthlete { dashboard.athlete }
+    private var totalDistance: Double { dashboard.activities.reduce(0) { $0 + $1.distanceKm } }
+
     var body: some View {
-        TempoCard {
-            HStack(spacing: 16) {
-                AsyncImage(url: athlete.profile.flatMap(URL.init(string:))) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill() }
-                    else { Image(systemName: "person.fill").font(.title).foregroundStyle(TempoTheme.green) }
+        Link(destination: URL(string: "https://www.strava.com/athletes/\(athlete.id)")!) {
+            HStack(spacing: 14) {
+                ZStack(alignment: .bottomTrailing) {
+                    AsyncImage(url: athlete.profile.flatMap(URL.init(string:))) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            ZStack {
+                                TempoTheme.raised
+                                Image(systemName: "person.fill").font(.title3).foregroundStyle(TempoTheme.orange)
+                            }
+                        }
+                    }
+                    .frame(width: 56, height: 56)
+                    .background(TempoTheme.raised)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(TempoTheme.orange.opacity(0.65), lineWidth: 2))
+
+                    Image(systemName: "figure.run")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 23, height: 23)
+                        .background(TempoTheme.orange, in: Circle())
+                        .overlay(Circle().stroke(TempoTheme.card, lineWidth: 2))
                 }
-                .frame(width: 72, height: 72).background(TempoTheme.raised).clipShape(Circle())
+
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(athlete.fullName.isEmpty ? "Tempo Sporcusu" : athlete.fullName).font(.title2.bold())
-                    if !athlete.location.isEmpty { Label(athlete.location, systemImage: "location.fill").font(.caption).foregroundStyle(TempoTheme.secondary) }
-                    HStack(spacing: 12) {
-                        if let followers = athlete.followerCount { Text("\(followers) takipçi") }
-                        if let weight = athlete.weight, weight > 0 { Text("\(weight, specifier: "%.1f") kg") }
-                    }.font(.caption).foregroundStyle(TempoTheme.green)
+                    HStack(spacing: 7) {
+                        Text("STRAVA HESABI").font(.caption2.bold()).tracking(1.2).foregroundStyle(TempoTheme.orange)
+                        Text("BAĞLI")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(TempoTheme.green)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(TempoTheme.green.opacity(0.12), in: Capsule())
+                    }
+                    Text(athlete.fullName.isEmpty ? "Strava Sporcusu" : athlete.fullName)
+                        .font(.headline).foregroundStyle(.white).lineLimit(1)
+                    Text("\(dashboard.activities.count) aktivite · \(TempoFormat.distance(totalDistance))")
+                        .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                 }
+
+                Spacer(minLength: 4)
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(TempoTheme.orange)
+                    .frame(width: 34, height: 34)
+                    .background(TempoTheme.orange.opacity(0.1), in: Circle())
             }
+            .padding(15)
+            .background(
+                LinearGradient(
+                    colors: [TempoTheme.orange.opacity(0.12), TempoTheme.card],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.orange.opacity(0.18)))
         }
+        .buttonStyle(.plain)
     }
 }
 
