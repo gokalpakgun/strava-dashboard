@@ -28,6 +28,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private let healthStore = TempoHealthStore()
     private var webAuthSession: ASWebAuthenticationSession?
     private var pendingVerifier: String?
+    private var isCompletingAuthorization = false
     private var lastDashboardRefresh: Date?
     private var accessToken: String? {
         didSet { isConnected = accessToken != nil }
@@ -47,39 +48,41 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func connectStrava() {
+        guard !isBusy, !isCompletingAuthorization else { return }
+        webAuthSession?.cancel()
+
         let verifier = Self.randomVerifier()
         let challenge = Self.codeChallenge(for: verifier)
         pendingVerifier = verifier
         guard var components = URLComponents(url: URL(string: "/mobile/auth/start", relativeTo: baseURL)!, resolvingAgainstBaseURL: true) else { return }
         components.queryItems = [URLQueryItem(name: "code_challenge", value: challenge)]
         guard let url = components.url else { return }
+
         isBusy = true
         status = "Strava bağlantısı açılıyor…"
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "tempohealth") { [weak self] callbackURL, error in
             Task { @MainActor in
                 guard let self else { return }
-                self.isBusy = false
-                if let error {
-                    self.pendingVerifier = nil
-                    self.status = "Strava bağlantısı tamamlanmadı: \(error.localizedDescription)"
+                self.webAuthSession = nil
+
+                if let callbackURL {
+                    self.processAuthorizationCallback(callbackURL)
                     return
                 }
-                guard let callbackURL,
-                      URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.host == "auth",
-                      let ticket = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "ticket" })?.value,
-                      let verifier = self.pendingVerifier else {
-                    self.pendingVerifier = nil
-                    self.status = "Strava bağlantı bilgisi alınamadı. Yeniden dene."
-                    return
-                }
+                if self.isCompletingAuthorization { return }
+
                 self.pendingVerifier = nil
-                await self.exchangeTicket(ticket, verifier: verifier)
+                self.isBusy = false
+                self.status = error == nil
+                    ? "Strava bağlantı yanıtı alınamadı. Yeniden dene."
+                    : "Strava bağlantısı tamamlanmadı: \(error!.localizedDescription)"
             }
         }
         session.presentationContextProvider = self
         session.prefersEphemeralWebBrowserSession = false
         webAuthSession = session
         if !session.start() {
+            webAuthSession = nil
             pendingVerifier = nil
             isBusy = false
             status = "Strava giriş ekranı açılamadı. Biraz sonra yeniden dene."
@@ -87,11 +90,32 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func handleCallback(_ url: URL) {
-        guard url.scheme == "tempohealth", url.host == "auth",
-              let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "ticket" })?.value,
-              let verifier = pendingVerifier else { return }
+        guard url.scheme == "tempohealth", url.host == "auth" else { return }
+        processAuthorizationCallback(url)
+    }
+
+    private func processAuthorizationCallback(_ url: URL) {
+        guard !isCompletingAuthorization else { return }
+        guard let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "ticket" })?.value,
+              let verifier = pendingVerifier else {
+            if accessToken == nil {
+                isBusy = false
+                status = "Strava bağlantı bilgisi alınamadı. Yeniden dene."
+            }
+            return
+        }
+
+        isCompletingAuthorization = true
         pendingVerifier = nil
-        Task { await exchangeTicket(ticket, verifier: verifier) }
+        isBusy = true
+        webAuthSession?.cancel()
+        webAuthSession = nil
+
+        Task {
+            await exchangeTicket(ticket, verifier: verifier)
+            isCompletingAuthorization = false
+        }
     }
 
     func syncWhenActive() {
@@ -116,22 +140,40 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isLoadingDashboard = true
         dashboardError = nil
         defer { isLoadingDashboard = false }
-        do {
-            var request = URLRequest(url: URL(string: "/api/mobile/dashboard", relativeTo: baseURL)!)
-            request.timeoutInterval = 45
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
-            if http.statusCode == 401 { expireSession(); return }
-            guard (200..<300).contains(http.statusCode) else { throw APIError.server(Self.serverMessage(data, fallback: "Strava verileri alınamadı.")) }
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            dashboard = try decoder.decode(TempoDashboard.self, from: data)
-            lastDashboardRefresh = Date()
-            status = "Strava verilerin güncel."
-        } catch {
-            dashboardError = error.localizedDescription
-            status = "Veriler yenilenemedi: \(error.localizedDescription)"
+
+        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000, 2_000_000_000]
+        for attempt in retryDelays.indices {
+            if retryDelays[attempt] > 0 {
+                try? await Task.sleep(nanoseconds: retryDelays[attempt])
+            }
+            do {
+                var request = URLRequest(url: URL(string: "/api/mobile/dashboard", relativeTo: baseURL)!)
+                request.timeoutInterval = 30
+                request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
+
+                if http.statusCode == 401 {
+                    if attempt < retryDelays.count - 1 { continue }
+                    expireSession()
+                    return
+                }
+                if http.statusCode >= 500, attempt < retryDelays.count - 1 { continue }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw APIError.server(Self.serverMessage(data, fallback: "Strava verileri alınamadı."))
+                }
+
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                dashboard = try decoder.decode(TempoDashboard.self, from: data)
+                lastDashboardRefresh = Date()
+                status = "Strava verilerin güncel."
+                return
+            } catch {
+                if attempt < retryDelays.count - 1 { continue }
+                dashboardError = error.localizedDescription
+                status = "Veriler yenilenemedi: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -323,23 +365,43 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isBusy = true
         status = "Strava hesabı doğrulanıyor…"
         defer { isBusy = false }
-        do {
-            var request = URLRequest(url: URL(string: "/api/mobile/auth/exchange", relativeTo: baseURL)!)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 30
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(TicketRequest(ticket: ticket, verifier: verifier))
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let result = try JSONDecoder().decode(TicketResponse.self, from: data)
-            guard (response as? HTTPURLResponse)?.statusCode == 200, let token = result.token else {
-                throw APIError.server(result.error ?? "Strava doğrulaması başarısız oldu.")
+
+        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000, 2_000_000_000]
+        for attempt in retryDelays.indices {
+            if retryDelays[attempt] > 0 {
+                status = "Strava bağlantısı tamamlanıyor…"
+                try? await Task.sleep(nanoseconds: retryDelays[attempt])
             }
-            guard SecureTokenStore.save(token) else { throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı.") }
-            accessToken = token
-            status = "Strava bağlı. Verilerin hazırlanıyor."
-            await reloadAll()
-        } catch {
-            status = error.localizedDescription
+            do {
+                var request = URLRequest(url: URL(string: "/api/mobile/auth/exchange", relativeTo: baseURL)!)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 20
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONEncoder().encode(TicketRequest(ticket: ticket, verifier: verifier))
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw APIError.server("Sunucudan yanıt alınamadı.")
+                }
+                let result = try? JSONDecoder().decode(TicketResponse.self, from: data)
+
+                if http.statusCode == 200, let token = result?.token {
+                    guard SecureTokenStore.save(token) else {
+                        throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı.")
+                    }
+                    accessToken = token
+                    status = "Strava bağlı. Verilerin hazırlanıyor."
+                    await reloadAll()
+                    return
+                }
+
+                let message = result?.error ?? "Strava doğrulaması başarısız oldu."
+                let retryable = http.statusCode == 401 || http.statusCode == 408 || http.statusCode == 429 || http.statusCode >= 500
+                if retryable, attempt < retryDelays.count - 1 { continue }
+                throw APIError.server(message)
+            } catch {
+                if attempt < retryDelays.count - 1 { continue }
+                status = "Strava bağlantısı tamamlanamadı: \(error.localizedDescription)"
+            }
         }
     }
 

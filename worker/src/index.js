@@ -590,10 +590,22 @@ async function exchangeMobileTicket(request, env) {
   const verifier = typeof input?.verifier === "string" ? input.verifier : "";
   if (!/^[a-f0-9]{64}$/i.test(ticket)) return json({ error: "Bağlantı kodu geçersiz." }, 400);
   if (!/^[A-Za-z0-9_-]{43}$/.test(verifier)) return json({ error: "Uygulama doğrulaması geçersiz." }, 400);
-  const ticketData = await env.TOKEN_STORE.get(`mobile-ticket:${ticket}`, "json");
-  if (!ticketData?.athleteId || !ticketData?.codeChallenge || !ticketData?.refreshToken) return json({ error: "Bağlantı kodunun süresi doldu. Strava bağlantısını yeniden başlat." }, 401);
-  if (await sha256Base64Url(verifier) !== ticketData.codeChallenge) return json({ error: "Uygulama doğrulaması eşleşmedi." }, 401);
-  await env.TOKEN_STORE.delete(`mobile-ticket:${ticket}`);
+  const ticketKey = `mobile-ticket:${ticket}`;
+  const ticketData = await env.TOKEN_STORE.get(ticketKey, "json");
+  if (!ticketData?.athleteId || !ticketData?.codeChallenge || !ticketData?.refreshToken) {
+    return json({ error: "Bağlantı kodu henüz hazırlanıyor. Otomatik olarak yeniden denenecek." }, 401);
+  }
+  if (await sha256Base64Url(verifier) !== ticketData.codeChallenge) {
+    return json({ error: "Uygulama doğrulaması eşleşmedi." }, 401);
+  }
+  if (ticketData.token) {
+    return json({
+      token: ticketData.token,
+      athleteId: String(ticketData.athleteId),
+      expiresIn: MOBILE_TOKEN_SECONDS,
+    });
+  }
+
   const token = randomToken();
   const tokenHash = await hashToken(token);
   const athleteKey = String(ticketData.athleteId);
@@ -605,6 +617,7 @@ async function exchangeMobileTicket(request, env) {
       refresh_token: ticketData.refreshToken,
       athlete_id: athleteKey,
     }), { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(ticketKey, JSON.stringify({ ...ticketData, token }), { expirationTtl: 300 }),
     env.TOKEN_STORE.delete(`mobile-dashboard:${athleteKey}`),
   ];
   if (oldHash) writes.push(env.TOKEN_STORE.delete(`mobile-session:${oldHash}`));
