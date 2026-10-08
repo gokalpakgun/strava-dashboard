@@ -1,4 +1,5 @@
 import CoreLocation
+import Foundation
 import MapKit
 import SwiftUI
 
@@ -126,11 +127,17 @@ struct NearbyFacilitiesScreen: View {
     @StateObject private var searchModel = FacilitySearchModel()
     @State private var selectedSport: TempoSportChoice?
     @State private var selectedPlaceID: String?
+    @State private var searchRadiusKm = 25
     @State private var camera: MapCameraPosition = .automatic
 
     private var availableSports: [TempoSportChoice] {
-        let selected = account.profile?.sports.compactMap(TempoSportChoice.init(rawValue:)).filter { $0.facilitySearchQuery != nil } ?? []
-        return selected.isEmpty ? TempoSportChoice.allCases.filter { $0.facilitySearchQuery != nil } : selected
+        let preferred = account.profile?.sports
+            .compactMap(TempoSportChoice.init(rawValue:))
+            .filter { $0.facilitySearchQuery != nil } ?? []
+        let remaining = TempoSportChoice.allCases.filter { sport in
+            sport.facilitySearchQuery != nil && !preferred.contains(sport)
+        }
+        return preferred + remaining
     }
 
     private var selectedPlace: NearbyPlace? {
@@ -141,10 +148,37 @@ struct NearbyFacilitiesScreen: View {
         NavigationStack {
             ZStack {
                 TempoTheme.background.ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 13) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("YAKININDA").font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
-                        Text("Spor alanları").font(.system(size: 31, weight: .bold, design: .rounded))
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("YAKININDA").font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+                            Text("Spor alanları").font(.system(size: 31, weight: .bold, design: .rounded))
+                        }
+                        Spacer()
+                        Menu {
+                            ForEach([10, 25, 50], id: \.self) { radius in
+                                Button {
+                                    searchRadiusKm = radius
+                                    selectedPlaceID = nil
+                                    if let selectedSport {
+                                        Task { await searchModel.search(for: selectedSport, radiusKm: radius) }
+                                    }
+                                } label: {
+                                    if searchRadiusKm == radius {
+                                        Label("\(radius) km", systemImage: "checkmark")
+                                    } else {
+                                        Text("\(radius) km")
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("\(searchRadiusKm) km", systemImage: "scope")
+                                .font(.caption.bold())
+                                .foregroundStyle(TempoTheme.green)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
+                                .background(TempoTheme.card, in: Capsule())
+                        }
                     }
                     .padding(.horizontal, 16)
 
@@ -154,12 +188,13 @@ struct NearbyFacilitiesScreen: View {
                                 Button {
                                     selectedSport = sport
                                     selectedPlaceID = nil
-                                    Task { await searchModel.search(for: sport) }
+                                    Task { await searchModel.search(for: sport, radiusKm: searchRadiusKm) }
                                 } label: {
                                     Label(sport.title, systemImage: sport.symbol)
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(selectedSport == sport ? .black : .white)
-                                        .padding(.horizontal, 14).padding(.vertical, 10)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
                                         .background(selectedSport == sport ? TempoTheme.green : TempoTheme.card, in: Capsule())
                                 }
                                 .buttonStyle(.plain)
@@ -173,7 +208,7 @@ struct NearbyFacilitiesScreen: View {
                             UserAnnotation()
                             ForEach(searchModel.places) { place in
                                 Marker(place.name, coordinate: place.coordinate)
-                                    .tint(TempoTheme.orange)
+                                    .tint(place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange)
                                     .tag(place.id)
                             }
                         }
@@ -185,8 +220,22 @@ struct NearbyFacilitiesScreen: View {
                         }
 
                         if searchModel.isSearching {
-                            ProgressView("Yakındaki alanlar aranıyor…")
-                                .padding(16).background(.ultraThinMaterial, in: Capsule())
+                            ProgressView(searchModel.places.isEmpty ? "Spor alanları aranıyor…" : "Daha fazla yer taranıyor…")
+                                .padding(14)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if searchModel.hasOpenStreetMapPlaces {
+                            Link(destination: URL(string: "https://www.openstreetmap.org/copyright")!) {
+                                Text("© OpenStreetMap katkıda bulunanlar")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.78))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                            }
+                            .padding(8)
                         }
                     }
                     .frame(maxHeight: .infinity)
@@ -209,7 +258,8 @@ struct NearbyFacilitiesScreen: View {
                         .padding(.horizontal, 18)
                     }
                 }
-                .padding(.top, 12).padding(.bottom, 8)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
             }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
@@ -218,7 +268,12 @@ struct NearbyFacilitiesScreen: View {
             }
             .onChange(of: searchModel.region?.center.latitude) { _, _ in
                 if let region = searchModel.region { camera = .region(region) }
-                if let selectedSport { Task { await searchModel.search(for: selectedSport) } }
+                if let selectedSport {
+                    Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) }
+                }
+            }
+            .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in
+                if let region = searchModel.region { camera = .region(region) }
             }
         }
     }
@@ -226,18 +281,27 @@ struct NearbyFacilitiesScreen: View {
 
 private struct PlaceCard: View {
     let place: NearbyPlace
+
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: "mappin.and.ellipse").font(.title2).foregroundStyle(TempoTheme.orange)
-                .frame(width: 48, height: 48).background(TempoTheme.orange.opacity(0.12), in: Circle())
+            Image(systemName: place.source == .openStreetMap ? "map.fill" : "mappin.and.ellipse")
+                .font(.title2)
+                .foregroundStyle(place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange)
+                .frame(width: 48, height: 48)
+                .background((place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange).opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 4) {
                 Text(place.name).font(.headline).lineLimit(1)
                 Text(place.address).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                Text("\(place.distanceText) · \(place.sourceTitle)")
+                    .font(.caption2.bold())
+                    .foregroundStyle(place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange)
             }
             Spacer()
             Button { place.openDirections() } label: {
                 Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                    .foregroundStyle(.black).frame(width: 42, height: 42).background(TempoTheme.green, in: Circle())
+                    .foregroundStyle(.black)
+                    .frame(width: 42, height: 42)
+                    .background(TempoTheme.green, in: Circle())
             }
         }
         .padding(15)
@@ -253,9 +317,13 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
     @Published var region: MKCoordinateRegion?
     @Published var needsPermission = true
 
+    var hasOpenStreetMapPlaces: Bool { places.contains { $0.source == .openStreetMap } }
+
     private let manager = CLLocationManager()
     private var location: CLLocation?
     private var pendingSport: TempoSportChoice?
+    private var pendingRadiusKm = 25
+    private var searchGeneration = 0
 
     override init() {
         super.init()
@@ -279,29 +347,106 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
         }
     }
 
-    func search(for sport: TempoSportChoice) async {
-        guard let query = sport.facilitySearchQuery else { return }
+    func search(for sport: TempoSportChoice, radiusKm: Int) async {
         guard let location else {
             pendingSport = sport
+            pendingRadiusKm = radiusKm
             requestLocation()
             return
         }
 
+        searchGeneration += 1
+        let generation = searchGeneration
         isSearching = true
         message = nil
-        defer { isSearching = false }
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
-        request.region = MKCoordinateRegion(center: location.coordinate, latitudinalMeters: 20_000, longitudinalMeters: 20_000)
+        let radiusMeters = max(5_000, min(radiusKm, 50) * 1_000)
+        region = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: CLLocationDistance(radiusMeters * 2),
+            longitudinalMeters: CLLocationDistance(radiusMeters * 2)
+        )
 
-        do {
-            let response = try await MKLocalSearch(request: request).start()
-            places = response.mapItems.prefix(40).map(NearbyPlace.init)
-            message = places.isEmpty ? "\(sport.title) için yakında kayıtlı bir alan bulunamadı." : "\(places.count) alan bulundu."
-        } catch {
-            places = []
-            message = "Spor alanları şu anda aranamadı. Biraz sonra tekrar dene."
+        let applePlaces = await searchAppleMaps(for: sport, location: location, radiusMeters: radiusMeters)
+        guard generation == searchGeneration else { return }
+        places = Self.deduplicated(applePlaces)
+        message = places.isEmpty ? "Açık harita kayıtları da taranıyor…" : "Apple Haritalar’dan \(places.count) alan bulundu; açık veriler taranıyor."
+
+        let openPlaces = await searchOpenStreetMap(for: sport, location: location, radiusMeters: radiusMeters)
+        guard generation == searchGeneration else { return }
+        places = Self.deduplicated(applePlaces + openPlaces)
+        isSearching = false
+        message = places.isEmpty
+            ? "\(sport.title) için \(radiusKm) km çevrede kayıtlı bir alan bulunamadı."
+            : "\(places.count) alan bulundu · yakından uzağa sıralandı."
+    }
+
+    private func searchAppleMaps(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> [NearbyPlace] {
+        let searchRegion = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: CLLocationDistance(radiusMeters * 2),
+            longitudinalMeters: CLLocationDistance(radiusMeters * 2)
+        )
+        var results: [NearbyPlace] = []
+
+        for query in sport.facilitySearchQueries {
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = query
+            request.region = searchRegion
+            request.resultTypes = .pointOfInterest
+            do {
+                let response = try await MKLocalSearch(request: request).start()
+                results.append(contentsOf: response.mapItems.prefix(35).map { NearbyPlace($0, origin: location) })
+                results = Self.deduplicated(results)
+                if results.count >= 70 { break }
+            } catch {
+                continue
+            }
         }
+        return results
+    }
+
+    private func searchOpenStreetMap(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> [NearbyPlace] {
+        guard !sport.openStreetMapSelectors.isEmpty else { return [] }
+        let latitude = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), location.coordinate.latitude)
+        let longitude = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), location.coordinate.longitude)
+        let selectors = sport.openStreetMapSelectors
+            .map { "nwr(around:\(radiusMeters),\(latitude),\(longitude))\($0);" }
+            .joined()
+        let query = "[out:json][timeout:18];(\(selectors));out center tags;"
+
+        var components = URLComponents(string: "https://overpass-api.de/api/interpreter")
+        components?.queryItems = [URLQueryItem(name: "data", value: query)]
+        guard let url = components?.url else { return [] }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 22
+        request.setValue("Tempo/1.0 (https://apitempo.com)", forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return [] }
+            let decoded = try JSONDecoder().decode(OpenStreetMapResponse.self, from: data)
+            return decoded.elements.prefix(160).compactMap {
+                NearbyPlace(openStreetMapElement: $0, sportTitle: sport.title, origin: location)
+            }
+        } catch {
+            return []
+        }
+    }
+
+    private static func deduplicated(_ input: [NearbyPlace]) -> [NearbyPlace] {
+        let sorted = input.sorted { $0.distanceMeters < $1.distanceMeters }
+        var result: [NearbyPlace] = []
+        for place in sorted {
+            let duplicate = result.contains { existing in
+                let distance = CLLocation(latitude: existing.coordinate.latitude, longitude: existing.coordinate.longitude)
+                    .distance(from: CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude))
+                let sameName = existing.normalizedName == place.normalizedName
+                return distance < 70 || (sameName && distance < 700)
+            }
+            if !duplicate { result.append(place) }
+            if result.count >= 100 { break }
+        }
+        return result
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -319,33 +464,101 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
         location = value
         region = MKCoordinateRegion(center: value.coordinate, latitudinalMeters: 16_000, longitudinalMeters: 16_000)
         if let pendingSport {
+            let radius = pendingRadiusKm
             self.pendingSport = nil
-            Task { await search(for: pendingSport) }
+            Task { await search(for: pendingSport, radiusKm: radius) }
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        isSearching = false
         message = "Konum alınamadı. Konum servislerini kontrol edip yeniden deneyebilirsin."
     }
 }
 
+struct OpenStreetMapResponse: Decodable {
+    let elements: [OpenStreetMapElement]
+}
+
+struct OpenStreetMapElement: Decodable {
+    struct Center: Decodable {
+        let lat: Double
+        let lon: Double
+    }
+
+    let type: String
+    let id: Int64
+    let lat: Double?
+    let lon: Double?
+    let center: Center?
+    let tags: [String: String]?
+}
+
 struct NearbyPlace: Identifiable {
+    enum Source: Equatable {
+        case appleMaps
+        case openStreetMap
+    }
+
     let id: String
     let name: String
     let address: String
     let coordinate: CLLocationCoordinate2D
-    private let mapItem: MKMapItem
+    let source: Source
+    let distanceMeters: CLLocationDistance
+    private let mapItem: MKMapItem?
 
-    init(_ mapItem: MKMapItem) {
+    var sourceTitle: String {
+        source == .openStreetMap ? "OpenStreetMap" : "Apple Haritalar"
+    }
+
+    var normalizedName: String {
+        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "tr_TR"))
+            .replacingOccurrences(of: " ", with: "")
+    }
+
+    var distanceText: String {
+        if distanceMeters < 1_000 { return "\(max(1, Int(distanceMeters.rounded()))) m" }
+        return String(format: "%.1f km", distanceMeters / 1_000)
+    }
+
+    init(_ mapItem: MKMapItem, origin: CLLocation) {
         self.mapItem = mapItem
         name = mapItem.name ?? "Spor alanı"
         coordinate = mapItem.placemark.coordinate
         address = mapItem.placemark.title ?? "Adres bilgisi yok"
-        id = String(format: "%.6f,%.6f,%@", coordinate.latitude, coordinate.longitude, name)
+        source = .appleMaps
+        distanceMeters = origin.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+        id = String(format: "apple:%.6f,%.6f,%@", coordinate.latitude, coordinate.longitude, name)
+    }
+
+    init?(openStreetMapElement element: OpenStreetMapElement, sportTitle: String, origin: CLLocation) {
+        guard let latitude = element.lat ?? element.center?.lat,
+              let longitude = element.lon ?? element.center?.lon else { return nil }
+
+        let tags = element.tags ?? [:]
+        coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        name = tags["name:tr"] ?? tags["name"] ?? tags["operator"] ?? "\(sportTitle) alanı"
+
+        let street = [tags["addr:street"], tags["addr:housenumber"]].compactMap { $0 }.joined(separator: " ")
+        let area = [tags["addr:district"], tags["addr:suburb"], tags["addr:city"]].compactMap { $0 }.joined(separator: ", ")
+        let parts = [street, area].filter { !$0.isEmpty }
+        address = parts.isEmpty ? "Açık harita kaydı" : parts.joined(separator: " · ")
+
+        source = .openStreetMap
+        mapItem = nil
+        distanceMeters = origin.distance(from: CLLocation(latitude: latitude, longitude: longitude))
+        id = "osm:\(element.type):\(element.id)"
     }
 
     func openDirections() {
-        mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+        if let mapItem {
+            mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+            return
+        }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        item.name = name
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
     }
 }
 

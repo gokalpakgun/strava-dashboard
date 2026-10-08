@@ -66,17 +66,52 @@ enum TempoSportChoice: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    var facilitySearchQuery: String? {
+    var facilitySearchQueries: [String] {
         switch self {
-        case .tennis: return "tennis court"
-        case .basketball: return "basketball court"
-        case .football: return "football field"
-        case .volleyball: return "volleyball court"
-        case .padel: return "padel court"
-        case .badminton: return "badminton court"
-        case .swimming: return "swimming pool"
-        case .fitness: return "gym"
-        default: return nil
+        case .run: return ["koşu parkuru", "atletizm pisti", "running track"]
+        case .cycling: return ["bisiklet parkuru", "bisiklet parkı", "velodrom", "cycling track"]
+        case .walking: return ["yürüyüş parkuru", "yürüyüş yolu", "walking trail"]
+        case .hiking: return ["doğa yürüyüşü parkuru", "parkur başlangıcı", "trailhead"]
+        case .swimming: return ["yüzme havuzu", "kapalı yüzme havuzu", "olimpik havuz", "swimming pool"]
+        case .fitness: return ["spor salonu", "fitness merkezi", "gym", "crossfit salonu"]
+        case .tennis: return ["tenis kortu", "tenis kulübü", "tennis court", "tennis club"]
+        case .basketball: return ["basketbol sahası", "basketbol salonu", "basketball court", "spor kompleksi"]
+        case .football: return ["halı saha", "futbol sahası", "stadyum", "football field"]
+        case .volleyball: return ["voleybol sahası", "voleybol salonu", "beach volleyball court", "spor salonu"]
+        case .padel: return ["padel kortu", "padel kulübü", "padel court", "raket sporları"]
+        case .badminton: return ["badminton salonu", "badminton kortu", "badminton court", "badminton club"]
+        case .yoga: return ["yoga stüdyosu", "yoga merkezi", "yoga studio"]
+        }
+    }
+
+    var facilitySearchQuery: String? { facilitySearchQueries.first }
+
+    var openStreetMapSelectors: [String] {
+        switch self {
+        case .run:
+            return ["[\"sport\"~\"running|athletics\"]", "[\"leisure\"=\"track\"][\"sport\"~\"running|athletics\"]"]
+        case .cycling:
+            return ["[\"sport\"~\"cycling|bmx\"]", "[\"leisure\"=\"track\"][\"sport\"=\"cycling\"]"]
+        case .walking, .hiking:
+            return ["[\"information\"=\"trailhead\"]", "[\"information\"=\"guidepost\"]"]
+        case .swimming:
+            return ["[\"leisure\"=\"swimming_pool\"]", "[\"sport\"~\"(^|;)swimming(;|$)\"]", "[\"swimming_pool\"]"]
+        case .fitness:
+            return ["[\"leisure\"=\"fitness_centre\"]", "[\"leisure\"=\"fitness_station\"]", "[\"sport\"~\"fitness|weightlifting|crossfit\"]"]
+        case .tennis:
+            return ["[\"sport\"~\"(^|;)tennis(;|$)\"]"]
+        case .basketball:
+            return ["[\"sport\"~\"(^|;)basketball(;|$)\"]"]
+        case .football:
+            return ["[\"sport\"~\"(^|;)(soccer|football)(;|$)\"]"]
+        case .volleyball:
+            return ["[\"sport\"~\"(^|;)(volleyball|beachvolleyball)(;|$)\"]"]
+        case .padel:
+            return ["[\"sport\"~\"(^|;)(padel|paddle_tennis)(;|$)\"]"]
+        case .badminton:
+            return ["[\"sport\"~\"(^|;)badminton(;|$)\"]"]
+        case .yoga:
+            return ["[\"sport\"~\"(^|;)yoga(;|$)\"]"]
         }
     }
 
