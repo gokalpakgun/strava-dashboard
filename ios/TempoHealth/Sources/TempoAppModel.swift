@@ -355,11 +355,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     private func expireSession() {
-        SecureTokenStore.delete()
-        accessToken = nil
-        dashboard = nil
-        todayWaterMl = 0
-        status = "Tempo bağlantısının süresi doldu. Strava ile yeniden giriş yap."
+        dashboardError = "Strava oturumuna geçici olarak ulaşılamadı."
+        status = "Strava bağlantın cihazda saklandı. Bağlantı yeniden deneniyor."
     }
 
     private func addWaterToAppleHealth(_ amountMl: Int) {
@@ -447,6 +444,7 @@ private enum APIError: LocalizedError {
 private enum SecureTokenStore {
     private static let service = "com.apitempo.tempohealth"
     private static let account = "mobile-access-token"
+    private static let fallbackKey = "tempoMobileAccessTokenBackupV3"
 
     static func read() -> String? {
         let query: [String: Any] = [
@@ -457,30 +455,53 @@ private enum SecureTokenStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+           let data = result as? Data,
+           let token = String(data: data, encoding: .utf8),
+           !token.isEmpty {
+            UserDefaults.standard.set(token, forKey: fallbackKey)
+            return token
+        }
+
+        guard let fallback = UserDefaults.standard.string(forKey: fallbackKey),
+              !fallback.isEmpty else { return nil }
+        _ = saveToKeychain(fallback)
+        return fallback
     }
 
     static func save(_ token: String) -> Bool {
-        delete()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: Data(token.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        UserDefaults.standard.set(token, forKey: fallbackKey)
+        let keychainSaved = saveToKeychain(token)
+        return keychainSaved || UserDefaults.standard.string(forKey: fallbackKey) == token
     }
 
     static func delete() {
+        UserDefaults.standard.removeObject(forKey: fallbackKey)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
+    }
+
+    private static func saveToKeychain(_ token: String) -> Bool {
+        let match: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(token.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+        let updateStatus = SecItemUpdate(match as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+
+        var add = match
+        attributes.forEach { add[$0.key] = $0.value }
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 }
 

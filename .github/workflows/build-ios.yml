@@ -17,6 +17,11 @@ jobs:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
 
+      - name: Uygulama ikonunu hazırla
+        run: |
+          ICON="ios/TempoHealth/Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          sips -z 1024 1024 "$ICON" --out "$ICON"
+
       - name: iPhone uygulamasını derle
         run: |
           xcodebuild \
