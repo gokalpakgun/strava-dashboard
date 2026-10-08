@@ -35,14 +35,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     override init() {
         super.init()
-        let savedToken = SecureTokenStore.read()
-        if savedToken != nil && !UserDefaults.standard.bool(forKey: "tempoNativeAPIReadyV1") {
-            SecureTokenStore.delete()
-            accessToken = nil
-            status = "Yeni native uygulama için Strava hesabını bir kez yeniden bağla."
-        } else {
-            accessToken = savedToken
-        }
+        accessToken = SecureTokenStore.read()
         if accessToken != nil {
             status = "Strava bağlı. Verilerin hazırlanıyor."
             Task { await reloadAll() }
@@ -314,7 +307,6 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthError = nil
             UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
             coachAnswer = ""
-            UserDefaults.standard.set(false, forKey: "tempoNativeAPIReadyV1")
             isBusy = false
             status = "Strava bağlantısı kaldırıldı."
         }
@@ -344,7 +336,6 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             }
             guard SecureTokenStore.save(token) else { throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı.") }
             accessToken = token
-            UserDefaults.standard.set(true, forKey: "tempoNativeAPIReadyV1")
             status = "Strava bağlı. Verilerin hazırlanıyor."
             await reloadAll()
         } catch {
@@ -368,7 +359,6 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         accessToken = nil
         dashboard = nil
         todayWaterMl = 0
-        UserDefaults.standard.set(false, forKey: "tempoNativeAPIReadyV1")
         status = "Tempo bağlantısının süresi doldu. Strava ile yeniden giriş yap."
     }
 

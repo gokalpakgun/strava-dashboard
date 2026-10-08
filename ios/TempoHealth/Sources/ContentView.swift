@@ -42,16 +42,6 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onChange(of: account.isAuthenticated) { _, connected in
-            if !connected && !account.isRestoring && model.isConnected {
-                model.disconnect()
-            }
-        }
-        .onChange(of: account.isRestoring) { _, restoring in
-            if !restoring && !account.isAuthenticated && model.isConnected {
-                model.disconnect()
-            }
-        }
     }
 }
 
@@ -322,7 +312,7 @@ private struct ActivityDetailScreen: View {
             .buttonStyle(TempoPrimaryButtonStyle())
         }
         .navigationTitle("Aktivite")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -334,8 +324,7 @@ struct RoutesScreen: View {
     private var selected: TempoActivity? { selectedId.flatMap { id in routes.first { $0.id == id } } }
 
     var body: some View {
-        NavigationStack {
-            TempoPage {
+        TempoPage {
                 PageTitle(title: "Rotalar", subtitle: "GPS aktivite haritan")
                 TempoCard {
                     HStack {
@@ -364,10 +353,11 @@ struct RoutesScreen: View {
                     Text(selected == nil ? "\(routes.count) GPS rotası gösteriliyor." : "Seçili rotayı yakınlaştırıp inceleyebilirsin.")
                         .font(.footnote).foregroundStyle(TempoTheme.secondary)
                 }
-            }
-            .refreshable { await model.refreshDashboard() }
-            .toolbar(.hidden, for: .navigationBar)
         }
+        .refreshable { await model.refreshDashboard() }
+        .navigationTitle("Rotalar")
+        .navigationBarTitleDisplayMode(.inline)
+        .tempoGlassBackButton()
     }
 }
 
@@ -411,8 +401,7 @@ struct CoachScreen: View {
     private let suggestions = ["Gelişimimi değerlendir", "Koşu tempomu yorumla", "Antrenman düzenim nasıl?", "Bir sonraki hedefim ne olmalı?"]
 
     var body: some View {
-        NavigationStack {
-            TempoPage {
+        TempoPage {
                 PageTitle(title: "Tempo Koç", subtitle: "Verilerini anlayan spor asistanın")
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -476,9 +465,10 @@ struct CoachScreen: View {
                 }
                 Text(model.healthSyncEnabled ? "Koç, seçtiğin dönemdeki Strava ve özetlenmiş Apple Sağlık ölçülerini kullanır. Sağlık teşhisi vermez." : "Koç yalnızca seçtiğin dönemdeki Strava aktivite ölçülerini kullanır. Sağlık teşhisi vermez.")
                     .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
-            }
-            .toolbar(.hidden, for: .navigationBar)
         }
+        .navigationTitle("Tempo Koç")
+        .navigationBarTitleDisplayMode(.inline)
+        .tempoGlassBackButton()
     }
 }
 
@@ -574,7 +564,7 @@ private struct HealthScreen: View {
             }
         }
         .navigationTitle("Sağlık")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 
     private var connectCard: some View {
@@ -695,7 +685,7 @@ private struct MonthlyStatsScreen: View {
                     }
                 }
             }
-        }.navigationTitle("Aylık").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Aylık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -718,7 +708,7 @@ private struct GearScreen: View {
                 }
             }
             if gear.isEmpty { EmptyCard(icon: "bicycle", text: "Strava profilinde ekipman bulunamadı.") }
-        }.navigationTitle("Ekipman").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Ekipman").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -741,7 +731,7 @@ private struct SegmentsScreen: View {
                 }.buttonStyle(.plain)
             }
             if model.dashboard?.segments.isEmpty != false { EmptyCard(icon: "flag.checkered", text: "Favori segment bulunamadı.") }
-        }.navigationTitle("Segmentler").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Segmentler").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -758,7 +748,7 @@ private struct EddingtonScreen: View {
                     Text("Bu sayı düzenli ve uzun mesafeli koşular yaptıkça yükselir.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
                 }.padding(.vertical, 28).frame(maxWidth: .infinity)
             }
-        }.navigationTitle("Eddington").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Eddington").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -780,7 +770,7 @@ private struct YearSummaryScreen: View {
                 SummaryLine(icon: "mountain.2.fill", title: "Yükseklik", value: "\(Int(activities.reduce(0) { $0 + $1.elevationMeters })) m", color: TempoTheme.purple)
                 SummaryLine(icon: "trophy.fill", title: "En uzun", value: TempoFormat.distance(activities.map(\.distanceKm).max() ?? 0), color: TempoTheme.orange)
             }
-        }.navigationTitle("Yıl Özeti").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Yıl Özeti").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -805,7 +795,7 @@ private struct PhotosScreen: View {
                 }
             }
             if model.dashboard?.photos.isEmpty != false { EmptyCard(icon: "photo", text: "Gösterilecek aktivite fotoğrafı bulunamadı.") }
-        }.navigationTitle("Fotoğraflar").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("Fotoğraflar").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 

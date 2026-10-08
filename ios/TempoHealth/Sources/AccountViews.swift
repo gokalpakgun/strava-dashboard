@@ -142,7 +142,7 @@ private struct AccountFormView: View {
             }
         }
         .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -459,7 +459,7 @@ struct AchievementsScreen: View {
             }
         }
         .navigationTitle("Başarılar")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 
     private var levelCard: some View {
@@ -622,7 +622,7 @@ struct AccountSettingsScreen: View {
             }
         }
         .navigationTitle("Hesap")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .task { loadProfileOnce() }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
@@ -862,5 +862,39 @@ private extension UIImage {
             draw(in: CGRect(origin: drawOrigin, size: drawSize))
         }
         return square.jpegData(compressionQuality: 0.68)
+    }
+}
+
+struct TempoGlassBackButtonModifier: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content
+            .navigationBarBackButtonHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().stroke(.white.opacity(0.20), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.32), radius: 10, y: 4)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Geri")
+                }
+            }
+    }
+}
+
+extension View {
+    func tempoGlassBackButton() -> some View {
+        modifier(TempoGlassBackButtonModifier())
     }
 }
