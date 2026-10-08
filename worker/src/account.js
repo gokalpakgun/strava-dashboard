@@ -33,8 +33,6 @@ export async function handleAccountRequest(request, env, url) {
 }
 
 async function signUp(request, env) {
-  const limited = await rateLimit(request, env, "signup", 6);
-  if (limited) return limited;
   const parsed = await readBody(request, 8192);
   if (parsed.response) return parsed.response;
 
@@ -43,6 +41,9 @@ async function signUp(request, env) {
   const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
   const validation = validateCredentials(email, username, password);
   if (validation) return responseJSON({ error: validation }, 400);
+
+  const limited = await rateLimit(request, env, "signup", 6);
+  if (limited) return limited;
 
   const emailKey = "account-email:" + await sha256Hex(email);
   const usernameKey = "account-username:" + username;
@@ -82,8 +83,6 @@ async function signUp(request, env) {
 }
 
 async function signIn(request, env) {
-  const limited = await rateLimit(request, env, "login", 10);
-  if (limited) return limited;
   const parsed = await readBody(request, 8192);
   if (parsed.response) return parsed.response;
 
@@ -92,6 +91,9 @@ async function signIn(request, env) {
   if (!isValidEmail(email) || password.length < 1 || password.length > 128) {
     return responseJSON({ error: "E-posta veya şifre hatalı." }, 401);
   }
+
+  const limited = await rateLimit(request, env, "login", 10);
+  if (limited) return limited;
 
   const userId = await env.TOKEN_STORE.get("account-email:" + await sha256Hex(email));
   const user = userId ? await env.TOKEN_STORE.get("account-user:" + userId, "json") : null;
@@ -234,7 +236,7 @@ async function createSession(env, userId) {
 
 async function rateLimit(request, env, action, limit) {
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const key = "account-rate:" + action + ":" + await sha256Hex(ip);
+  const key = "account-rate:v2:" + action + ":" + await sha256Hex(ip);
   const count = Number(await env.TOKEN_STORE.get(key) || 0);
   if (count >= limit) {
     return responseJSON({ error: "Çok fazla deneme yapıldı. 15 dakika sonra yeniden dene." }, 429);
