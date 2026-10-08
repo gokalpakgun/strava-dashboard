@@ -1,3 +1,5 @@
+import { handleAccountRequest } from "./account.js";
+
 const SESSION_COOKIE = "tempo_session";
 const STATE_COOKIE = "tempo_oauth_state";
 const SESSION_SECONDS = 60 * 60 * 24 * 30; const COACH_DETAIL_LIMIT = 12; const COACH_DETAIL_CACHE_SECONDS = 600;
@@ -8,6 +10,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
+      if (url.pathname.startsWith("/api/account/")) {
+        const accountResponse = await handleAccountRequest(request, env, url);
+        if (accountResponse) return accountResponse;
+      }
       if (url.pathname === "/auth/start" && request.method === "GET") {
         return startAuthorization(url, env);
       }

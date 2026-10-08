@@ -80,7 +80,7 @@ struct TempoActivity: Decodable, Identifiable, Hashable {
 }
 
 enum TempoSport: Equatable {
-    case run, ride, walk, hike, swim, workout, other
+    case run, ride, walk, hike, swim, tennis, basketball, football, volleyball, padel, badminton, yoga, workout, other
 
     init(rawValue: String) {
         let value = rawValue.lowercased()
@@ -89,6 +89,13 @@ enum TempoSport: Equatable {
         else if value.contains("walk") { self = .walk }
         else if value.contains("hike") { self = .hike }
         else if value.contains("swim") { self = .swim }
+        else if value.contains("tennis") { self = .tennis }
+        else if value.contains("basketball") { self = .basketball }
+        else if value.contains("soccer") || value.contains("football") { self = .football }
+        else if value.contains("volleyball") { self = .volleyball }
+        else if value.contains("padel") { self = .padel }
+        else if value.contains("badminton") { self = .badminton }
+        else if value.contains("yoga") { self = .yoga }
         else if value.contains("workout") || value.contains("weight") || value.contains("crossfit") { self = .workout }
         else { self = .other }
     }
@@ -100,6 +107,13 @@ enum TempoSport: Equatable {
         case .walk: return "Yürüyüş"
         case .hike: return "Doğa yürüyüşü"
         case .swim: return "Yüzme"
+        case .tennis: return "Tenis"
+        case .basketball: return "Basketbol"
+        case .football: return "Futbol"
+        case .volleyball: return "Voleybol"
+        case .padel: return "Padel"
+        case .badminton: return "Badminton"
+        case .yoga: return "Yoga"
         case .workout: return "Antrenman"
         case .other: return "Aktivite"
         }
@@ -112,6 +126,13 @@ enum TempoSport: Equatable {
         case .walk: return "figure.walk"
         case .hike: return "figure.hiking"
         case .swim: return "figure.pool.swim"
+        case .tennis: return "tennis.racket"
+        case .basketball: return "basketball.fill"
+        case .football: return "soccerball"
+        case .volleyball: return "volleyball.fill"
+        case .padel: return "figure.racquetball"
+        case .badminton: return "figure.badminton"
+        case .yoga: return "figure.yoga"
         case .workout: return "dumbbell.fill"
         case .other: return "figure.mixed.cardio"
         }

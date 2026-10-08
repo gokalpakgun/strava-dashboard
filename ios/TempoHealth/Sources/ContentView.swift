@@ -15,16 +15,23 @@ enum TempoTheme {
 
 struct ContentView: View {
     @EnvironmentObject private var model: TempoAppModel
+    @EnvironmentObject private var account: TempoAccountStore
     @State private var selectedTab = 0
 
     var body: some View {
         Group {
-            if model.isConnected {
+            if account.isRestoring {
+                TempoLaunchView()
+            } else if !account.isAuthenticated {
+                AccountWelcomeView()
+            } else if account.profile?.onboardingComplete != true {
+                AccountOnboardingView()
+            } else if model.isConnected {
                 TabView(selection: $selectedTab) {
                     HomeScreen().tag(0).tabItem { Label("Özet", systemImage: "square.grid.2x2.fill") }
                     ActivitiesScreen().tag(1).tabItem { Label("Aktiviteler", systemImage: "figure.run") }
-                    RoutesScreen().tag(2).tabItem { Label("Rotalar", systemImage: "map.fill") }
-                    CoachScreen().tag(3).tabItem { Label("Koç", systemImage: "sparkles") }
+                    SportsHubScreen().tag(2).tabItem { Label("Sporlar", systemImage: "trophy.fill") }
+                    NearbyFacilitiesScreen().tag(3).tabItem { Label("Keşfet", systemImage: "map.fill") }
                     MoreScreen().tag(4).tabItem { Label("Profil", systemImage: "person.crop.circle.fill") }
                 }
                 .tint(TempoTheme.green)
@@ -35,6 +42,16 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onChange(of: account.isAuthenticated) { _, connected in
+            if !connected && !account.isRestoring && model.isConnected {
+                model.disconnect()
+            }
+        }
+        .onChange(of: account.isRestoring) { _, restoring in
+            if !restoring && !account.isAuthenticated && model.isConnected {
+                model.disconnect()
+            }
+        }
     }
 }
 
@@ -231,7 +248,7 @@ private struct ActivitiesScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @State private var search = ""
     @State private var selectedSport = "Tümü"
-    private let filters = ["Tümü", "Koşu", "Bisiklet", "Yürüyüş", "Diğer"]
+    private let filters = ["Tümü", "Koşu", "Bisiklet", "Yürüyüş", "Tenis", "Basketbol", "Futbol", "Yüzme", "Diğer"]
 
     private var filtered: [TempoActivity] {
         (model.dashboard?.activities ?? []).filter { activity in
@@ -309,7 +326,7 @@ private struct ActivityDetailScreen: View {
     }
 }
 
-private struct RoutesScreen: View {
+struct RoutesScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @State private var selectedId: Int64?
 
@@ -386,7 +403,7 @@ private struct RouteMap: View {
     }
 }
 
-private struct CoachScreen: View {
+struct CoachScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @State private var period = "90"
     @State private var question = ""
@@ -467,14 +484,19 @@ private struct CoachScreen: View {
 
 private struct MoreScreen: View {
     @EnvironmentObject private var model: TempoAppModel
+    @EnvironmentObject private var account: TempoAccountStore
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
     var body: some View {
         NavigationStack {
             TempoPage {
+                AccountProfileCard()
                 if let athlete = model.dashboard?.athlete { ProfileHeader(athlete: athlete) }
                 else { PageTitle(title: "Profil", subtitle: "Tempo hesabın") }
                 LazyVGrid(columns: columns, spacing: 12) {
+                    MoreLink(title: "Tempo Hesabı", subtitle: "Profil ve sporların", icon: "person.crop.circle.badge.checkmark", color: TempoTheme.green, destination: AnyView(AccountSettingsScreen()))
+                    MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
+                    MoreLink(title: "Rotalar", subtitle: "GPS ısı haritan", icon: "map.fill", color: TempoTheme.orange, destination: AnyView(RoutesScreen()))
                     MoreLink(title: "Apple Sağlık", subtitle: "Uyku, su ve hareket", icon: "heart.text.square.fill", color: .pink, destination: AnyView(HealthScreen()))
                     MoreLink(title: "Aylık", subtitle: "Son 6 ay", icon: "chart.bar.fill", color: TempoTheme.green, destination: AnyView(MonthlyStatsScreen()))
                     MoreLink(title: "Ekipman", subtitle: "Bisiklet ve ayakkabı", icon: "bicycle", color: TempoTheme.orange, destination: AnyView(GearScreen()))
