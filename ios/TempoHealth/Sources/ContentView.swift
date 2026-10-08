@@ -145,9 +145,7 @@ private struct HomeScreen: View {
                     weeklyMetrics
                     challengeCard
                     hydrationCompact
-                    SectionHeading(title: "Son aktiviteler", caption: "STRAVA")
-                    ForEach(Array(dashboard.activities.prefix(4))) { ActivityRow(activity: $0) }
-                    if dashboard.activities.isEmpty { EmptyCard(icon: "figure.run", text: "Henüz aktivite bulunamadı.") }
+                    RecentActivitiesPanel(activities: dashboard.activities)
                 } else {
                     LoadingDashboardCard()
                 }
@@ -313,6 +311,317 @@ private struct ActivityDetailScreen: View {
         }
         .navigationTitle("Aktivite")
         .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+    }
+}
+
+private struct RecentActivitiesPanel: View {
+    let activities: [TempoActivity]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .bottom) {
+                SectionHeading(title: "Son aktiviteler", caption: "STRAVA", padding: false)
+                Spacer()
+                if !activities.isEmpty {
+                    NavigationLink(destination: ActivityTimelineScreen()) {
+                        Text("Tümünü gör")
+                            .font(.caption.bold())
+                            .foregroundStyle(TempoTheme.green)
+                    }
+                }
+            }
+
+            if let latest = activities.first {
+                NavigationLink(destination: ActivityDetailScreen(activity: latest)) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack {
+                            Image(systemName: latest.sport.symbol)
+                                .font(.title2)
+                                .foregroundStyle(.black)
+                                .frame(width: 48, height: 48)
+                                .background(.white.opacity(0.72), in: Circle())
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("SON AKTİVİTE")
+                                    .font(.caption2.bold())
+                                    .tracking(1.4)
+                                    .foregroundStyle(.black.opacity(0.52))
+                                Text(latest.date.map { TempoFormat.shortDate.string(from: $0) } ?? latest.sport.title)
+                                    .font(.caption)
+                                    .foregroundStyle(.black.opacity(0.68))
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption.bold())
+                                .foregroundStyle(.black)
+                                .frame(width: 34, height: 34)
+                                .background(.white.opacity(0.45), in: Circle())
+                        }
+
+                        Text(latest.name ?? latest.sport.title)
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.black)
+                            .lineLimit(2)
+
+                        HStack(spacing: 18) {
+                            Label(TempoFormat.distance(latest.distanceKm), systemImage: "arrow.left.and.right")
+                            Label(TempoFormat.duration(latest.movingSeconds), systemImage: "clock.fill")
+                            if latest.elevationMeters > 0 {
+                                Label("\(Int(latest.elevationMeters)) m", systemImage: "mountain.2.fill")
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.black.opacity(0.7))
+                    }
+                    .padding(19)
+                    .background(
+                        LinearGradient(
+                            colors: [TempoTheme.green, TempoTheme.blue],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 25, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                let secondary = Array(activities.dropFirst().prefix(2))
+                if !secondary.isEmpty {
+                    HStack(spacing: 10) {
+                        ForEach(secondary) { activity in
+                            NavigationLink(destination: ActivityDetailScreen(activity: activity)) {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack {
+                                        Image(systemName: activity.sport.symbol)
+                                            .foregroundStyle(TempoTheme.orange)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2.bold())
+                                            .foregroundStyle(TempoTheme.secondary)
+                                    }
+                                    Text(activity.name ?? activity.sport.title)
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.white)
+                                        .lineLimit(2)
+                                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
+                                    Text(TempoFormat.distance(activity.distanceKm))
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                    Text(activity.date.map { TempoFormat.shortDate.string(from: $0) } ?? activity.sport.title)
+                                        .font(.caption2)
+                                        .foregroundStyle(TempoTheme.secondary)
+                                }
+                                .padding(15)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.05)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if secondary.count == 1 { Color.clear.frame(maxWidth: .infinity) }
+                    }
+                }
+
+                NavigationLink(destination: ActivityTimelineScreen()) {
+                    HStack(spacing: 13) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.title3)
+                            .foregroundStyle(TempoTheme.green)
+                            .frame(width: 44, height: 44)
+                            .background(TempoTheme.green.opacity(0.11), in: Circle())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Aktivite geçmişi")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.white)
+                            Text("Dönemlere göre gruplanmış \(activities.count) aktivite")
+                                .font(.caption)
+                                .foregroundStyle(TempoTheme.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white.opacity(0.32))
+                    }
+                    .padding(14)
+                    .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            } else {
+                EmptyCard(icon: "figure.run", text: "Henüz aktivite bulunamadı.")
+            }
+        }
+    }
+}
+
+private enum ActivityTimelineFilter: String, CaseIterable, Identifiable {
+    case all, run, ride, walk, other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Tümü"
+        case .run: return "Koşu"
+        case .ride: return "Bisiklet"
+        case .walk: return "Yürüyüş"
+        case .other: return "Diğer"
+        }
+    }
+
+    func matches(_ activity: TempoActivity) -> Bool {
+        switch self {
+        case .all: return true
+        case .run: return activity.sport == .run
+        case .ride: return activity.sport == .ride
+        case .walk: return activity.sport == .walk
+        case .other: return activity.sport != .run && activity.sport != .ride && activity.sport != .walk
+        }
+    }
+}
+
+private struct ActivityTimelineGroup: Identifiable {
+    let id: String
+    let title: String
+    var activities: [TempoActivity]
+
+    var distanceKm: Double { activities.reduce(0) { $0 + $1.distanceKm } }
+}
+
+private struct ActivityTimelineScreen: View {
+    @EnvironmentObject private var model: TempoAppModel
+    @State private var filter: ActivityTimelineFilter = .all
+
+    private var filteredActivities: [TempoActivity] {
+        (model.dashboard?.activities ?? [])
+            .filter(filter.matches)
+            .sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+    }
+
+    private var groups: [ActivityTimelineGroup] {
+        let calendar = Calendar.current
+        let now = Date()
+        let previousWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: now) ?? now
+        let locale = Locale(identifier: "tr_TR")
+        let monthFormatter = DateFormatter()
+        monthFormatter.locale = locale
+        monthFormatter.dateFormat = "LLLL yyyy"
+
+        var result: [ActivityTimelineGroup] = []
+        for activity in filteredActivities {
+            let date = activity.date ?? .distantPast
+            let identity: String
+            let title: String
+
+            if calendar.isDateInToday(date) {
+                identity = "today"
+                title = "Bugün"
+            } else if calendar.isDateInYesterday(date) {
+                identity = "yesterday"
+                title = "Dün"
+            } else if calendar.isDate(date, equalTo: now, toGranularity: .weekOfYear) {
+                identity = "this-week"
+                title = "Bu hafta"
+            } else if calendar.isDate(date, equalTo: previousWeek, toGranularity: .weekOfYear) {
+                identity = "last-week"
+                title = "Geçen hafta"
+            } else {
+                identity = monthFormatter.string(from: date)
+                title = identity.capitalized(with: locale)
+            }
+
+            if let index = result.firstIndex(where: { $0.id == identity }) {
+                result[index].activities.append(activity)
+            } else {
+                result.append(ActivityTimelineGroup(id: identity, title: title, activities: [activity]))
+            }
+        }
+        return result
+    }
+
+    private var totalDistance: Double { filteredActivities.reduce(0) { $0 + $1.distanceKm } }
+    private var totalSeconds: Double { filteredActivities.reduce(0) { $0 + $1.movingSeconds } }
+    private var totalElevation: Double { filteredActivities.reduce(0) { $0 + $1.elevationMeters } }
+
+    var body: some View {
+        ZStack {
+            TempoTheme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("AKTİVİTE ARŞİVİ")
+                            .font(.caption.bold())
+                            .tracking(1.5)
+                            .foregroundStyle(TempoTheme.green)
+                        Text("Ritmini dönemlere göre incele.")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+
+                        HStack(spacing: 9) {
+                            MetricCard(value: "\(filteredActivities.count)", label: "Aktivite", icon: "figure.run", color: TempoTheme.green)
+                            MetricCard(value: TempoFormat.distance(totalDistance), label: "Mesafe", icon: "arrow.left.and.right", color: TempoTheme.orange)
+                            MetricCard(value: TempoFormat.duration(totalSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
+                        }
+                        if totalElevation > 0 {
+                            Label("Toplam \(Int(totalElevation).formatted()) m tırmanış", systemImage: "mountain.2.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(ActivityTimelineFilter.allCases) { option in
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.18)) { filter = option }
+                                } label: {
+                                    Text(option.title)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(filter == option ? .black : .white)
+                                        .padding(.horizontal, 15)
+                                        .padding(.vertical, 10)
+                                        .background(filter == option ? TempoTheme.green : TempoTheme.card, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    if groups.isEmpty {
+                        EmptyCard(icon: "calendar.badge.exclamationmark", text: "Bu filtrede gösterilecek aktivite yok.")
+                    } else {
+                        ForEach(groups) { group in
+                            VStack(spacing: 9) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(group.title).font(.headline)
+                                        Text("\(group.activities.count) aktivite")
+                                            .font(.caption)
+                                            .foregroundStyle(TempoTheme.secondary)
+                                    }
+                                    Spacer()
+                                    Text(TempoFormat.distance(group.distanceKm))
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(TempoTheme.green)
+                                }
+                                .padding(.top, 5)
+
+                                ForEach(group.activities) { activity in
+                                    NavigationLink(destination: ActivityDetailScreen(activity: activity)) {
+                                        ActivityRow(activity: activity)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 36)
+            }
+        }
+        .navigationTitle("Aktivite Geçmişi")
+        .navigationBarTitleDisplayMode(.inline)
+        .tempoGlassBackButton()
     }
 }
 
