@@ -1,5 +1,6 @@
 const ACCOUNT_SESSION_SECONDS = 60 * 60 * 24 * 30;
-const PASSWORD_ITERATIONS = 120000;
+// Cloudflare Workers production rejects PBKDF2 counts above 100,000.
+const PASSWORD_ITERATIONS = 100000;
 const MAX_PROFILE_BODY = 800000;
 const encoder = new TextEncoder();
 const allowedSports = new Set([
