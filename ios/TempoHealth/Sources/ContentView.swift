@@ -27,21 +27,112 @@ struct ContentView: View {
             } else if account.profile?.onboardingComplete != true {
                 AccountOnboardingView()
             } else if model.isConnected {
-                TabView(selection: $selectedTab) {
-                    HomeScreen().tag(0).tabItem { Label("Özet", systemImage: "square.grid.2x2.fill") }
-                    ActivitiesScreen().tag(1).tabItem { Label("Aktiviteler", systemImage: "figure.run") }
-                    SportsHubScreen().tag(2).tabItem { Label("Sporlar", systemImage: "trophy.fill") }
-                    NearbyFacilitiesScreen().tag(3).tabItem { Label("Keşfet", systemImage: "map.fill") }
-                    MoreScreen().tag(4).tabItem { Label("Profil", systemImage: "person.crop.circle.fill") }
-                }
-                .tint(TempoTheme.green)
-                .toolbarBackground(TempoTheme.card, for: .tabBar)
-                .toolbarBackground(.visible, for: .tabBar)
+                TempoMainShell(selectedTab: $selectedTab)
             } else {
                 WelcomeScreen()
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+private struct TempoMainTab: Identifiable {
+    let id: Int
+    let title: String
+    let icon: String
+    let selectedIcon: String
+
+    static let all: [TempoMainTab] = [
+        TempoMainTab(id: 0, title: "Özet", icon: "square.grid.2x2", selectedIcon: "square.grid.2x2.fill"),
+        TempoMainTab(id: 1, title: "Aktivite", icon: "figure.run", selectedIcon: "figure.run"),
+        TempoMainTab(id: 2, title: "Sporlar", icon: "trophy", selectedIcon: "trophy.fill"),
+        TempoMainTab(id: 3, title: "Keşfet", icon: "map", selectedIcon: "map.fill"),
+        TempoMainTab(id: 4, title: "Sağlık", icon: "heart.text.square", selectedIcon: "heart.text.square.fill"),
+        TempoMainTab(id: 5, title: "Profil", icon: "person.crop.circle", selectedIcon: "person.crop.circle.fill")
+    ]
+}
+
+private struct TempoMainShell: View {
+    @Binding var selectedTab: Int
+
+    @ViewBuilder
+    private var selectedScreen: some View {
+        switch selectedTab {
+        case 0:
+            HomeScreen()
+        case 1:
+            ActivitiesScreen()
+        case 2:
+            SportsHubScreen()
+        case 3:
+            NearbyFacilitiesScreen()
+        case 4:
+            NavigationStack {
+                HealthScreen()
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+        default:
+            MoreScreen()
+        }
+    }
+
+    var body: some View {
+        selectedScreen
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                TempoCompactTabBar(selectedTab: $selectedTab)
+            }
+    }
+}
+
+private struct TempoCompactTabBar: View {
+    @Binding var selectedTab: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(.white.opacity(0.055))
+                .frame(height: 0.5)
+
+            HStack(spacing: 0) {
+                ForEach(TempoMainTab.all) { tab in
+                    let isSelected = selectedTab == tab.id
+                    Button {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            selectedTab = tab.id
+                        }
+                    } label: {
+                        VStack(spacing: 5) {
+                            ZStack(alignment: .top) {
+                                Capsule()
+                                    .fill(isSelected ? TempoTheme.green : .clear)
+                                    .frame(width: 22, height: 2.5)
+                                    .offset(y: -7)
+
+                                Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
+                                    .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
+                                    .foregroundStyle(isSelected ? TempoTheme.green : TempoTheme.secondary)
+                                    .frame(height: 21)
+                            }
+                            Text(tab.title)
+                                .font(.system(size: 9, weight: isSelected ? .bold : .medium))
+                                .foregroundStyle(isSelected ? .white : TempoTheme.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tab.title)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 5)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+        }
+        .background(.ultraThinMaterial)
+        .background(TempoTheme.card.opacity(0.88))
     }
 }
 
@@ -262,7 +353,7 @@ private struct HomeScreen: View {
                     hero(dashboard.athlete)
                     weeklyMetrics
                     challengeCard
-                    hydrationCompact
+                    dailyMotivation
                     RecentActivitiesPanel(activities: dashboard.activities)
                 } else {
                     LoadingDashboardCard()
@@ -330,23 +421,66 @@ private struct HomeScreen: View {
         }
     }
 
-    private var hydrationCompact: some View {
-        NavigationLink(destination: HealthScreen()) {
-            HStack(spacing: 16) {
-                Image(systemName: "heart.text.square.fill").font(.title2).foregroundStyle(.pink)
-                    .frame(width: 48, height: 48).background(Color.pink.opacity(0.12), in: Circle())
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Apple Sağlık").font(.headline)
-                    Text(model.healthSyncEnabled ? "\(model.todayWaterMl) ml su · sağlık verileri bağlı" : "Uyku, adım, kalori, nabız ve daha fazlası")
-                        .font(.subheadline).foregroundStyle(TempoTheme.secondary).lineLimit(1)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
+    private var dailyMotivation: some View {
+        DailyMotivationCard()
+    }
+}
+
+private struct DailyMotivationCard: View {
+    private let messages = [
+        "Bugünün küçük adımı, yarının gücü.",
+        "Ritmini koru; sonuçlar peşinden gelir.",
+        "İstikrar, en güçlü antrenmandır.",
+        "Kendinle yarış, dünden ileri git.",
+        "Güç, devam etmeyi seçtiğin anda başlar.",
+        "Her hareket gelişimin bir parçası.",
+        "Mükemmel olma; bugün hareket et.",
+        "Tempo sende. Bir adım daha.",
+        "Dinlen, toparlan, yeniden güçlen.",
+        "Bugünkü emeğin yarına birikir.",
+        "Yavaş ilerlemek de ilerlemektir.",
+        "Bedenini dinle, ritmini kaybetme."
+    ]
+
+    private var message: String {
+        let day = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0
+        return messages[day % messages.count]
+    }
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "quote.opening")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(TempoTheme.green)
+                .frame(width: 30, height: 30)
+                .background(TempoTheme.green.opacity(0.10), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("GÜNÜN RİTMİ")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(1.25)
+                    .foregroundStyle(TempoTheme.green)
+                Text(message)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(2)
             }
-            .padding(18)
-            .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            Spacer(minLength: 4)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            LinearGradient(
+                colors: [.white.opacity(0.035), TempoTheme.green.opacity(0.035)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: RoundedRectangle(cornerRadius: 17, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .stroke(.white.opacity(0.055))
+        )
     }
 }
 
@@ -915,7 +1049,6 @@ private struct MoreScreen: View {
                     MoreLink(title: "Başarılar", subtitle: "Seviye ve rozetlerin", icon: "medal.fill", color: TempoTheme.orange, destination: AnyView(AchievementsScreen()))
                     MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
                     MoreLink(title: "Rotalar", subtitle: "GPS ısı haritan", icon: "map.fill", color: TempoTheme.orange, destination: AnyView(RoutesScreen()))
-                    MoreLink(title: "Apple Sağlık", subtitle: "Uyku, su ve hareket", icon: "heart.text.square.fill", color: .pink, destination: AnyView(HealthScreen()))
                     MoreLink(title: "Aylık", subtitle: "Son 6 ay", icon: "chart.bar.fill", color: TempoTheme.green, destination: AnyView(MonthlyStatsScreen()))
                     MoreLink(title: "Ekipman", subtitle: "Bisiklet ve ayakkabı", icon: "bicycle", color: TempoTheme.orange, destination: AnyView(GearScreen()))
                     MoreLink(title: "Segmentler", subtitle: "Favorilerin", icon: "flag.checkered", color: TempoTheme.purple, destination: AnyView(SegmentsScreen()))
