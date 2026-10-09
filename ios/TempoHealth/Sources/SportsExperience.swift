@@ -82,7 +82,7 @@ private struct FeaturedPushUpCard: View {
                             Circle()
                                 .fill(TempoTheme.green)
                                 .frame(width: 8, height: 8)
-                            Text("KAMERA HAZIR · YAKIN ÇEKİM")
+                            Text("ÖN KAMERA · YÜZ TAKİBİ")
                                 .font(.system(size: 10, weight: .bold))
                                 .tracking(1)
                                 .foregroundStyle(.white.opacity(0.8))
@@ -665,7 +665,7 @@ struct PushUpCounterScreen: View {
                             .foregroundStyle(TempoTheme.green)
                         Text("Akıllı şınav sayacı")
                             .font(.system(size: 31, weight: .bold, design: .rounded))
-                        Text("Telefonu yere yakın, üst gövdenin yanına yerleştir. Omuz, dirsek ve bileğinin görünmesi sayım için yeterli.")
+                        Text("Telefonu yere, yüzüne bakacak şekilde yerleştir. Tempo yüzünün kameraya yaklaşıp uzaklaşmasını takip ederek tekrarlarını saysın.")
                             .font(.subheadline)
                             .foregroundStyle(TempoTheme.secondary)
                             .lineSpacing(3)
@@ -713,7 +713,12 @@ struct PushUpCounterScreen: View {
                     )
                 }
                 .overlay {
-                    PushUpPoseOverlay(joints: counter.joints, isGoodForm: counter.hasGoodForm)
+                    PushUpFaceOverlay(
+                        faceBox: counter.faceBox,
+                        faceDetected: counter.faceDetected,
+                        isNear: counter.isAtBottom,
+                        isCalibrating: counter.isCalibrating
+                    )
                 }
 
             if !counter.isCameraReady {
@@ -729,7 +734,7 @@ struct PushUpCounterScreen: View {
                 HStack {
                     HStack(spacing: 7) {
                         Circle()
-                            .fill(counter.hasGoodForm ? TempoTheme.green : TempoTheme.orange)
+                            .fill(counter.faceDetected ? TempoTheme.green : TempoTheme.orange)
                             .frame(width: 8, height: 8)
                         Text(counter.status)
                             .font(.caption.weight(.semibold))
@@ -739,16 +744,33 @@ struct PushUpCounterScreen: View {
                     .padding(.vertical, 8)
                     .background(.ultraThinMaterial, in: Capsule())
                     Spacer()
-                    if let angle = counter.elbowAngle {
-                        Text("\(Int(angle.rounded()))°")
-                            .font(.caption.monospacedDigit().bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial, in: Capsule())
+                    if counter.faceDetected {
+                        HStack(spacing: 5) {
+                            Image(systemName: "viewfinder")
+                            Text(counter.isCalibrating ? "%\(Int((counter.calibrationProgress * 100).rounded()))" : "%\(counter.proximityPercent)")
+                        }
+                        .font(.caption.monospacedDigit().bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
                     }
                 }
 
                 Spacer()
+
+                if counter.isCalibrating {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("BAŞLANGIÇ MESAFESİ AYARLANIYOR")
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(1)
+                            .foregroundStyle(.white.opacity(0.72))
+                        ProgressView(value: counter.calibrationProgress)
+                            .tint(TempoTheme.green)
+                    }
+                    .padding(12)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.bottom, 12)
+                }
 
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 1) {
@@ -763,7 +785,7 @@ struct PushUpCounterScreen: View {
                     }
                     Spacer()
                     if counter.isWorkoutActive {
-                        Label("Canlı", systemImage: "record.circle.fill")
+                        Label(counter.isAtBottom ? "Aşağı" : "Canlı", systemImage: counter.isAtBottom ? "arrow.down.circle.fill" : "record.circle.fill")
                             .font(.caption.bold())
                             .foregroundStyle(.white)
                             .padding(.horizontal, 11)
@@ -774,7 +796,7 @@ struct PushUpCounterScreen: View {
             }
             .padding(16)
         }
-        .frame(height: 440)
+        .frame(height: 430)
         .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(
@@ -846,15 +868,15 @@ struct PushUpCounterScreen: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Doğru algılama için")
                         .font(.headline)
-                    Text("Yakın yan görünüş · yalnızca üst gövde yeterli")
+                    Text("Önden yüz takibi · dar alan modu")
                         .font(.caption)
                         .foregroundStyle(TempoTheme.secondary)
                 }
             }
             HStack(alignment: .top, spacing: 10) {
-                PushUpGuideStep(number: "1", text: "Telefonu yere yakın, yaklaşık 1–1,5 metre yanına koy.")
-                PushUpGuideStep(number: "2", text: "Omuz, dirsek ve bileğin kadrajda kalsın; bacakların görünmeyebilir.")
-                PushUpGuideStep(number: "3", text: "Üstte kolunu aç, aşağı inerken dirseğini yaklaşık 90° bük.")
+                PushUpGuideStep(number: "1", text: "Telefonu yere, ekranı sana bakacak şekilde yaklaşık 60–100 cm önüne koy.")
+                PushUpGuideStep(number: "2", text: "Üst şınav pozisyonunda yüzünü çerçeveye getir ve Başlat’a dokun.")
+                PushUpGuideStep(number: "3", text: "Kısa kalibrasyondan sonra kameraya yaklaşarak in, geri uzaklaşarak yüksel.")
             }
         }
         .padding(17)
@@ -988,50 +1010,63 @@ private final class PushUpPreviewView: UIView {
     var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
 }
 
-private struct PushUpPoseOverlay: View {
-    let joints: [String: CGPoint]
-    let isGoodForm: Bool
-
-    private let bones = [
-        ("shoulder", "elbow"),
-        ("elbow", "wrist"),
-        ("shoulder", "hip"),
-        ("hip", "knee"),
-        ("knee", "ankle"),
-    ]
+private struct PushUpFaceOverlay: View {
+    let faceBox: CGRect?
+    let faceDetected: Bool
+    let isNear: Bool
+    let isCalibrating: Bool
 
     var body: some View {
-        Canvas { context, size in
-            let color = isGoodForm ? TempoTheme.green : TempoTheme.orange
-            for (startName, endName) in bones {
-                guard let start = joints[startName], let end = joints[endName] else { continue }
-                var line = Path()
-                line.move(to: point(start, in: size))
-                line.addLine(to: point(end, in: size))
-                context.stroke(line, with: .color(color.opacity(0.92)), style: StrokeStyle(lineWidth: 4, lineCap: .round))
-            }
-            for joint in joints.values {
-                let center = point(joint, in: size)
-                let rect = CGRect(x: center.x - 5, y: center.y - 5, width: 10, height: 10)
-                context.fill(Path(ellipseIn: rect), with: .color(.white))
-                context.stroke(Path(ellipseIn: rect), with: .color(color), lineWidth: 2)
+        GeometryReader { proxy in
+            ZStack {
+                if let faceBox {
+                    let rect = converted(faceBox, in: proxy.size)
+                    RoundedRectangle(cornerRadius: max(18, rect.width * 0.22), style: .continuous)
+                        .stroke(
+                            isNear ? Color.pink : TempoTheme.green,
+                            style: StrokeStyle(lineWidth: 3, dash: isCalibrating ? [8, 6] : [])
+                        )
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .shadow(color: (isNear ? Color.pink : TempoTheme.green).opacity(0.55), radius: 10)
+                } else {
+                    Ellipse()
+                        .stroke(
+                            .white.opacity(0.42),
+                            style: StrokeStyle(lineWidth: 2, dash: [9, 7])
+                        )
+                        .frame(width: proxy.size.width * 0.45, height: proxy.size.height * 0.34)
+                        .position(x: proxy.size.width * 0.5, y: proxy.size.height * 0.38)
+                }
+
+                VStack {
+                    Spacer()
+                    HStack(spacing: 7) {
+                        Image(systemName: faceDetected ? "face.smiling.inverse" : "viewfinder")
+                        Text(faceDetected ? "Yüz takibi aktif" : "Yüzünü kesikli alana getir")
+                    }
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 7)
+                    .background(.black.opacity(0.34), in: Capsule())
+                    .padding(.bottom, 102)
+                }
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func point(_ value: CGPoint, in size: CGSize) -> CGPoint {
-        CGPoint(x: (1 - value.x) * size.width, y: (1 - value.y) * size.height)
+    private func converted(_ box: CGRect, in size: CGSize) -> CGRect {
+        let expandedWidth = min(1, box.width * 1.2)
+        let expandedHeight = min(1, box.height * 1.35)
+        return CGRect(
+            x: (1 - box.midX - expandedWidth / 2) * size.width,
+            y: (1 - box.midY - expandedHeight / 2) * size.height,
+            width: expandedWidth * size.width,
+            height: expandedHeight * size.height
+        )
     }
-}
-
-private struct PushUpPoseFrame {
-    let elbowAngle: Double
-    let bodyAlignment: Double?
-    let confidence: Float
-    let shoulderY: Double
-    let upperArmLength: Double
-    let joints: [String: CGPoint]
 }
 
 final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
@@ -1040,23 +1075,36 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     @Published private(set) var permissionDenied = false
     @Published private(set) var isCameraReady = false
     @Published private(set) var isWorkoutActive = false
+    @Published private(set) var isCalibrating = false
+    @Published private(set) var calibrationProgress = 0.0
+    @Published private(set) var faceDetected = false
+    @Published private(set) var faceBox: CGRect?
+    @Published private(set) var proximityPercent = 0
+    @Published private(set) var isAtBottom = false
     @Published private(set) var count = 0
     @Published private(set) var elapsedSeconds = 0
-    @Published private(set) var status = "Omuz, dirsek ve bileğini kadraja al"
-    @Published private(set) var elbowAngle: Double?
-    @Published private(set) var bodyAlignment: Double?
-    @Published private(set) var joints: [String: CGPoint] = [:]
-    @Published private(set) var hasGoodForm = false
+    @Published private(set) var status = "Yüzünü kameraya göster"
     @Published private(set) var bestSession: Int
 
+    private enum MotionPhase {
+        case idle
+        case calibrating
+        case top
+        case bottom
+    }
+
     private let sessionQueue = DispatchQueue(label: "tempo.pushup.camera")
-    private let visionQueue = DispatchQueue(label: "tempo.pushup.vision")
-    private let poseRequest = VNDetectHumanBodyPoseRequest()
+    private let visionQueue = DispatchQueue(label: "tempo.pushup.face")
+    private let faceRequest = VNDetectFaceRectanglesRequest()
     private var configured = false
-    private var smoothedElbowAngle: Double?
-    private var reachedTop = false
-    private var reachedBottom = false
-    private var topShoulderY: Double?
+    private var phase: MotionPhase = .idle
+    private var calibrationSamples: [Double] = []
+    private var baselineFaceScale: Double?
+    private var smoothedFaceScale: Double?
+    private var nearFrameCount = 0
+    private var farFrameCount = 0
+    private var missingFaceFrames = 0
+    private var lastProcessedAt = Date.distantPast
     private var lastRepAt = Date.distantPast
     private var elapsedTimer: Timer?
     private let defaults = UserDefaults.standard
@@ -1105,12 +1153,17 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         guard isCameraReady else { return }
         count = 0
         elapsedSeconds = 0
-        reachedTop = false
-        reachedBottom = false
-        topShoulderY = nil
-        lastRepAt = .distantPast
+        phase = .calibrating
         isWorkoutActive = true
-        status = "Başlangıç pozisyonuna geç"
+        isCalibrating = true
+        calibrationProgress = 0
+        calibrationSamples = []
+        baselineFaceScale = nil
+        nearFrameCount = 0
+        farFrameCount = 0
+        isAtBottom = false
+        lastRepAt = .distantPast
+        status = faceDetected ? "Üst pozisyonda kısa süre sabit kal" : "Yüzünü kesikli alana getir"
         elapsedTimer?.invalidate()
         elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.elapsedSeconds += 1
@@ -1124,6 +1177,9 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
             return
         }
         isWorkoutActive = false
+        isCalibrating = false
+        phase = .idle
+        isAtBottom = false
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         if count > bestSession {
@@ -1137,10 +1193,15 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         guard !isWorkoutActive else { return }
         count = 0
         elapsedSeconds = 0
-        reachedTop = false
-        reachedBottom = false
-        topShoulderY = nil
-        status = "Omuz, dirsek ve bileğini kadraja al"
+        phase = .idle
+        baselineFaceScale = nil
+        smoothedFaceScale = nil
+        calibrationSamples = []
+        calibrationProgress = 0
+        isCalibrating = false
+        isAtBottom = false
+        proximityPercent = 0
+        status = faceDetected ? "Yüz algılandı · Başlatmaya hazır" : "Yüzünü kameraya göster"
     }
 
     private func configureAndStart() {
@@ -1164,6 +1225,17 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
                     self.status = "Kamera başlatılamadı"
                 }
                 return
+            }
+
+            if let device = input.device as AVCaptureDevice? {
+                try? device.lockForConfiguration()
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+                device.unlockForConfiguration()
             }
             self.session.addInput(input)
 
@@ -1192,7 +1264,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
             self.session.startRunning()
             DispatchQueue.main.async {
                 self.isCameraReady = true
-                self.status = "Omuz, dirsek ve bileğini kadraja al"
+                self.status = "Yüzünü kameraya göster"
             }
         }
     }
@@ -1202,190 +1274,152 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        let now = Date()
+        guard now.timeIntervalSince(lastProcessedAt) >= 0.075 else { return }
+        lastProcessedAt = now
+
         do {
             let handler = VNImageRequestHandler(
                 cmSampleBuffer: sampleBuffer,
                 orientation: .leftMirrored,
                 options: [:]
             )
-            try handler.perform([poseRequest])
-            guard let observation = poseRequest.results?.first,
-                  let frame = Self.poseFrame(from: observation) else {
+            try handler.perform([faceRequest])
+            guard let face = faceRequest.results?.max(by: {
+                $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height
+            }) else {
                 DispatchQueue.main.async { [weak self] in
-                    self?.hasGoodForm = false
-                    self?.status = "Üst gövdeni yan profilden göster"
-                    self?.joints = [:]
+                    self?.consumeMissingFace()
                 }
                 return
             }
             DispatchQueue.main.async { [weak self] in
-                self?.consume(frame)
+                self?.consume(face.boundingBox)
             }
         } catch {
             return
         }
     }
 
-    private func consume(_ frame: PushUpPoseFrame) {
-        let alpha = 0.34
-        let smooth = smoothedElbowAngle.map { $0 + alpha * (frame.elbowAngle - $0) } ?? frame.elbowAngle
-        smoothedElbowAngle = smooth
-        elbowAngle = smooth
-        bodyAlignment = frame.bodyAlignment
-        joints = frame.joints
+    private func consumeMissingFace() {
+        missingFaceFrames += 1
+        guard missingFaceFrames >= 4 else { return }
+        faceDetected = false
+        faceBox = nil
+        proximityPercent = 0
+        nearFrameCount = 0
+        farFrameCount = 0
+        status = isWorkoutActive ? "Yüzünü tekrar kadraja getir" : "Yüzünü kameraya göster"
+    }
 
-        let confident = frame.confidence > 0.25
-        let optionalBodyForm = frame.bodyAlignment.map { $0 > 135 } ?? true
-        hasGoodForm = confident && optionalBodyForm
+    private func consume(_ box: CGRect) {
+        missingFaceFrames = 0
+        faceDetected = true
+        faceBox = box
 
-        guard confident else {
-            status = "Omuz, dirsek ve bileğini kameraya göster"
+        let rawScale = Double(sqrt(box.width * box.height))
+        guard rawScale > 0.045 else {
+            status = "Telefonu biraz daha yakına getir"
             return
         }
+        guard rawScale < 0.62 else {
+            status = "Telefonu biraz uzaklaştır"
+            return
+        }
+
+        let alpha = 0.28
+        let scale = smoothedFaceScale.map { $0 + alpha * (rawScale - $0) } ?? rawScale
+        smoothedFaceScale = scale
 
         guard isWorkoutActive else {
-            status = optionalBodyForm ? "Yakın çekim hazır" : "Kalçanı omuz hizasında tut"
+            if count == 0 { status = "Yüz algılandı · Başlatmaya hazır" }
+            proximityPercent = 100
             return
         }
 
-        if smooth >= 148 {
-            reachedTop = true
-            if !reachedBottom {
-                topShoulderY = max(topShoulderY ?? frame.shoulderY, frame.shoulderY)
-                status = optionalBodyForm ? "Aşağı in" : "Gövdeni biraz daha düz tut"
-            }
+        if phase == .calibrating {
+            calibrationSamples.append(scale)
+            calibrationProgress = min(1, Double(calibrationSamples.count) / 16)
+            status = "Üst pozisyonda sabit kal · kalibrasyon"
+            guard calibrationSamples.count >= 16 else { return }
 
-            if reachedBottom && Date().timeIntervalSince(lastRepAt) > 0.55 {
-                count += 1
-                reachedBottom = false
-                topShoulderY = frame.shoulderY
-                lastRepAt = Date()
-                status = "Güzel tekrar"
-                if count > bestSession {
-                    bestSession = count
-                    defaults.set(count, forKey: "tempo.pushup.best")
+            let sorted = calibrationSamples.sorted()
+            let middle = sorted.count / 2
+            baselineFaceScale = (sorted[middle - 1] + sorted[middle]) / 2
+            calibrationSamples = []
+            calibrationProgress = 1
+            isCalibrating = false
+            phase = .top
+            proximityPercent = 100
+            status = "Hazır · aşağı in"
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return
+        }
+
+        guard let baselineFaceScale, baselineFaceScale > 0 else {
+            phase = .calibrating
+            isCalibrating = true
+            calibrationSamples = []
+            calibrationProgress = 0
+            status = "Başlangıç mesafesi yeniden ayarlanıyor"
+            return
+        }
+
+        let ratio = scale / baselineFaceScale
+        proximityPercent = Int((ratio * 100).rounded())
+
+        switch phase {
+        case .top:
+            isAtBottom = false
+            if ratio >= 1.17 {
+                nearFrameCount += 1
+                if nearFrameCount >= 2 {
+                    phase = .bottom
+                    isAtBottom = true
+                    nearFrameCount = 0
+                    farFrameCount = 0
+                    status = "Aşağı tamam · şimdi yüksel"
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } else {
+                    status = "Biraz daha yaklaş"
                 }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            }
-        } else if smooth <= 105 && reachedTop {
-            let requiredDrop = max(0.008, frame.upperArmLength * 0.07)
-            let shoulderDrop = (topShoulderY ?? frame.shoulderY) - frame.shoulderY
-            if shoulderDrop >= requiredDrop {
-                reachedBottom = true
-                status = "Şimdi yukarı"
             } else {
-                status = "Göğsünü biraz daha indir"
+                nearFrameCount = 0
+                status = ratio < 0.82 ? "Biraz kameraya yaklaş" : "Aşağı in"
+                if ratio > 0.9 && ratio < 1.08 {
+                    self.baselineFaceScale = baselineFaceScale * 0.995 + scale * 0.005
+                }
             }
-        } else if reachedBottom {
-            status = "Yukarı doğru devam et"
-        } else {
-            status = "Dirseklerini kontrollü bük"
+
+        case .bottom:
+            isAtBottom = true
+            if ratio <= 1.10 {
+                farFrameCount += 1
+                if farFrameCount >= 2 && Date().timeIntervalSince(lastRepAt) > 0.6 {
+                    count += 1
+                    phase = .top
+                    isAtBottom = false
+                    farFrameCount = 0
+                    nearFrameCount = 0
+                    lastRepAt = Date()
+                    status = "Güzel tekrar · tekrar aşağı"
+                    if count > bestSession {
+                        bestSession = count
+                        defaults.set(count, forKey: "tempo.pushup.best")
+                    }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+            } else {
+                farFrameCount = 0
+                status = ratio > 1.65 ? "Çok yakın · şimdi yüksel" : "Şimdi yüksel"
+            }
+
+        case .idle:
+            status = "Yüz algılandı · Başlatmaya hazır"
+
+        case .calibrating:
+            break
         }
-    }
-
-    private static func poseFrame(from observation: VNHumanBodyPoseObservation) -> PushUpPoseFrame? {
-        guard let points = try? observation.recognizedPoints(.all) else { return nil }
-        let left = sideCandidate(
-            points: points,
-            shoulder: .leftShoulder,
-            elbow: .leftElbow,
-            wrist: .leftWrist,
-            hip: .leftHip,
-            knee: .leftKnee,
-            ankle: .leftAnkle
-        )
-        let right = sideCandidate(
-            points: points,
-            shoulder: .rightShoulder,
-            elbow: .rightElbow,
-            wrist: .rightWrist,
-            hip: .rightHip,
-            knee: .rightKnee,
-            ankle: .rightAnkle
-        )
-        guard let candidate = [left, right].compactMap({ $0 }).max(by: { $0.confidence < $1.confidence }) else {
-            return nil
-        }
-
-        let elbow = angle(candidate.shoulder.location, candidate.elbow.location, candidate.wrist.location)
-        let upperArmLength = Double(hypot(
-            candidate.shoulder.location.x - candidate.elbow.location.x,
-            candidate.shoulder.location.y - candidate.elbow.location.y
-        ))
-
-        var alignment: Double?
-        if let hip = candidate.hip, let lowerBodyPoint = candidate.ankle ?? candidate.knee {
-            alignment = angle(candidate.shoulder.location, hip.location, lowerBodyPoint.location)
-        }
-
-        var joints: [String: CGPoint] = [
-            "shoulder": candidate.shoulder.location,
-            "elbow": candidate.elbow.location,
-            "wrist": candidate.wrist.location,
-        ]
-        if let hip = candidate.hip { joints["hip"] = hip.location }
-        if let knee = candidate.knee { joints["knee"] = knee.location }
-        if let ankle = candidate.ankle { joints["ankle"] = ankle.location }
-
-        return PushUpPoseFrame(
-            elbowAngle: elbow,
-            bodyAlignment: alignment,
-            confidence: candidate.confidence,
-            shoulderY: Double(candidate.shoulder.location.y),
-            upperArmLength: upperArmLength,
-            joints: joints
-        )
-    }
-
-    private struct SideCandidate {
-        let shoulder: VNRecognizedPoint
-        let elbow: VNRecognizedPoint
-        let wrist: VNRecognizedPoint
-        let hip: VNRecognizedPoint?
-        let knee: VNRecognizedPoint?
-        let ankle: VNRecognizedPoint?
-        let confidence: Float
-    }
-
-    private static func sideCandidate(
-        points: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint],
-        shoulder: VNHumanBodyPoseObservation.JointName,
-        elbow: VNHumanBodyPoseObservation.JointName,
-        wrist: VNHumanBodyPoseObservation.JointName,
-        hip: VNHumanBodyPoseObservation.JointName,
-        knee: VNHumanBodyPoseObservation.JointName,
-        ankle: VNHumanBodyPoseObservation.JointName
-    ) -> SideCandidate? {
-        guard let shoulderPoint = points[shoulder],
-              let elbowPoint = points[elbow],
-              let wristPoint = points[wrist] else { return nil }
-
-        let required = [shoulderPoint, elbowPoint, wristPoint]
-        let confidence = required.map(\.confidence).min() ?? 0
-        guard confidence > 0.18 else { return nil }
-
-        let hipPoint = points[hip].flatMap { $0.confidence > 0.18 ? $0 : nil }
-        let kneePoint = points[knee].flatMap { $0.confidence > 0.18 ? $0 : nil }
-        let anklePoint = points[ankle].flatMap { $0.confidence > 0.18 ? $0 : nil }
-        return SideCandidate(
-            shoulder: shoulderPoint,
-            elbow: elbowPoint,
-            wrist: wristPoint,
-            hip: hipPoint,
-            knee: kneePoint,
-            ankle: anklePoint,
-            confidence: confidence
-        )
-    }
-
-    private static func angle(_ first: CGPoint, _ center: CGPoint, _ last: CGPoint) -> Double {
-        let firstVector = CGVector(dx: first.x - center.x, dy: first.y - center.y)
-        let lastVector = CGVector(dx: last.x - center.x, dy: last.y - center.y)
-        let dot = Double(firstVector.dx * lastVector.dx + firstVector.dy * lastVector.dy)
-        let magnitude = Double(hypot(firstVector.dx, firstVector.dy) * hypot(lastVector.dx, lastVector.dy))
-        guard magnitude > 0.0001 else { return 0 }
-        let cosine = max(-1.0, min(1.0, dot / magnitude))
-        return acos(cosine) * 180 / Double.pi
     }
 }
 

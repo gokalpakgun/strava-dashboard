@@ -1028,7 +1028,7 @@ private struct MoreScreen: View {
                     MoreLink(title: "Tempo Hesabı", subtitle: "Profil ve sporların", icon: "person.crop.circle.badge.checkmark", color: TempoTheme.green, destination: AnyView(AccountSettingsScreen()))
                     MoreLink(title: "Başarılar", subtitle: "Seviye ve rozetlerin", icon: "medal.fill", color: TempoTheme.orange, destination: AnyView(AchievementsScreen()))
                     MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
-                    MoreLink(title: "Şınav Sayacı", subtitle: "Kamerayla tekrar takibi", icon: "figure.strengthtraining.traditional", color: .pink, destination: AnyView(PushUpCounterScreen()))
+                    MoreLink(title: "Şınav Sayacı", subtitle: "Ön kamerayla yüz takibi", icon: "figure.strengthtraining.traditional", color: .pink, destination: AnyView(PushUpCounterScreen()))
                     MoreLink(title: "Rotalar", subtitle: "GPS ısı haritan", icon: "map.fill", color: TempoTheme.orange, destination: AnyView(RoutesScreen()))
                     MoreLink(title: "Apple Sağlık", subtitle: "Uyku, su ve hareket", icon: "heart.text.square.fill", color: .pink, destination: AnyView(HealthScreen()))
                     MoreLink(title: "Aylık", subtitle: "Son 6 ay", icon: "chart.bar.fill", color: TempoTheme.green, destination: AnyView(MonthlyStatsScreen()))
