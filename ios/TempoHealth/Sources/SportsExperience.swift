@@ -5,6 +5,7 @@ import Foundation
 import MapKit
 import SwiftUI
 import UIKit
+import Vision
 
 struct SportsHubScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
