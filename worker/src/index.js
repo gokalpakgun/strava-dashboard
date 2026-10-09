@@ -1,4 +1,4 @@
-import { handleAccountRequest, handlePasswordResetPage } from "./account.js";
+import { accountContext, handleAccountRequest, handlePasswordResetPage } from "./account.js";
 
 const SESSION_COOKIE = "tempo_session";
 const STATE_COOKIE = "tempo_oauth_state";
@@ -34,6 +34,9 @@ export default {
       }
       if (url.pathname === "/api/mobile/auth/exchange" && request.method === "POST") {
         return exchangeMobileTicket(request, env);
+      }
+      if (url.pathname === "/api/mobile/auth/restore" && request.method === "POST") {
+        return restoreMobileConnection(request, env);
       }
       if (url.pathname === "/api/mobile/auth/logout" && request.method === "POST") {
         return logoutMobile(request, env);
@@ -579,6 +582,54 @@ async function completeMobileAuthorization(url, env) {
   });
 }
 
+async function restoreMobileConnection(request, env) {
+  requireBindings(env);
+  const account = await accountContext(request, env);
+  if (account.response) return account.response;
+
+  const suppliedToken = (request.headers.get("X-Tempo-Mobile-Token") || "").trim();
+  if (/^[a-f0-9]{64}$/i.test(suppliedToken)) {
+    const suppliedHash = await hashToken(suppliedToken);
+    const suppliedAthleteId = await env.TOKEN_STORE.get(`mobile-session:${suppliedHash}`);
+    const suppliedStrava = suppliedAthleteId
+      ? await env.TOKEN_STORE.get(`mobile-strava:${suppliedAthleteId}`, "json")
+      : null;
+    if (suppliedAthleteId && suppliedStrava?.refresh_token) {
+      await Promise.all([
+        env.TOKEN_STORE.put(`account-strava:${account.user.id}`, suppliedAthleteId),
+        env.TOKEN_STORE.put(`strava-account:${suppliedAthleteId}`, account.user.id),
+        env.TOKEN_STORE.put(`mobile-session:${suppliedHash}`, suppliedAthleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+        env.TOKEN_STORE.put(`mobile-link-for:${suppliedAthleteId}`, suppliedHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+      ]);
+      return json({ token: suppliedToken, athleteId: String(suppliedAthleteId), expiresIn: MOBILE_TOKEN_SECONDS });
+    }
+  }
+
+  const athleteId = await env.TOKEN_STORE.get(`account-strava:${account.user.id}`);
+  if (!athleteId) return json({ error: "Bu Tempo hesabına bağlı Strava hesabı bulunamadı." }, 404);
+
+  const saved = await env.TOKEN_STORE.get(`mobile-strava:${athleteId}`, "json");
+  if (!saved?.refresh_token) {
+    await Promise.all([
+      env.TOKEN_STORE.delete(`account-strava:${account.user.id}`),
+      env.TOKEN_STORE.delete(`strava-account:${athleteId}`),
+    ]);
+    return json({ error: "Kayıtlı Strava bağlantısının yenilenmesi gerekiyor." }, 404);
+  }
+
+  const token = randomToken();
+  const tokenHash = await hashToken(token);
+  const oldHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`);
+  const writes = [
+    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
+    env.TOKEN_STORE.put(`strava-account:${athleteId}`, account.user.id),
+  ];
+  if (oldHash && oldHash !== tokenHash) writes.push(env.TOKEN_STORE.delete(`mobile-session:${oldHash}`));
+  await Promise.all(writes);
+  return json({ token, athleteId: String(athleteId), expiresIn: MOBILE_TOKEN_SECONDS });
+}
+
 async function exchangeMobileTicket(request, env) {
   requireBindings(env);
   let input;
@@ -613,6 +664,7 @@ async function exchangeMobileTicket(request, env) {
   const tokenHash = await hashToken(token);
   const athleteKey = String(ticketData.athleteId);
   const oldHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteKey}`);
+  const account = await accountContext(request, env);
   const writes = [
     env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteKey, { expirationTtl: MOBILE_TOKEN_SECONDS }),
     env.TOKEN_STORE.put(`mobile-link-for:${athleteKey}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
@@ -623,6 +675,12 @@ async function exchangeMobileTicket(request, env) {
     env.TOKEN_STORE.put(ticketKey, JSON.stringify({ ...ticketData, token }), { expirationTtl: 300 }),
     env.TOKEN_STORE.delete(`mobile-dashboard:${athleteKey}`),
   ];
+  if (!account.response) {
+    writes.push(
+      env.TOKEN_STORE.put(`account-strava:${account.user.id}`, athleteKey),
+      env.TOKEN_STORE.put(`strava-account:${athleteKey}`, account.user.id),
+    );
+  }
   if (oldHash) writes.push(env.TOKEN_STORE.delete(`mobile-session:${oldHash}`));
   await Promise.all(writes);
   return json({
@@ -640,10 +698,13 @@ async function logoutMobile(request, env) {
   const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
   if (!athleteId) return json({ ok: true });
   const linkedHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`);
+  const accountId = await env.TOKEN_STORE.get(`strava-account:${athleteId}`);
   const deletes = [env.TOKEN_STORE.delete(`mobile-session:${tokenHash}`)];
   if (linkedHash === tokenHash) {
     deletes.push(
       env.TOKEN_STORE.delete(`mobile-link-for:${athleteId}`),
+      env.TOKEN_STORE.delete(`strava-account:${athleteId}`),
+      ...(accountId ? [env.TOKEN_STORE.delete(`account-strava:${accountId}`)] : []),
       env.TOKEN_STORE.delete(`mobile-strava:${athleteId}`),
       env.TOKEN_STORE.delete(`mobile-dashboard:${athleteId}`),
       env.TOKEN_STORE.delete(`health-water-athlete:${athleteId}`),

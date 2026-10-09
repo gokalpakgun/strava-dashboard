@@ -8,6 +8,7 @@ import UIKit
 @MainActor
 final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     @Published private(set) var isConnected = false
+    @Published private(set) var isRestoringConnection = true
     @Published private(set) var isBusy = false
     @Published private(set) var isLoadingDashboard = false
     @Published private(set) var isCoachLoading = false
@@ -29,6 +30,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var webAuthSession: ASWebAuthenticationSession?
     private var pendingVerifier: String?
     private var isCompletingAuthorization = false
+    private var hasAttemptedAccountRestore = false
+    private var accountAccessToken: String?
     private var lastDashboardRefresh: Date?
     private var accessToken: String? {
         didSet { isConnected = accessToken != nil }
@@ -36,14 +39,81 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     override init() {
         super.init()
-        accessToken = SecureTokenStore.read()
-        if accessToken != nil {
+        let storedToken = SecureTokenStore.read()
+        accessToken = storedToken
+        isConnected = storedToken != nil
+        isRestoringConnection = storedToken == nil
+        if storedToken != nil {
             status = "Strava bağlı. Verilerin hazırlanıyor."
             Task { await reloadAll() }
         }
         if healthSyncEnabled {
             startHealthObservers()
             Task { await syncAppleHealth() }
+        }
+    }
+
+    func restoreConnectionIfNeeded(accountToken: String?) async {
+        accountAccessToken = accountToken
+        guard !hasAttemptedAccountRestore else {
+            isRestoringConnection = false
+            return
+        }
+        guard let accountToken, !accountToken.isEmpty else {
+            isRestoringConnection = false
+            return
+        }
+
+        hasAttemptedAccountRestore = true
+        let hadLocalToken = accessToken != nil
+        isRestoringConnection = !hadLocalToken
+
+        do {
+            var request = URLRequest(url: URL(string: "/api/mobile/auth/restore", relativeTo: baseURL)!)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue("Bearer \(accountToken)", forHTTPHeaderField: "Authorization")
+            if let accessToken {
+                request.setValue(accessToken, forHTTPHeaderField: "X-Tempo-Mobile-Token")
+            }
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw APIError.server("Sunucudan yanıt alınamadı.")
+            }
+            let result = try? JSONDecoder().decode(TicketResponse.self, from: data)
+
+            if http.statusCode == 200, let restoredToken = result?.token {
+                guard SecureTokenStore.save(restoredToken) else {
+                    throw APIError.server("Bağlantı iPhone’da saklanamadı.")
+                }
+                accessToken = restoredToken
+                isConnected = true
+                status = "Strava bağlantın hazır."
+                isRestoringConnection = false
+                if dashboard == nil { await reloadAll() }
+                return
+            }
+
+            if http.statusCode == 404 {
+                isRestoringConnection = false
+                if !hadLocalToken {
+                    status = "Strava hesabını bir kez bağla; sonraki açılışlarda bağlantın korunacak."
+                }
+                return
+            }
+
+            if http.statusCode == 401 {
+                isRestoringConnection = false
+                return
+            }
+
+            throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
+        } catch {
+            isRestoringConnection = false
+            if !hadLocalToken {
+                status = "Kayıtlı Strava bağlantısı şu anda doğrulanamadı. Yeniden deneyebilirsin."
+            }
         }
     }
 
@@ -349,6 +419,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthError = nil
             UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
             coachAnswer = ""
+            hasAttemptedAccountRestore = true
+            isRestoringConnection = false
             isBusy = false
             status = "Strava bağlantısı kaldırıldı."
         }
@@ -377,6 +449,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 request.httpMethod = "POST"
                 request.timeoutInterval = 20
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                if let accountAccessToken {
+                    request.setValue("Bearer \(accountAccessToken)", forHTTPHeaderField: "Authorization")
+                }
                 request.httpBody = try JSONEncoder().encode(TicketRequest(ticket: ticket, verifier: verifier))
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
@@ -533,6 +608,7 @@ private enum SecureTokenStore {
 
     static func save(_ token: String) -> Bool {
         UserDefaults.standard.set(token, forKey: fallbackKey)
+        UserDefaults.standard.synchronize()
         let keychainSaved = saveToKeychain(token)
         return keychainSaved || UserDefaults.standard.string(forKey: fallbackKey) == token
     }

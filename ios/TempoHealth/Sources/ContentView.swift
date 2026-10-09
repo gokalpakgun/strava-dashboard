@@ -26,6 +26,8 @@ struct ContentView: View {
                 AccountWelcomeView()
             } else if account.profile?.onboardingComplete != true {
                 AccountOnboardingView()
+            } else if model.isRestoringConnection {
+                TempoLaunchView()
             } else if model.isConnected {
                 TempoMainShell(selectedTab: $selectedTab)
             } else {
@@ -33,6 +35,10 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task(id: account.isAuthenticated) {
+            guard account.isAuthenticated else { return }
+            await model.restoreConnectionIfNeeded(accountToken: account.authorizationToken)
+        }
     }
 }
 

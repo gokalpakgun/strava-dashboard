@@ -365,7 +365,7 @@ async function deleteAccount(request, env) {
   return new Response(null, { status: 204, headers: securityHeaders() });
 }
 
-async function accountContext(request, env) {
+export async function accountContext(request, env) {
   const token = bearerToken(request);
   if (!/^[a-f0-9]{64}$/i.test(token)) {
     return { response: responseJSON({ error: "Tempo oturumunun süresi doldu." }, 401) };

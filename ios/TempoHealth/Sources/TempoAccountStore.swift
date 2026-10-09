@@ -146,6 +146,7 @@ final class TempoAccountStore: ObservableObject {
     private var sessionToken: String?
 
     var isAuthenticated: Bool { profile != nil && sessionToken != nil }
+    var authorizationToken: String? { sessionToken }
 
     init() {
         sessionToken = AccountTokenStore.read()
