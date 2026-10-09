@@ -96,27 +96,39 @@ struct AccountWelcomeView: View {
                 TempoAmbientBackground()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 27) {
-                        HStack(spacing: 12) {
-                            TempoBrandMark(size: 48)
-                            VStack(alignment: .leading, spacing: 1) {
+                    VStack(spacing: 25) {
+                        HStack(spacing: 11) {
+                            TempoBrandMark(size: 46)
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text("Tempo")
-                                    .font(.title3.bold())
-                                Text("Sağlık ve spor")
+                                    .font(.headline)
+                                Text("Sağlık ve hareket")
                                     .font(.caption)
                                     .foregroundStyle(TempoTheme.secondary)
                             }
+                            Spacer()
+                            Label("Özel", systemImage: "lock.fill")
+                                .font(.caption2.bold())
+                                .foregroundStyle(TempoTheme.green)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(.ultraThinMaterial, in: Capsule())
                         }
 
-                        VStack(alignment: .leading, spacing: 13) {
-                            Text("Daha iyi hisset.\nDaha güçlü hareket et.")
-                                .font(.system(size: 40, weight: .bold, design: .rounded))
-                                .tracking(-1.2)
-                                .minimumScaleFactor(0.82)
-                            Text("Aktivitelerini ve sağlık verilerini anlamlı, kişisel ve sakin bir deneyimde buluştur.")
-                                .font(.body)
+                        VStack(spacing: 12) {
+                            TempoBrandMark(size: 78)
+                                .padding(.bottom, 3)
+                            Text("Daha net hareket et.\nDaha iyi hisset.")
+                                .font(.system(size: 39, weight: .bold, design: .rounded))
+                                .tracking(-1.1)
+                                .multilineTextAlignment(.center)
+                                .minimumScaleFactor(0.84)
+                            Text("Aktivite ve sağlık verilerini sakin, kişisel ve güçlü bir günlük deneyimde buluştur.")
+                                .font(.subheadline)
                                 .foregroundStyle(TempoTheme.secondary)
+                                .multilineTextAlignment(.center)
                                 .lineSpacing(4)
+                                .padding(.horizontal, 8)
                         }
 
                         WellnessIntroCard()
@@ -124,33 +136,42 @@ struct AccountWelcomeView: View {
                         VStack(spacing: 11) {
                             NavigationLink(destination: AccountFormView(mode: .signUp)) {
                                 HStack {
-                                    Text("Ücretsiz hesap oluştur")
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Ücretsiz hesap oluştur")
+                                            .font(.headline)
+                                        Text("Kişisel alanını birkaç adımda hazırla")
+                                            .font(.caption2)
+                                            .opacity(0.68)
+                                    }
                                     Spacer()
                                     Image(systemName: "arrow.right")
+                                        .frame(width: 32, height: 32)
+                                        .background(.black.opacity(0.08), in: Circle())
                                 }
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(AccountPrimaryButtonStyle())
 
                             NavigationLink(destination: AccountFormView(mode: .signIn)) {
-                                Text("Giriş yap")
-                                    .frame(maxWidth: .infinity)
+                                HStack {
+                                    Text("Zaten hesabım var")
+                                    Spacer()
+                                    Image(systemName: "person.crop.circle")
+                                }
+                                .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(AccountOutlineButtonStyle())
                         }
 
-                        HStack(spacing: 8) {
-                            Image(systemName: "lock.shield.fill")
-                                .foregroundStyle(TempoTheme.green)
-                            Text("Verilerin senin kontrolünde.")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(TempoTheme.secondary)
-                        .frame(maxWidth: .infinity)
+                        Label("Verilerin senin kontrolünde ve yalnızca izin verdiğin amaçlarla kullanılır.", systemImage: "checkmark.shield.fill")
+                            .font(.caption)
+                            .foregroundStyle(TempoTheme.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 20)
-                    .padding(.bottom, 28)
+                    .padding(.horizontal, 21)
+                    .padding(.top, 18)
+                    .padding(.bottom, 30)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -201,11 +222,16 @@ private struct WellnessIntroCard: View {
             }
         }
         .padding(19)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 27, style: .continuous))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 27, style: .continuous))
+        .background(
+            LinearGradient(colors: [TempoTheme.green.opacity(0.055), TempoTheme.blue.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 27, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 27, style: .continuous)
-                .stroke(.white.opacity(0.075))
+                .stroke(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
         )
+        .shadow(color: .black.opacity(0.18), radius: 20, y: 10)
     }
 }
 
@@ -256,8 +282,14 @@ private struct AccountFormView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 25) {
-                    TempoBrandMark(size: 66)
-                        .padding(.top, 7)
+                    VStack(spacing: 9) {
+                        TempoBrandMark(size: 66)
+                        Text("TEMPO HESABI")
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(1.8)
+                            .foregroundStyle(TempoTheme.green)
+                    }
+                    .padding(.top, 7)
 
                     VStack(spacing: 8) {
                         Text(mode.title)
@@ -349,8 +381,16 @@ private struct AccountFormView: View {
                         .opacity(canSubmit ? 1 : 0.56)
                     }
                     .padding(18)
-                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(.white.opacity(0.07)))
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .background(
+                        LinearGradient(colors: [.white.opacity(0.035), TempoTheme.green.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    )
+                    .shadow(color: .black.opacity(0.18), radius: 18, y: 9)
 
                     HStack(spacing: 5) {
                         Text(mode.alternatePrompt)

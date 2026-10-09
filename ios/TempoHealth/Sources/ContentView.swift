@@ -144,100 +144,134 @@ private struct WelcomeScreen: View {
             TempoAmbientBackground()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 27) {
+                VStack(spacing: 24) {
                     HStack(spacing: 11) {
-                        TempoBrandMark(size: 48)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Tempo").font(.title3.bold())
-                            Text("Aktivitelerini bağla")
+                        TempoBrandMark(size: 46)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Tempo")
+                                .font(.headline)
+                            Text("Hareket verilerin, tek yerde")
                                 .font(.caption)
                                 .foregroundStyle(TempoTheme.secondary)
                         }
                         Spacer()
+                        Label("Güvenli", systemImage: "lock.fill")
+                            .font(.caption2.bold())
+                            .foregroundStyle(TempoTheme.green)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(.ultraThinMaterial, in: Capsule())
                     }
 
-                    VStack(spacing: 11) {
-                        Text("Antrenmanların\nseni bekliyor.")
-                            .font(.system(size: 39, weight: .bold, design: .rounded))
+                    VStack(spacing: 10) {
+                        Text("STRAVA BAĞLANTISI")
+                            .font(.caption.bold())
+                            .tracking(1.7)
+                            .foregroundStyle(TempoTheme.orange)
+                        Text("Hareket geçmişini\nTempo’ya getir.")
+                            .font(.system(size: 38, weight: .bold, design: .rounded))
                             .tracking(-1)
                             .multilineTextAlignment(.center)
-                        Text("Strava hesabını bağla; aktivitelerin, rotaların ve performans geçmişin Tempo’da hazır olsun.")
-                            .font(.body)
+                        Text("Aktivitelerin, rotaların ve ilerleme verilerin izin verdiğin ölçüde güvenle eşitlenir.")
+                            .font(.subheadline)
                             .foregroundStyle(TempoTheme.secondary)
                             .multilineTextAlignment(.center)
                             .lineSpacing(4)
+                            .padding(.horizontal, 8)
                     }
-                    .frame(maxWidth: .infinity)
 
                     ConnectedAppsCard()
 
-                    VStack(spacing: 12) {
-                        Button(action: model.connectStrava) {
-                            HStack {
-                                if model.isBusy {
-                                    ProgressView().tint(.white)
-                                } else {
-                                    Image(systemName: "figure.run")
-                                }
+                    Button(action: model.connectStrava) {
+                        HStack(spacing: 12) {
+                            if model.isBusy {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "figure.run")
+                                    .font(.title3)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(model.isBusy ? "Strava açılıyor…" : "Strava ile devam et")
-                                Spacer()
+                                    .font(.headline)
                                 if !model.isBusy {
-                                    Image(systemName: "arrow.right")
+                                    Text("Bir kez bağla, otomatik güncellensin")
+                                        .font(.caption2)
+                                        .opacity(0.78)
                                 }
                             }
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 19)
-                            .frame(height: 59)
-                            .background(
-                                LinearGradient(
-                                    colors: [TempoTheme.orange, Color(red: 0.91, green: 0.28, blue: 0.16)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 19, style: .continuous)
-                            )
+                            Spacer()
+                            if !model.isBusy {
+                                Image(systemName: "arrow.right")
+                                    .font(.subheadline.bold())
+                                    .frame(width: 34, height: 34)
+                                    .background(.white.opacity(0.14), in: Circle())
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(model.isBusy)
-                        .opacity(model.isBusy ? 0.78 : 1)
-
-                        HStack(spacing: 7) {
-                            Image(systemName: "lock.fill")
-                                .foregroundStyle(TempoTheme.green)
-                            Text("Giriş ve izin işlemleri Strava’da tamamlanır.")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(TempoTheme.secondary)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 64)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(red: 1, green: 0.36, blue: 0.18), TempoTheme.orange],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
+                        )
+                        .shadow(color: TempoTheme.orange.opacity(0.24), radius: 18, y: 9)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(model.isBusy)
+                    .opacity(model.isBusy ? 0.76 : 1)
+
+                    StravaTrustRow()
 
                     if !model.status.isEmpty {
-                        HStack(spacing: 9) {
+                        HStack(spacing: 10) {
                             if model.isBusy {
                                 ProgressView().tint(TempoTheme.green)
                             } else {
-                                Image(systemName: "info.circle")
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundStyle(TempoTheme.green)
                             }
                             Text(model.status)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .font(.caption)
-                        .foregroundStyle(TempoTheme.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .padding(14)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                     }
-
-                    Text("Bağlantıyı daha sonra Profil bölümünden yönetebilirsin.")
-                        .font(.caption2)
-                        .foregroundStyle(TempoTheme.secondary)
-                        .multilineTextAlignment(.center)
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 20)
-                .padding(.bottom, 30)
+                .padding(.horizontal, 21)
+                .padding(.top, 18)
+                .padding(.bottom, 34)
             }
         }
+    }
+}
+
+private struct StravaTrustRow: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            trustItem(icon: "lock.shield.fill", title: "Güvenli")
+            trustItem(icon: "arrow.triangle.2.circlepath", title: "Otomatik")
+            trustItem(icon: "person.crop.circle.badge.checkmark", title: "Kontrol sende")
+        }
+        .padding(.vertical, 13)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(.white.opacity(0.07)))
+    }
+
+    private func trustItem(icon: String, title: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(TempoTheme.green)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -292,8 +326,19 @@ private struct ConnectedAppsCard: View {
             }
         }
         .padding(20)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.075)))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(
+            LinearGradient(
+                colors: [TempoTheme.orange.opacity(0.08), TempoTheme.blue.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        )
     }
 }
 
@@ -345,30 +390,74 @@ private struct HomeScreen: View {
     }
 
     private func hero(_ athlete: TempoAthlete) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("MERHABA, \((athlete.firstname ?? "SPORCU").uppercased())")
-                        .font(.caption.bold()).tracking(1.8).foregroundStyle(.black.opacity(0.55))
-                    Text("Bu hafta ritmini\nkorumaya devam et.")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(.black)
+        let progress = min(weekDistance / max(weeklyGoalKm, 1), 1)
+        return ZStack(alignment: .topTrailing) {
+            Circle()
+                .fill(TempoTheme.green.opacity(0.16))
+                .frame(width: 190, height: 190)
+                .blur(radius: 28)
+                .offset(x: 62, y: -78)
+
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("MERHABA, \((athlete.firstname ?? "SPORCU").uppercased())")
+                            .font(.caption.bold())
+                            .tracking(1.7)
+                            .foregroundStyle(TempoTheme.green)
+                        Text("Haftanın ritmi")
+                            .font(.system(size: 29, weight: .bold, design: .rounded))
+                        Text(progress >= 1 ? "Hedef tamamlandı. Güçlü bir hafta." : "Hedefine sakin ve istikrarlı ilerliyorsun.")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.62))
+                    }
+                    Spacer(minLength: 12)
+                    ZStack {
+                        Circle()
+                            .stroke(.white.opacity(0.08), lineWidth: 8)
+                        Circle()
+                            .trim(from: 0, to: CGFloat(progress))
+                            .stroke(
+                                LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .top, endPoint: .bottom),
+                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 1) {
+                            Text("%\(Int(progress * 100))")
+                                .font(.headline.monospacedDigit().bold())
+                            Text("HEDEF")
+                                .font(.system(size: 7, weight: .bold))
+                                .tracking(0.8)
+                                .foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                    .frame(width: 82, height: 82)
                 }
-                Spacer()
-                Image(systemName: "bolt.heart.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.black)
+
+                HStack(spacing: 8) {
+                    HomeHeroPill(icon: "figure.run", value: "\(weekActivities.count)", label: "aktivite")
+                    HomeHeroPill(icon: "point.topleft.down.to.point.bottomright.curvepath", value: TempoFormat.distance(weekDistance), label: "mesafe")
+                    HomeHeroPill(icon: "clock.fill", value: TempoFormat.duration(weekSeconds), label: "süre")
+                }
             }
-            HStack {
-                Label("\(weekActivities.count) aktivite", systemImage: "checkmark.circle.fill")
-                Spacer()
-                Text(TempoFormat.distance(weekDistance)).fontWeight(.bold)
-            }
-            .font(.subheadline)
-            .foregroundStyle(.black.opacity(0.7))
+            .padding(21)
         }
-        .padding(22)
-        .background(LinearGradient(colors: [TempoTheme.green, Color(red: 0.62, green: 1, blue: 0.67)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.075, green: 0.12, blue: 0.105),
+                    Color(red: 0.045, green: 0.075, blue: 0.09)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 29, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 29, style: .continuous)
+                .stroke(LinearGradient(colors: [TempoTheme.green.opacity(0.3), .white.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        )
+        .shadow(color: .black.opacity(0.24), radius: 24, y: 13)
     }
 
     private var weeklyMetrics: some View {
@@ -403,6 +492,30 @@ private struct HomeScreen: View {
 
     private var dailyMotivation: some View {
         DailyMotivationCard()
+    }
+}
+
+private struct HomeHeroPill: View {
+    let icon: String
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(TempoTheme.green)
+            Text(value)
+                .font(.subheadline.bold())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(TempoTheme.secondary)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -1346,25 +1459,49 @@ private struct TempoPage<Content: View>: View {
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         ZStack {
-            TempoTheme.background.ignoresSafeArea()
-            ScrollView { VStack(spacing: 16) { content }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 92) }
+            TempoAmbientBackground()
+            ScrollView {
+                VStack(spacing: 16) { content }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 92)
+            }
         }
     }
 }
 
 private struct HomeHeader: View {
     @EnvironmentObject private var model: TempoAppModel
+
+    private var dateText: String {
+        Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
+
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TEMPO").font(.caption.bold()).tracking(3).foregroundStyle(TempoTheme.green)
-                Text("Kontrol Paneli").font(.title2.bold())
+            VStack(alignment: .leading, spacing: 3) {
+                Text("TEMPO")
+                    .font(.caption.bold())
+                    .tracking(3)
+                    .foregroundStyle(TempoTheme.green)
+                Text(dateText.prefix(1).uppercased() + dateText.dropFirst())
+                    .font(.title3.bold())
             }
             Spacer()
             Button { Task { await model.reloadAll() } } label: {
-                Group { if model.isLoadingDashboard { ProgressView() } else { Image(systemName: "arrow.clockwise") } }
-                    .foregroundStyle(TempoTheme.green).frame(width: 44, height: 44).background(TempoTheme.card, in: Circle())
-            }.disabled(model.isLoadingDashboard)
+                Group {
+                    if model.isLoadingDashboard {
+                        ProgressView().tint(TempoTheme.green)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .foregroundStyle(TempoTheme.green)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(Circle().stroke(.white.opacity(0.08)))
+            }
+            .disabled(model.isLoadingDashboard)
         }
     }
 }

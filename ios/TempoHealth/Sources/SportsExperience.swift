@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreLocation
+import CoreMotion
 import ImageIO
 import Foundation
 import MapKit
@@ -683,7 +684,7 @@ struct PushUpCounterScreen: View {
                     HStack(alignment: .top, spacing: 9) {
                         Image(systemName: "lock.shield.fill")
                             .foregroundStyle(TempoTheme.green)
-                        Text("Kamera görüntüsü yalnızca iPhone üzerinde işlenir; kaydedilmez veya sunucuya gönderilmez.")
+                        Text("Yüz ve omuz konumları yalnızca iPhone üzerinde işlenir; görüntü kaydedilmez veya sunucuya gönderilmez.")
                             .font(.caption)
                             .foregroundStyle(TempoTheme.secondary)
                             .lineSpacing(3)
@@ -714,8 +715,9 @@ struct PushUpCounterScreen: View {
                 }
                 .overlay {
                     PushUpFaceOverlay(
-                        faceBox: counter.faceBox,
-                        faceDetected: counter.faceDetected,
+                        trackingReady: counter.trackingReady,
+                        shouldersDetected: counter.shouldersDetected,
+                        phoneIsStable: counter.phoneIsStable,
                         isNear: counter.isAtBottom,
                         isCalibrating: counter.isCalibrating
                     )
@@ -734,7 +736,7 @@ struct PushUpCounterScreen: View {
                 HStack {
                     HStack(spacing: 7) {
                         Circle()
-                            .fill(counter.faceDetected ? TempoTheme.green : TempoTheme.orange)
+                            .fill(counter.trackingReady ? TempoTheme.green : TempoTheme.orange)
                             .frame(width: 8, height: 8)
                         Text(counter.status)
                             .font(.caption.weight(.semibold))
@@ -868,15 +870,15 @@ struct PushUpCounterScreen: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Doğru algılama için")
                         .font(.headline)
-                    Text("Önden yüz takibi · dar alan modu")
+                    Text("Önden yüz ve omuz takibi · sabit telefon")
                         .font(.caption)
                         .foregroundStyle(TempoTheme.secondary)
                 }
             }
             HStack(alignment: .top, spacing: 10) {
                 PushUpGuideStep(number: "1", text: "Telefonu yere, ekranı sana bakacak şekilde yaklaşık 60–100 cm önüne koy.")
-                PushUpGuideStep(number: "2", text: "Üst şınav pozisyonunda yüzünü çerçeveye getir ve Başlat’a dokun.")
-                PushUpGuideStep(number: "3", text: "Kısa kalibrasyondan sonra kameraya yaklaşarak in, geri uzaklaşarak yüksel.")
+                PushUpGuideStep(number: "2", text: "Üst pozisyonda yüzün ve iki omzun halkada görünürken Başlat’a dokun.")
+                PushUpGuideStep(number: "3", text: "Telefonu sabit bırak; yüzünle omuzların birlikte yaklaşınca tekrar algılanır.")
             }
         }
         .padding(17)
@@ -1011,61 +1013,70 @@ private final class PushUpPreviewView: UIView {
 }
 
 private struct PushUpFaceOverlay: View {
-    let faceBox: CGRect?
-    let faceDetected: Bool
+    let trackingReady: Bool
+    let shouldersDetected: Bool
+    let phoneIsStable: Bool
     let isNear: Bool
     let isCalibrating: Bool
+
+    private var ringColor: Color {
+        if !phoneIsStable { return TempoTheme.orange }
+        if isNear { return .pink }
+        return trackingReady ? TempoTheme.green : .white.opacity(0.48)
+    }
+
+    private var helperText: String {
+        if !phoneIsStable { return "Telefonu sabit bir yere bırak" }
+        if !shouldersDetected { return "Yüzünle iki omzunu halkaya getir" }
+        return trackingReady ? "Hareket takibi hazır" : "Yüzünü halkaya getir"
+    }
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                if let faceBox {
-                    let rect = converted(faceBox, in: proxy.size)
-                    RoundedRectangle(cornerRadius: max(18, rect.width * 0.22), style: .continuous)
-                        .stroke(
-                            isNear ? Color.pink : TempoTheme.green,
-                            style: StrokeStyle(lineWidth: 3, dash: isCalibrating ? [8, 6] : [])
-                        )
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
-                        .shadow(color: (isNear ? Color.pink : TempoTheme.green).opacity(0.55), radius: 10)
-                } else {
-                    Ellipse()
-                        .stroke(
-                            .white.opacity(0.42),
-                            style: StrokeStyle(lineWidth: 2, dash: [9, 7])
-                        )
-                        .frame(width: proxy.size.width * 0.45, height: proxy.size.height * 0.34)
-                        .position(x: proxy.size.width * 0.5, y: proxy.size.height * 0.38)
-                }
+                Circle()
+                    .fill(.black.opacity(0.13))
+                    .frame(width: 154, height: 154)
+                    .overlay(
+                        Circle()
+                            .stroke(ringColor.opacity(0.22), lineWidth: 18)
+                            .blur(radius: 11)
+                    )
+                    .overlay(
+                        Circle()
+                            .trim(from: 0.04, to: 0.96)
+                            .stroke(
+                                ringColor,
+                                style: StrokeStyle(
+                                    lineWidth: 3,
+                                    lineCap: .round,
+                                    dash: isCalibrating ? [10, 7] : []
+                                )
+                            )
+                            .rotationEffect(.degrees(-90))
+                    )
+                    .overlay(
+                        Image(systemName: trackingReady ? "face.smiling.inverse" : "viewfinder")
+                            .font(.system(size: 35, weight: .light))
+                            .foregroundStyle(.white.opacity(trackingReady ? 0.9 : 0.5))
+                    )
+                    .scaleEffect(isNear ? 1.1 : 1)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isNear)
+                    .position(x: proxy.size.width * 0.5, y: proxy.size.height * 0.38)
 
-                VStack {
-                    Spacer()
-                    HStack(spacing: 7) {
-                        Image(systemName: faceDetected ? "face.smiling.inverse" : "viewfinder")
-                        Text(faceDetected ? "Yüz takibi aktif" : "Yüzünü kesikli alana getir")
-                    }
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
-                    .background(.black.opacity(0.34), in: Capsule())
-                    .padding(.bottom, 102)
+                HStack(spacing: 7) {
+                    Image(systemName: !phoneIsStable ? "iphone.gen3.radiowaves.left.and.right" : (trackingReady ? "checkmark.circle.fill" : "person.crop.circle.badge.exclamationmark"))
+                    Text(helperText)
                 }
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white.opacity(0.86))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .position(x: proxy.size.width * 0.5, y: proxy.size.height - 118)
             }
         }
         .allowsHitTesting(false)
-    }
-
-    private func converted(_ box: CGRect, in size: CGSize) -> CGRect {
-        let expandedWidth = min(1, box.width * 1.2)
-        let expandedHeight = min(1, box.height * 1.35)
-        return CGRect(
-            x: (1 - box.midX - expandedWidth / 2) * size.width,
-            y: (1 - box.midY - expandedHeight / 2) * size.height,
-            width: expandedWidth * size.width,
-            height: expandedHeight * size.height
-        )
     }
 }
 
@@ -1078,13 +1089,18 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     @Published private(set) var isCalibrating = false
     @Published private(set) var calibrationProgress = 0.0
     @Published private(set) var faceDetected = false
-    @Published private(set) var faceBox: CGRect?
+    @Published private(set) var shouldersDetected = false
+    @Published private(set) var phoneIsStable = true
     @Published private(set) var proximityPercent = 0
     @Published private(set) var isAtBottom = false
     @Published private(set) var count = 0
     @Published private(set) var elapsedSeconds = 0
-    @Published private(set) var status = "Yüzünü kameraya göster"
+    @Published private(set) var status = "Yüzünle iki omzunu kameraya göster"
     @Published private(set) var bestSession: Int
+
+    var trackingReady: Bool {
+        faceDetected && shouldersDetected && phoneIsStable
+    }
 
     private enum MotionPhase {
         case idle
@@ -1094,16 +1110,22 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     }
 
     private let sessionQueue = DispatchQueue(label: "tempo.pushup.camera")
-    private let visionQueue = DispatchQueue(label: "tempo.pushup.face")
+    private let visionQueue = DispatchQueue(label: "tempo.pushup.face-shoulder")
     private let faceRequest = VNDetectFaceRectanglesRequest()
+    private let poseRequest = VNDetectHumanBodyPoseRequest()
+    private let motionManager = CMMotionManager()
     private var configured = false
     private var phase: MotionPhase = .idle
-    private var calibrationSamples: [Double] = []
+    private var calibrationFaceSamples: [Double] = []
+    private var calibrationShoulderSamples: [Double] = []
     private var baselineFaceScale: Double?
+    private var baselineShoulderWidth: Double?
     private var smoothedFaceScale: Double?
+    private var smoothedShoulderWidth: Double?
     private var nearFrameCount = 0
     private var farFrameCount = 0
     private var missingFaceFrames = 0
+    private var phoneMovementBlockUntil = Date.distantPast
     private var lastProcessedAt = Date.distantPast
     private var lastRepAt = Date.distantPast
     private var elapsedTimer: Timer?
@@ -1124,6 +1146,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     }
 
     func prepareCamera() {
+        startMotionMonitoring()
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             permissionDenied = false
@@ -1143,6 +1166,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
 
     func stopCamera() {
         stopWorkout()
+        motionManager.stopDeviceMotionUpdates()
         sessionQueue.async { [weak self] in
             guard let self, self.session.isRunning else { return }
             self.session.stopRunning()
@@ -1157,13 +1181,15 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         isWorkoutActive = true
         isCalibrating = true
         calibrationProgress = 0
-        calibrationSamples = []
+        calibrationFaceSamples = []
+        calibrationShoulderSamples = []
         baselineFaceScale = nil
+        baselineShoulderWidth = nil
         nearFrameCount = 0
         farFrameCount = 0
         isAtBottom = false
         lastRepAt = .distantPast
-        status = faceDetected ? "Üst pozisyonda kısa süre sabit kal" : "Yüzünü kesikli alana getir"
+        status = trackingReady ? "Üst pozisyonda kısa süre sabit kal" : "Yüzünle iki omzunu halkaya getir"
         elapsedTimer?.invalidate()
         elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.elapsedSeconds += 1
@@ -1195,13 +1221,46 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         elapsedSeconds = 0
         phase = .idle
         baselineFaceScale = nil
+        baselineShoulderWidth = nil
         smoothedFaceScale = nil
-        calibrationSamples = []
+        smoothedShoulderWidth = nil
+        calibrationFaceSamples = []
+        calibrationShoulderSamples = []
         calibrationProgress = 0
         isCalibrating = false
         isAtBottom = false
         proximityPercent = 0
-        status = faceDetected ? "Yüz algılandı · Başlatmaya hazır" : "Yüzünü kameraya göster"
+        status = trackingReady ? "Takip hazır · Başlatmaya hazır" : "Yüzünle iki omzunu kameraya göster"
+    }
+
+    private func startMotionMonitoring() {
+        guard motionManager.isDeviceMotionAvailable, !motionManager.isDeviceMotionActive else {
+            phoneIsStable = true
+            return
+        }
+        motionManager.deviceMotionUpdateInterval = 0.05
+        motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            guard let self, let motion else { return }
+            let rotation = sqrt(
+                motion.rotationRate.x * motion.rotationRate.x +
+                motion.rotationRate.y * motion.rotationRate.y +
+                motion.rotationRate.z * motion.rotationRate.z
+            )
+            let acceleration = sqrt(
+                motion.userAcceleration.x * motion.userAcceleration.x +
+                motion.userAcceleration.y * motion.userAcceleration.y +
+                motion.userAcceleration.z * motion.userAcceleration.z
+            )
+            if rotation > 0.32 || acceleration > 0.075 {
+                self.phoneMovementBlockUntil = Date().addingTimeInterval(0.9)
+                self.phoneIsStable = false
+                self.nearFrameCount = 0
+                self.farFrameCount = 0
+                if self.isWorkoutActive { self.status = "Telefon hareket etti · sabit bırak" }
+            } else if Date() >= self.phoneMovementBlockUntil {
+                self.phoneIsStable = true
+            }
+        }
     }
 
     private func configureAndStart() {
@@ -1209,7 +1268,10 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
             guard let self else { return }
             if self.configured {
                 if !self.session.isRunning { self.session.startRunning() }
-                DispatchQueue.main.async { self.isCameraReady = true }
+                DispatchQueue.main.async {
+                    self.isCameraReady = true
+                    self.startMotionMonitoring()
+                }
                 return
             }
 
@@ -1227,16 +1289,15 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
                 return
             }
 
-            if let device = input.device as AVCaptureDevice? {
-                try? device.lockForConfiguration()
-                if device.isFocusModeSupported(.continuousAutoFocus) {
-                    device.focusMode = .continuousAutoFocus
-                }
-                if device.isExposureModeSupported(.continuousAutoExposure) {
-                    device.exposureMode = .continuousAutoExposure
-                }
-                device.unlockForConfiguration()
+            let device = input.device
+            try? device.lockForConfiguration()
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
             }
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            device.unlockForConfiguration()
             self.session.addInput(input)
 
             let output = AVCaptureVideoDataOutput()
@@ -1264,7 +1325,8 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
             self.session.startRunning()
             DispatchQueue.main.async {
                 self.isCameraReady = true
-                self.status = "Yüzünü kameraya göster"
+                self.status = "Yüzünle iki omzunu kameraya göster"
+                self.startMotionMonitoring()
             }
         }
     }
@@ -1284,17 +1346,20 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
                 orientation: .leftMirrored,
                 options: [:]
             )
-            try handler.perform([faceRequest])
-            guard let face = faceRequest.results?.max(by: {
+            try handler.perform([faceRequest, poseRequest])
+            let face = faceRequest.results?.max(by: {
                 $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height
-            }) else {
+            })
+            let shoulderWidth = poseRequest.results?.first.flatMap(Self.shoulderWidth(from:))
+
+            guard let face else {
                 DispatchQueue.main.async { [weak self] in
                     self?.consumeMissingFace()
                 }
                 return
             }
             DispatchQueue.main.async { [weak self] in
-                self?.consume(face.boundingBox)
+                self?.consume(face.boundingBox, shoulderWidth: shoulderWidth)
             }
         } catch {
             return
@@ -1305,48 +1370,64 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         missingFaceFrames += 1
         guard missingFaceFrames >= 4 else { return }
         faceDetected = false
-        faceBox = nil
+        shouldersDetected = false
         proximityPercent = 0
         nearFrameCount = 0
         farFrameCount = 0
-        status = isWorkoutActive ? "Yüzünü tekrar kadraja getir" : "Yüzünü kameraya göster"
+        status = isWorkoutActive ? "Yüzünü tekrar halkaya getir" : "Yüzünle iki omzunu kameraya göster"
     }
 
-    private func consume(_ box: CGRect) {
+    private func consume(_ box: CGRect, shoulderWidth rawShoulderWidth: Double?) {
         missingFaceFrames = 0
         faceDetected = true
-        faceBox = box
+        shouldersDetected = rawShoulderWidth != nil
 
-        let rawScale = Double(sqrt(box.width * box.height))
-        guard rawScale > 0.045 else {
+        guard phoneIsStable else {
+            nearFrameCount = 0
+            farFrameCount = 0
+            status = "Telefon hareket etti · sabit bırak"
+            return
+        }
+
+        let rawFaceScale = Double(sqrt(box.width * box.height))
+        guard rawFaceScale > 0.045 else {
             status = "Telefonu biraz daha yakına getir"
             return
         }
-        guard rawScale < 0.62 else {
+        guard rawFaceScale < 0.62 else {
             status = "Telefonu biraz uzaklaştır"
             return
         }
+        guard let rawShoulderWidth, rawShoulderWidth > 0.08 else {
+            status = "İki omzunu da kadraja al"
+            nearFrameCount = 0
+            farFrameCount = 0
+            return
+        }
 
-        let alpha = 0.28
-        let scale = smoothedFaceScale.map { $0 + alpha * (rawScale - $0) } ?? rawScale
-        smoothedFaceScale = scale
+        let alpha = 0.26
+        let faceScale = smoothedFaceScale.map { $0 + alpha * (rawFaceScale - $0) } ?? rawFaceScale
+        let shoulderWidth = smoothedShoulderWidth.map { $0 + alpha * (rawShoulderWidth - $0) } ?? rawShoulderWidth
+        smoothedFaceScale = faceScale
+        smoothedShoulderWidth = shoulderWidth
 
         guard isWorkoutActive else {
-            if count == 0 { status = "Yüz algılandı · Başlatmaya hazır" }
+            if count == 0 { status = "Yüz ve omuz takibi hazır" }
             proximityPercent = 100
             return
         }
 
         if phase == .calibrating {
-            calibrationSamples.append(scale)
-            calibrationProgress = min(1, Double(calibrationSamples.count) / 16)
+            calibrationFaceSamples.append(faceScale)
+            calibrationShoulderSamples.append(shoulderWidth)
+            calibrationProgress = min(1, Double(calibrationFaceSamples.count) / 18)
             status = "Üst pozisyonda sabit kal · kalibrasyon"
-            guard calibrationSamples.count >= 16 else { return }
+            guard calibrationFaceSamples.count >= 18 else { return }
 
-            let sorted = calibrationSamples.sorted()
-            let middle = sorted.count / 2
-            baselineFaceScale = (sorted[middle - 1] + sorted[middle]) / 2
-            calibrationSamples = []
+            baselineFaceScale = Self.median(calibrationFaceSamples)
+            baselineShoulderWidth = Self.median(calibrationShoulderSamples)
+            calibrationFaceSamples = []
+            calibrationShoulderSamples = []
             calibrationProgress = 1
             isCalibrating = false
             phase = .top
@@ -1356,24 +1437,27 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
             return
         }
 
-        guard let baselineFaceScale, baselineFaceScale > 0 else {
+        guard let baselineFaceScale, let baselineShoulderWidth,
+              baselineFaceScale > 0, baselineShoulderWidth > 0 else {
             phase = .calibrating
             isCalibrating = true
-            calibrationSamples = []
+            calibrationFaceSamples = []
+            calibrationShoulderSamples = []
             calibrationProgress = 0
             status = "Başlangıç mesafesi yeniden ayarlanıyor"
             return
         }
 
-        let ratio = scale / baselineFaceScale
-        proximityPercent = Int((ratio * 100).rounded())
+        let faceRatio = faceScale / baselineFaceScale
+        let shoulderRatio = shoulderWidth / baselineShoulderWidth
+        proximityPercent = Int((faceRatio * 100).rounded())
 
         switch phase {
         case .top:
             isAtBottom = false
-            if ratio >= 1.17 {
+            if faceRatio >= 1.16 && shoulderRatio >= 1.07 {
                 nearFrameCount += 1
-                if nearFrameCount >= 2 {
+                if nearFrameCount >= 3 {
                     phase = .bottom
                     isAtBottom = true
                     nearFrameCount = 0
@@ -1381,21 +1465,22 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
                     status = "Aşağı tamam · şimdi yüksel"
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } else {
-                    status = "Biraz daha yaklaş"
+                    status = "Biraz daha aşağı"
                 }
             } else {
                 nearFrameCount = 0
-                status = ratio < 0.82 ? "Biraz kameraya yaklaş" : "Aşağı in"
-                if ratio > 0.9 && ratio < 1.08 {
-                    self.baselineFaceScale = baselineFaceScale * 0.995 + scale * 0.005
+                status = faceRatio >= 1.16 ? "Omuzlarınla birlikte aşağı in" : "Aşağı in"
+                if faceRatio > 0.92 && faceRatio < 1.07 && shoulderRatio > 0.94 && shoulderRatio < 1.05 {
+                    self.baselineFaceScale = baselineFaceScale * 0.997 + faceScale * 0.003
+                    self.baselineShoulderWidth = baselineShoulderWidth * 0.997 + shoulderWidth * 0.003
                 }
             }
 
         case .bottom:
             isAtBottom = true
-            if ratio <= 1.10 {
+            if faceRatio <= 1.10 && shoulderRatio <= 1.045 {
                 farFrameCount += 1
-                if farFrameCount >= 2 && Date().timeIntervalSince(lastRepAt) > 0.6 {
+                if farFrameCount >= 3 && Date().timeIntervalSince(lastRepAt) > 0.65 {
                     count += 1
                     phase = .top
                     isAtBottom = false
@@ -1411,15 +1496,37 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
                 }
             } else {
                 farFrameCount = 0
-                status = ratio > 1.65 ? "Çok yakın · şimdi yüksel" : "Şimdi yüksel"
+                status = "Şimdi yüksel"
             }
 
         case .idle:
-            status = "Yüz algılandı · Başlatmaya hazır"
+            status = "Yüz ve omuz takibi hazır"
 
         case .calibrating:
             break
         }
+    }
+
+    private static func shoulderWidth(from observation: VNHumanBodyPoseObservation) -> Double? {
+        guard let points = try? observation.recognizedPoints(.all),
+              let left = points[.leftShoulder],
+              let right = points[.rightShoulder],
+              left.confidence > 0.18,
+              right.confidence > 0.18 else { return nil }
+        return Double(hypot(
+            left.location.x - right.location.x,
+            left.location.y - right.location.y
+        ))
+    }
+
+    private static func median(_ values: [Double]) -> Double {
+        let sorted = values.sorted()
+        guard !sorted.isEmpty else { return 0 }
+        if sorted.count.isMultiple(of: 2) {
+            let middle = sorted.count / 2
+            return (sorted[middle - 1] + sorted[middle]) / 2
+        }
+        return sorted[sorted.count / 2]
     }
 }
 
