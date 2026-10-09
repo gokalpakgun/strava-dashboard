@@ -89,13 +89,50 @@ private struct TempoMainShell: View {
 
 private struct TempoGlassTabBar: View {
     @Binding var selectedTab: Int
+    @Namespace private var liquidGlassNamespace
 
     var body: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer {
+                    tabItems(usesNativeGlass: true)
+                        .padding(6)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                }
+            } else {
+                tabItems(usesNativeGlass: false)
+                    .padding(6)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(
+                        LinearGradient(
+                            colors: [.white.opacity(0.12), TempoTheme.green.opacity(0.045), .black.opacity(0.11)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.38), .white.opacity(0.08)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+            }
+        }
+        .shadow(color: .black.opacity(0.34), radius: 22, y: 12)
+    }
+
+    private func tabItems(usesNativeGlass: Bool) -> some View {
         HStack(spacing: 4) {
             ForEach(TempoMainTab.all) { tab in
                 let isSelected = selectedTab == tab.id
                 Button {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
                         selectedTab = tab.id
                     }
                 } label: {
@@ -103,12 +140,12 @@ private struct TempoGlassTabBar: View {
                         Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
                             .font(.system(size: 18, weight: isSelected ? .semibold : .medium))
                             .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(isSelected ? TempoTheme.green : .white.opacity(0.78))
+                            .foregroundStyle(isSelected ? TempoTheme.green : .white.opacity(0.76))
                             .frame(height: 22)
 
                         Text(tab.title)
                             .font(.system(size: 9.5, weight: isSelected ? .bold : .medium, design: .rounded))
-                            .foregroundStyle(isSelected ? .white : .white.opacity(0.66))
+                            .foregroundStyle(isSelected ? .white : .white.opacity(0.64))
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
                     }
@@ -117,32 +154,30 @@ private struct TempoGlassTabBar: View {
                     .contentShape(Capsule())
                     .background {
                         if isSelected {
-                            ZStack {
+                            if #available(iOS 26.0, *), usesNativeGlass {
                                 Capsule()
-                                    .fill(.thinMaterial)
+                                    .fill(.clear)
+                                    .glassEffect(
+                                        .regular
+                                            .tint(TempoTheme.green.opacity(0.18))
+                                            .interactive(),
+                                        in: .capsule
+                                    )
+                                    .glassEffectID("selected-tab", in: liquidGlassNamespace)
+                            } else {
                                 Capsule()
                                     .fill(
                                         LinearGradient(
-                                            colors: [
-                                                .white.opacity(0.14),
-                                                TempoTheme.green.opacity(0.19),
-                                                TempoTheme.green.opacity(0.07)
-                                            ],
+                                            colors: [.white.opacity(0.14), TempoTheme.green.opacity(0.18), .white.opacity(0.045)],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
                                     )
-                                Capsule()
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [.white.opacity(0.42), TempoTheme.green.opacity(0.27), .white.opacity(0.08)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 0.9
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(.white.opacity(0.22), lineWidth: 0.8)
                                     )
                             }
-                            .shadow(color: TempoTheme.green.opacity(0.16), radius: 13, y: 2)
                         }
                     }
                 }
@@ -151,66 +186,6 @@ private struct TempoGlassTabBar: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(6)
-        .background {
-            ZStack {
-                Capsule()
-                    .fill(.ultraThinMaterial)
-
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(0.13),
-                                TempoTheme.green.opacity(0.055),
-                                Color.black.opacity(0.12)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.20), .clear, .clear],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
-                    )
-                    .padding(1)
-                    .mask(
-                        VStack(spacing: 0) {
-                            Rectangle().frame(height: 31)
-                            Spacer(minLength: 0)
-                        }
-                    )
-            }
-        }
-        .overlay(
-            Capsule()
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0.42),
-                            .white.opacity(0.13),
-                            TempoTheme.green.opacity(0.13),
-                            .white.opacity(0.055)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
-        .overlay(
-            Capsule()
-                .inset(by: 3)
-                .stroke(.white.opacity(0.055), lineWidth: 0.7)
-        )
-        .shadow(color: .black.opacity(0.42), radius: 24, y: 13)
-        .shadow(color: .white.opacity(0.055), radius: 2, y: -1)
-        .shadow(color: TempoTheme.green.opacity(0.09), radius: 18, y: 2)
     }
 }
 
