@@ -586,7 +586,7 @@ struct PushUpCounterScreen: View {
                             .foregroundStyle(TempoTheme.green)
                         Text("Akıllı şınav sayacı")
                             .font(.system(size: 31, weight: .bold, design: .rounded))
-                        Text("Telefonu yan tarafına yerleştir. Tempo hareket açını ve gövde hizanı cihazında takip etsin.")
+                        Text("Telefonu yere yakın, üst gövdenin yanına yerleştir. Omuz, dirsek ve bileğinin görünmesi sayım için yeterli.")
                             .font(.subheadline)
                             .foregroundStyle(TempoTheme.secondary)
                             .lineSpacing(3)
@@ -767,15 +767,15 @@ struct PushUpCounterScreen: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Doğru algılama için")
                         .font(.headline)
-                    Text("Yan görünüş · tüm vücut kadrajda")
+                    Text("Yakın yan görünüş · yalnızca üst gövde yeterli")
                         .font(.caption)
                         .foregroundStyle(TempoTheme.secondary)
                 }
             }
             HStack(alignment: .top, spacing: 10) {
-                PushUpGuideStep(number: "1", text: "Telefonu yere yakın ve yaklaşık 2–3 metre uzağa koy.")
-                PushUpGuideStep(number: "2", text: "Üstte kollarını düzleştir, altta dirseğini yaklaşık 90° yap.")
-                PushUpGuideStep(number: "3", text: "Omuz, kalça ve bacak çizgini düz tut.")
+                PushUpGuideStep(number: "1", text: "Telefonu yere yakın, yaklaşık 1–1,5 metre yanına koy.")
+                PushUpGuideStep(number: "2", text: "Omuz, dirsek ve bileğin kadrajda kalsın; bacakların görünmeyebilir.")
+                PushUpGuideStep(number: "3", text: "Üstte kolunu aç, aşağı inerken dirseğini yaklaşık 90° bük.")
             }
         }
         .padding(17)
@@ -948,9 +948,10 @@ private struct PushUpPoseOverlay: View {
 
 private struct PushUpPoseFrame {
     let elbowAngle: Double
-    let bodyAlignment: Double
-    let torsoTilt: Double
+    let bodyAlignment: Double?
     let confidence: Float
+    let shoulderY: Double
+    let upperArmLength: Double
     let joints: [String: CGPoint]
 }
 
@@ -962,7 +963,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     @Published private(set) var isWorkoutActive = false
     @Published private(set) var count = 0
     @Published private(set) var elapsedSeconds = 0
-    @Published private(set) var status = "Tüm vücudunu kadraja al"
+    @Published private(set) var status = "Omuz, dirsek ve bileğini kadraja al"
     @Published private(set) var elbowAngle: Double?
     @Published private(set) var bodyAlignment: Double?
     @Published private(set) var joints: [String: CGPoint] = [:]
@@ -976,6 +977,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     private var smoothedElbowAngle: Double?
     private var reachedTop = false
     private var reachedBottom = false
+    private var topShoulderY: Double?
     private var lastRepAt = Date.distantPast
     private var elapsedTimer: Timer?
     private let defaults = UserDefaults.standard
@@ -1026,6 +1028,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         elapsedSeconds = 0
         reachedTop = false
         reachedBottom = false
+        topShoulderY = nil
         lastRepAt = .distantPast
         isWorkoutActive = true
         status = "Başlangıç pozisyonuna geç"
@@ -1057,7 +1060,8 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         elapsedSeconds = 0
         reachedTop = false
         reachedBottom = false
-        status = "Tüm vücudunu kadraja al"
+        topShoulderY = nil
+        status = "Omuz, dirsek ve bileğini kadraja al"
     }
 
     private func configureAndStart() {
@@ -1109,7 +1113,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
             self.session.startRunning()
             DispatchQueue.main.async {
                 self.isCameraReady = true
-                self.status = "Tüm vücudunu kadraja al"
+                self.status = "Omuz, dirsek ve bileğini kadraja al"
             }
         }
     }
@@ -1130,7 +1134,7 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
                   let frame = Self.poseFrame(from: observation) else {
                 DispatchQueue.main.async { [weak self] in
                     self?.hasGoodForm = false
-                    self?.status = "Tüm vücudunu yan profilden göster"
+                    self?.status = "Üst gövdeni yan profilden göster"
                     self?.joints = [:]
                 }
                 return
@@ -1144,41 +1148,38 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     }
 
     private func consume(_ frame: PushUpPoseFrame) {
-        let alpha = 0.28
+        let alpha = 0.34
         let smooth = smoothedElbowAngle.map { $0 + alpha * (frame.elbowAngle - $0) } ?? frame.elbowAngle
         smoothedElbowAngle = smooth
         elbowAngle = smooth
         bodyAlignment = frame.bodyAlignment
         joints = frame.joints
 
-        let horizontalEnough = frame.torsoTilt < 38
-        let aligned = frame.bodyAlignment > 145
-        let confident = frame.confidence > 0.28
-        hasGoodForm = horizontalEnough && aligned && confident
+        let confident = frame.confidence > 0.25
+        let optionalBodyForm = frame.bodyAlignment.map { $0 > 135 } ?? true
+        hasGoodForm = confident && optionalBodyForm
 
         guard confident else {
-            status = "Biraz daha uzağa geç"
-            return
-        }
-        guard horizontalEnough else {
-            status = "Telefonu yanına, yere yakın yerleştir"
-            return
-        }
-        guard aligned else {
-            status = "Kalçanı omuz ve bacak hizasında tut"
+            status = "Omuz, dirsek ve bileğini kameraya göster"
             return
         }
 
         guard isWorkoutActive else {
-            status = "Pozisyon hazır"
+            status = optionalBodyForm ? "Yakın çekim hazır" : "Kalçanı omuz hizasında tut"
             return
         }
 
-        if smooth >= 154 {
+        if smooth >= 148 {
             reachedTop = true
+            if !reachedBottom {
+                topShoulderY = max(topShoulderY ?? frame.shoulderY, frame.shoulderY)
+                status = optionalBodyForm ? "Aşağı in" : "Gövdeni biraz daha düz tut"
+            }
+
             if reachedBottom && Date().timeIntervalSince(lastRepAt) > 0.55 {
                 count += 1
                 reachedBottom = false
+                topShoulderY = frame.shoulderY
                 lastRepAt = Date()
                 status = "Güzel tekrar"
                 if count > bestSession {
@@ -1186,12 +1187,16 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
                     defaults.set(count, forKey: "tempo.pushup.best")
                 }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            } else if !reachedBottom {
-                status = "Aşağı in"
             }
-        } else if smooth <= 92 && reachedTop {
-            reachedBottom = true
-            status = "Şimdi yukarı"
+        } else if smooth <= 105 && reachedTop {
+            let requiredDrop = max(0.008, frame.upperArmLength * 0.07)
+            let shoulderDrop = (topShoulderY ?? frame.shoulderY) - frame.shoulderY
+            if shoulderDrop >= requiredDrop {
+                reachedBottom = true
+                status = "Şimdi yukarı"
+            } else {
+                status = "Göğsünü biraz daha indir"
+            }
         } else if reachedBottom {
             status = "Yukarı doğru devam et"
         } else {
@@ -1224,25 +1229,31 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         }
 
         let elbow = angle(candidate.shoulder.location, candidate.elbow.location, candidate.wrist.location)
-        let lowerBodyPoint = candidate.ankle?.location ?? candidate.knee.location
-        let alignment = angle(candidate.shoulder.location, candidate.hip.location, lowerBodyPoint)
-        let dx = Double(abs(candidate.hip.location.x - candidate.shoulder.location.x))
-        let dy = Double(abs(candidate.hip.location.y - candidate.shoulder.location.y))
-        let tilt = atan2(dy, max(dx, 0.0001)) * 180 / Double.pi
+        let upperArmLength = Double(hypot(
+            candidate.shoulder.location.x - candidate.elbow.location.x,
+            candidate.shoulder.location.y - candidate.elbow.location.y
+        ))
+
+        var alignment: Double?
+        if let hip = candidate.hip, let lowerBodyPoint = candidate.ankle ?? candidate.knee {
+            alignment = angle(candidate.shoulder.location, hip.location, lowerBodyPoint.location)
+        }
+
         var joints: [String: CGPoint] = [
             "shoulder": candidate.shoulder.location,
             "elbow": candidate.elbow.location,
             "wrist": candidate.wrist.location,
-            "hip": candidate.hip.location,
-            "knee": candidate.knee.location,
         ]
+        if let hip = candidate.hip { joints["hip"] = hip.location }
+        if let knee = candidate.knee { joints["knee"] = knee.location }
         if let ankle = candidate.ankle { joints["ankle"] = ankle.location }
 
         return PushUpPoseFrame(
             elbowAngle: elbow,
             bodyAlignment: alignment,
-            torsoTilt: tilt,
             confidence: candidate.confidence,
+            shoulderY: Double(candidate.shoulder.location.y),
+            upperArmLength: upperArmLength,
             joints: joints
         )
     }
@@ -1251,8 +1262,8 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
         let shoulder: VNRecognizedPoint
         let elbow: VNRecognizedPoint
         let wrist: VNRecognizedPoint
-        let hip: VNRecognizedPoint
-        let knee: VNRecognizedPoint
+        let hip: VNRecognizedPoint?
+        let knee: VNRecognizedPoint?
         let ankle: VNRecognizedPoint?
         let confidence: Float
     }
@@ -1268,12 +1279,14 @@ final class PushUpCounterModel: NSObject, ObservableObject, AVCaptureVideoDataOu
     ) -> SideCandidate? {
         guard let shoulderPoint = points[shoulder],
               let elbowPoint = points[elbow],
-              let wristPoint = points[wrist],
-              let hipPoint = points[hip],
-              let kneePoint = points[knee] else { return nil }
-        let required = [shoulderPoint, elbowPoint, wristPoint, hipPoint, kneePoint]
+              let wristPoint = points[wrist] else { return nil }
+
+        let required = [shoulderPoint, elbowPoint, wristPoint]
         let confidence = required.map(\.confidence).min() ?? 0
         guard confidence > 0.18 else { return nil }
+
+        let hipPoint = points[hip].flatMap { $0.confidence > 0.18 ? $0 : nil }
+        let kneePoint = points[knee].flatMap { $0.confidence > 0.18 ? $0 : nil }
         let anklePoint = points[ankle].flatMap { $0.confidence > 0.18 ? $0 : nil }
         return SideCandidate(
             shoulder: shoulderPoint,
