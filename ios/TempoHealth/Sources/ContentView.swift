@@ -79,60 +79,102 @@ private struct TempoMainShell: View {
     var body: some View {
         selectedScreen
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                TempoCompactTabBar(selectedTab: $selectedTab)
+                TempoGlassTabBar(selectedTab: $selectedTab)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
             }
     }
 }
 
-private struct TempoCompactTabBar: View {
+private struct TempoGlassTabBar: View {
     @Binding var selectedTab: Int
 
     var body: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(.white.opacity(0.055))
-                .frame(height: 0.5)
-
-            HStack(spacing: 0) {
-                ForEach(TempoMainTab.all) { tab in
-                    let isSelected = selectedTab == tab.id
-                    Button {
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            selectedTab = tab.id
-                        }
-                    } label: {
-                        VStack(spacing: 5) {
-                            ZStack(alignment: .top) {
-                                Capsule()
-                                    .fill(isSelected ? TempoTheme.green : .clear)
-                                    .frame(width: 22, height: 2.5)
-                                    .offset(y: -7)
-
-                                Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
-                                    .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
-                                    .foregroundStyle(isSelected ? TempoTheme.green : TempoTheme.secondary)
-                                    .frame(height: 21)
-                            }
-                            Text(tab.title)
-                                .font(.system(size: 9, weight: isSelected ? .bold : .medium))
-                                .foregroundStyle(isSelected ? .white : TempoTheme.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
+        HStack(spacing: 4) {
+            ForEach(TempoMainTab.all) { tab in
+                let isSelected = selectedTab == tab.id
+                Button {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                        selectedTab = tab.id
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(tab.title)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                } label: {
+                    VStack(spacing: 5) {
+                        Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
+                            .font(.system(size: 18, weight: isSelected ? .semibold : .medium))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(isSelected ? TempoTheme.green : .white.opacity(0.72))
+                            .frame(height: 22)
+
+                        Text(tab.title)
+                            .font(.system(size: 9.5, weight: isSelected ? .bold : .medium, design: .rounded))
+                            .foregroundStyle(isSelected ? .white : .white.opacity(0.62))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .contentShape(Capsule())
+                    .background {
+                        if isSelected {
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            TempoTheme.green.opacity(0.21),
+                                            TempoTheme.green.opacity(0.09),
+                                            .white.opacity(0.055)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [TempoTheme.green.opacity(0.42), .white.opacity(0.10)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 0.8
+                                        )
+                                )
+                                .shadow(color: TempoTheme.green.opacity(0.13), radius: 11)
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
-            .padding(.horizontal, 5)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
         }
-        .background(.ultraThinMaterial)
-        .background(TempoTheme.card.opacity(0.88))
+        .padding(6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.12, green: 0.18, blue: 0.15).opacity(0.74),
+                    Color(red: 0.055, green: 0.075, blue: 0.065).opacity(0.82)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: Capsule()
+        )
+        .overlay(
+            Capsule()
+                .stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(0.24), .white.opacity(0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.9
+                )
+        )
+        .shadow(color: .black.opacity(0.38), radius: 22, y: 11)
+        .shadow(color: TempoTheme.green.opacity(0.07), radius: 16, y: 2)
     }
 }
 
