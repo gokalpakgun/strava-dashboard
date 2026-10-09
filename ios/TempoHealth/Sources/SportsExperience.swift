@@ -28,6 +28,11 @@ struct SportsHubScreen: View {
                                 .font(.subheadline).foregroundStyle(TempoTheme.secondary)
                         }
 
+                        NavigationLink(destination: PushUpCounterScreen()) {
+                            FeaturedPushUpCard()
+                        }
+                        .buttonStyle(.plain)
+
                         if selectedSports.isEmpty {
                             Text("Profilinden ilgilendiğin sporları seçerek bu alanı kişiselleştirebilirsin.")
                                 .padding(20).frame(maxWidth: .infinity)
@@ -51,16 +56,90 @@ struct SportsHubScreen: View {
                             ToolCard(title: "Yakındaki spor alanları", subtitle: "Kort, saha, havuz ve spor salonlarını bul", icon: "location.fill", color: TempoTheme.green)
                         }
                         .buttonStyle(.plain)
-                        NavigationLink(destination: PushUpCounterScreen()) {
-                            ToolCard(title: "Akıllı şınav sayacı", subtitle: "Kamerayla tekrarlarını ve hareket formunu takip et", icon: "figure.strengthtraining.traditional", color: .pink)
-                        }
-                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 34)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
+    }
+}
+
+private struct FeaturedPushUpCard: View {
+    @AppStorage("tempo.pushup.best") private var bestSession = 0
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Circle()
+                .fill(.white.opacity(0.08))
+                .frame(width: 170, height: 170)
+                .offset(x: 55, y: -64)
+
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) {
+                            Circle()
+                                .fill(TempoTheme.green)
+                                .frame(width: 8, height: 8)
+                            Text("KAMERA HAZIR · YAKIN ÇEKİM")
+                                .font(.system(size: 10, weight: .bold))
+                                .tracking(1)
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        Text("Akıllı şınav\nsayacı")
+                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineSpacing(-1)
+                    }
+                    Spacer()
+                    Image(systemName: "figure.strengthtraining.traditional")
+                        .font(.system(size: 29, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 58, height: 58)
+                        .background(.white.opacity(0.13), in: Circle())
+                }
+
+                HStack {
+                    Label(
+                        bestSession > 0 ? "En iyi set: \(bestSession)" : "İlk setini başlat",
+                        systemImage: "trophy.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.86))
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Text("Başla")
+                            .font(.subheadline.bold())
+                        Image(systemName: "arrow.right")
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(TempoTheme.green, in: Capsule())
+                }
+            }
+            .padding(20)
+        }
+        .frame(height: 196)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.21, green: 0.08, blue: 0.29),
+                    Color(red: 0.46, green: 0.08, blue: 0.28),
+                    Color(red: 0.12, green: 0.18, blue: 0.30),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 27, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 27, style: .continuous)
+                .stroke(.white.opacity(0.1))
+        )
+        .shadow(color: Color.pink.opacity(0.18), radius: 20, y: 10)
     }
 }
 
