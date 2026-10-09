@@ -103,12 +103,12 @@ private struct TempoGlassTabBar: View {
                         Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
                             .font(.system(size: 18, weight: isSelected ? .semibold : .medium))
                             .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(isSelected ? TempoTheme.green : .white.opacity(0.72))
+                            .foregroundStyle(isSelected ? TempoTheme.green : .white.opacity(0.78))
                             .frame(height: 22)
 
                         Text(tab.title)
                             .font(.system(size: 9.5, weight: isSelected ? .bold : .medium, design: .rounded))
-                            .foregroundStyle(isSelected ? .white : .white.opacity(0.62))
+                            .foregroundStyle(isSelected ? .white : .white.opacity(0.66))
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
                     }
@@ -117,30 +117,32 @@ private struct TempoGlassTabBar: View {
                     .contentShape(Capsule())
                     .background {
                         if isSelected {
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            TempoTheme.green.opacity(0.21),
-                                            TempoTheme.green.opacity(0.09),
-                                            .white.opacity(0.055)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .stroke(
-                                            LinearGradient(
-                                                colors: [TempoTheme.green.opacity(0.42), .white.opacity(0.10)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ),
-                                            lineWidth: 0.8
+                            ZStack {
+                                Capsule()
+                                    .fill(.thinMaterial)
+                                Capsule()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                .white.opacity(0.14),
+                                                TempoTheme.green.opacity(0.19),
+                                                TempoTheme.green.opacity(0.07)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
                                         )
-                                )
-                                .shadow(color: TempoTheme.green.opacity(0.13), radius: 11)
+                                    )
+                                Capsule()
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [.white.opacity(0.42), TempoTheme.green.opacity(0.27), .white.opacity(0.08)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 0.9
+                                    )
+                            }
+                            .shadow(color: TempoTheme.green.opacity(0.16), radius: 13, y: 2)
                         }
                     }
                 }
@@ -150,31 +152,65 @@ private struct TempoGlassTabBar: View {
             }
         }
         .padding(6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.12, green: 0.18, blue: 0.15).opacity(0.74),
-                    Color(red: 0.055, green: 0.075, blue: 0.065).opacity(0.82)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: Capsule()
-        )
+        .background {
+            ZStack {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.13),
+                                TempoTheme.green.opacity(0.055),
+                                Color.black.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.white.opacity(0.20), .clear, .clear],
+                            startPoint: .top,
+                            endPoint: .center
+                        )
+                    )
+                    .padding(1)
+                    .mask(
+                        VStack(spacing: 0) {
+                            Rectangle().frame(height: 31)
+                            Spacer(minLength: 0)
+                        }
+                    )
+            }
+        }
         .overlay(
             Capsule()
                 .stroke(
                     LinearGradient(
-                        colors: [.white.opacity(0.24), .white.opacity(0.06)],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        colors: [
+                            .white.opacity(0.42),
+                            .white.opacity(0.13),
+                            TempoTheme.green.opacity(0.13),
+                            .white.opacity(0.055)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     ),
-                    lineWidth: 0.9
+                    lineWidth: 1
                 )
         )
-        .shadow(color: .black.opacity(0.38), radius: 22, y: 11)
-        .shadow(color: TempoTheme.green.opacity(0.07), radius: 16, y: 2)
+        .overlay(
+            Capsule()
+                .inset(by: 3)
+                .stroke(.white.opacity(0.055), lineWidth: 0.7)
+        )
+        .shadow(color: .black.opacity(0.42), radius: 24, y: 13)
+        .shadow(color: .white.opacity(0.055), radius: 2, y: -1)
+        .shadow(color: TempoTheme.green.opacity(0.09), radius: 18, y: 2)
     }
 }
 
