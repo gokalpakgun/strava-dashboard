@@ -144,32 +144,14 @@ private struct WelcomeScreen: View {
             TempoAmbientBackground()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-                    HStack(spacing: 11) {
-                        TempoBrandMark(size: 46)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Tempo")
-                                .font(.headline)
-                            Text("Hareket verilerin, tek yerde")
-                                .font(.caption)
-                                .foregroundStyle(TempoTheme.secondary)
-                        }
-                        Spacer()
-                        Label("Güvenli", systemImage: "lock.fill")
-                            .font(.caption2.bold())
-                            .foregroundStyle(TempoTheme.green)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
-
-                    VStack(spacing: 10) {
+                VStack(spacing: 20) {
+                    VStack(spacing: 9) {
                         Text("STRAVA BAĞLANTISI")
                             .font(.caption.bold())
                             .tracking(1.7)
                             .foregroundStyle(TempoTheme.orange)
                         Text("Hareket geçmişini\nTempo’ya getir.")
-                            .font(.system(size: 38, weight: .bold, design: .rounded))
+                            .font(.system(size: 35, weight: .bold, design: .rounded))
                             .tracking(-1)
                             .multilineTextAlignment(.center)
                         Text("Aktivitelerin, rotaların ve ilerleme verilerin izin verdiğin ölçüde güvenle eşitlenir.")
@@ -244,8 +226,8 @@ private struct WelcomeScreen: View {
                     }
                 }
                 .padding(.horizontal, 21)
-                .padding(.top, 18)
-                .padding(.bottom, 34)
+                .padding(.top, 32)
+                .padding(.bottom, 30)
             }
         }
     }

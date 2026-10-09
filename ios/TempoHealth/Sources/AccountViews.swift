@@ -96,30 +96,10 @@ struct AccountWelcomeView: View {
                 TempoAmbientBackground()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 25) {
-                        HStack(spacing: 11) {
-                            TempoBrandMark(size: 46)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Tempo")
-                                    .font(.headline)
-                                Text("Sağlık ve hareket")
-                                    .font(.caption)
-                                    .foregroundStyle(TempoTheme.secondary)
-                            }
-                            Spacer()
-                            Label("Özel", systemImage: "lock.fill")
-                                .font(.caption2.bold())
-                                .foregroundStyle(TempoTheme.green)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(.ultraThinMaterial, in: Capsule())
-                        }
-
-                        VStack(spacing: 12) {
-                            TempoBrandMark(size: 78)
-                                .padding(.bottom, 3)
+                    VStack(spacing: 20) {
+                        VStack(spacing: 10) {
                             Text("Daha net hareket et.\nDaha iyi hisset.")
-                                .font(.system(size: 39, weight: .bold, design: .rounded))
+                                .font(.system(size: 35, weight: .bold, design: .rounded))
                                 .tracking(-1.1)
                                 .multilineTextAlignment(.center)
                                 .minimumScaleFactor(0.84)
@@ -170,7 +150,7 @@ struct AccountWelcomeView: View {
                             .padding(.horizontal, 8)
                     }
                     .padding(.horizontal, 21)
-                    .padding(.top, 18)
+                    .padding(.top, 30)
                     .padding(.bottom, 30)
                 }
             }
