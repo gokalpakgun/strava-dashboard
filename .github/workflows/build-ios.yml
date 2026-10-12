@@ -60,7 +60,8 @@ jobs:
         run: |
           APP_PATH="$RUNNER_TEMP/TempoDerivedData/Build/Products/Release-iphoneos/Tempo.app"
           codesign --verify --deep --strict "$APP_PATH"
-          codesign -d --entitlements "$RUNNER_TEMP/Tempo-entitlements.plist" "$APP_PATH"
+          codesign -d --entitlements :- "$APP_PATH" > "$RUNNER_TEMP/Tempo-entitlements.plist" 2>/dev/null
+          plutil -convert xml1 "$RUNNER_TEMP/Tempo-entitlements.plist"
           /usr/libexec/PlistBuddy             -c "Print :com.apple.developer.healthkit"             "$RUNNER_TEMP/Tempo-entitlements.plist"
 
       - name: İmzalı IPA paketini hazırla
