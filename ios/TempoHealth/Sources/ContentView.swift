@@ -52,7 +52,7 @@ private struct TempoMainTab: Identifiable {
         TempoMainTab(id: 0, title: "Özet", icon: "square.grid.2x2", selectedIcon: "square.grid.2x2.fill"),
         TempoMainTab(id: 1, title: "Aktivite", icon: "figure.run", selectedIcon: "figure.run"),
         TempoMainTab(id: 2, title: "Sporlar", icon: "trophy", selectedIcon: "trophy.fill"),
-        TempoMainTab(id: 3, title: "Keşfet", icon: "map", selectedIcon: "map.fill"),
+        TempoMainTab(id: 3, title: "Sağlık", icon: "heart.text.square", selectedIcon: "heart.text.square.fill"),
         TempoMainTab(id: 4, title: "Daha Fazla", icon: "ellipsis.circle", selectedIcon: "ellipsis.circle.fill")
     ]
 }
@@ -70,7 +70,7 @@ private struct TempoMainShell: View {
         case 2:
             SportsHubScreen()
         case 3:
-            NearbyFacilitiesScreen()
+            HealthScreen()
         default:
             MoreScreen()
         }
@@ -1177,6 +1177,7 @@ private struct MoreScreen: View {
                     MoreLink(title: "Başarılar", subtitle: "Seviye ve rozetlerin", icon: "medal.fill", color: TempoTheme.orange, destination: AnyView(AchievementsScreen()))
                     MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
                     MoreLink(title: "Rotalar", subtitle: "GPS ısı haritan", icon: "map.fill", color: TempoTheme.orange, destination: AnyView(RoutesScreen()))
+                    MoreLink(title: "Spor Alanları", subtitle: "Yakınındaki tesisler", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
                     MoreLink(title: "Apple Sağlık", subtitle: "Uyku, su ve hareket", icon: "heart.text.square.fill", color: .pink, destination: AnyView(HealthScreen()))
                     MoreLink(title: "Aylık", subtitle: "Son 6 ay", icon: "chart.bar.fill", color: TempoTheme.green, destination: AnyView(MonthlyStatsScreen()))
                     MoreLink(title: "Ekipman", subtitle: "Bisiklet ve ayakkabı", icon: "bicycle", color: TempoTheme.orange, destination: AnyView(GearScreen()))
@@ -1248,6 +1249,12 @@ private struct HealthScreen: View {
                     }
                     .buttonStyle(TempoSecondaryButtonStyle())
                 }
+                Button(action: model.connectAppleHealth) {
+                    Label("Sağlık izinlerini yeniden iste", systemImage: "hand.raised.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(TempoPrimaryButtonStyle())
+                .disabled(model.isHealthSyncing)
                 Text("Tempo yalnızca verdiğin Apple Sağlık izinlerindeki ölçüleri okur. Apple, reddedilen okuma izinlerini uygulamaya açıklamaz; eksik ölçüler boş görünür.")
                     .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
             }

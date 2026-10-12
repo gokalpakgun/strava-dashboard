@@ -330,7 +330,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthDays = days
             healthLastSync = Date()
             todayWaterMl = Int((days[Self.localDay()]?.waterMl ?? 0).rounded())
-            if accessToken != nil { try await uploadHealth(days) }
+            if accessToken != nil {
+                do {
+                    try await uploadHealth(days)
+                } catch {
+                    status = days.isEmpty
+                        ? "Apple Sağlık bağlı; paylaşılmış veri bulunamadı. Sağlık izinlerini kontrol edebilirsin."
+                        : "Apple Sağlık cihazında güncel. Sunucu eşitlemesi daha sonra yeniden denenecek."
+                    return
+                }
+            }
             status = days.isEmpty
                 ? "Apple Sağlık bağlı; paylaşılmış veri bulunamadı. Sağlık izinlerini kontrol edebilirsin."
                 : "Apple Sağlık verilerin güncel."
