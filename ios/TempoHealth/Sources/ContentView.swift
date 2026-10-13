@@ -1238,10 +1238,13 @@ private struct HealthScreen: View {
                     }
                 }
                 healthOverview
+                SleepDetailCard(points: healthPoints)
+                CardioFitnessCard(points: healthPoints)
                 SectionHeading(title: "Bugünkü ölçüler", caption: "APPLE SAĞLIK", padding: false)
                 LazyVGrid(columns: columns, spacing: 12) {
                     HealthMetricTile(title: "Adım", value: whole(model.todayHealth.steps), unit: "adım", icon: "figure.walk", color: TempoTheme.green)
                     HealthMetricTile(title: "Aktif enerji", value: whole(model.todayHealth.activeEnergyKcal), unit: "kcal", icon: "flame.fill", color: TempoTheme.orange)
+                    HealthMetricTile(title: "Egzersiz", value: whole(model.todayHealth.exerciseMinutes), unit: "dk", icon: "figure.run", color: TempoTheme.green)
                     HealthMetricTile(title: "Dinlenik nabız", value: decimal(model.todayHealth.restingHeartRateBpm), unit: "atım/dk", icon: "heart.fill", color: .pink)
                     HealthMetricTile(title: "HRV", value: decimal(model.todayHealth.hrvMs), unit: "ms", icon: "waveform.path.ecg", color: TempoTheme.purple)
                     HealthMetricTile(title: "Son uyku", value: sleepText, unit: model.latestSleep == nil ? "veri yok" : "", icon: "moon.zzz.fill", color: TempoTheme.blue)
@@ -1283,7 +1286,7 @@ private struct HealthScreen: View {
             VStack(alignment: .leading, spacing: 16) {
                 Image(systemName: "heart.text.square.fill").font(.system(size: 42)).foregroundStyle(.pink)
                 Text("Sağlık verilerini Tempo’ya bağla").font(.title3.bold())
-                Text("Son 90 gündeki su, uyku, adım, aktif kalori, dinlenik nabız, HRV ve kilo ölçülerini tek ekranda gör. Hızlı su ekleme de Apple Sağlık’a kaydedilir.")
+                Text("Son 90 gündeki su, uyku evreleri, hareket, kalp, solunum ve kondisyon ölçülerini tek ekranda gör. Hızlı su ekleme de Apple Sağlık’a kaydedilir.")
                     .font(.subheadline).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
                 Button(action: model.connectAppleHealth) {
                     Label(model.isHealthSyncing ? "Bağlanıyor…" : "Apple Sağlık’a bağlan", systemImage: "heart.fill").frame(maxWidth: .infinity)
@@ -1335,6 +1338,14 @@ private struct HealthScreen: View {
         return TempoFormat.duration(minutes * 60)
     }
 
+    private var healthPoints: [HealthDayPoint] {
+        model.healthDays.compactMap { day, metrics in
+            guard let date = TempoFormat.dayFormatter.date(from: day) else { return nil }
+            return HealthDayPoint(day: date, metrics: metrics)
+        }
+        .sorted { $0.day < $1.day }
+    }
+
     private func whole(_ value: Double?) -> String {
         guard let value else { return "—" }
         return Int(value.rounded()).formatted(.number.locale(Locale.autoupdatingCurrent))
@@ -1343,6 +1354,230 @@ private struct HealthScreen: View {
     private func decimal(_ value: Double?) -> String {
         guard let value else { return "—" }
         return value.formatted(.number.locale(Locale.autoupdatingCurrent).precision(.fractionLength(1)))
+    }
+}
+
+private struct HealthDayPoint: Identifiable {
+    let day: Date
+    let metrics: TempoHealthMetrics
+    var id: Date { day }
+}
+
+private struct SleepDetailCard: View {
+    let points: [HealthDayPoint]
+
+    private var sleepPoints: [HealthDayPoint] {
+        points.filter { ($0.metrics.sleepMinutes ?? 0) > 0 }
+    }
+
+    private var latest: TempoHealthMetrics? { sleepPoints.last?.metrics }
+
+    private var weeklyAverage: Double? {
+        let values = sleepPoints.suffix(7).compactMap(\.metrics.sleepMinutes)
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("UYKU ANALİZİ".tempoLocalized)
+                            .font(.caption2.bold()).tracking(1.25).foregroundStyle(TempoTheme.blue)
+                        Text("Uyku evreleri".tempoLocalized).font(.title3.bold())
+                    }
+                    Spacer()
+                    if let average = weeklyAverage {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(TempoFormat.duration(average * 60)).font(.subheadline.bold())
+                            Text("7 gün ortalaması".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                }
+
+                if !sleepPoints.isEmpty {
+                    Chart(Array(sleepPoints.suffix(7))) { point in
+                        BarMark(
+                            x: .value("Gün".tempoLocalized, point.day, unit: .day),
+                            y: .value("Saat".tempoLocalized, (point.metrics.sleepMinutes ?? 0) / 60)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(colors: [TempoTheme.blue, TempoTheme.purple], startPoint: .bottom, endPoint: .top)
+                        )
+                        .cornerRadius(5)
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: .day)) { _ in
+                            AxisValueLabel(format: .dateTime.weekday(.narrow))
+                                .foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                            AxisGridLine().foregroundStyle(.white.opacity(0.06))
+                            AxisValueLabel { if let hours = value.as(Double.self) { Text("\(Int(hours))s") } }
+                                .foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                    .frame(height: 138)
+                }
+
+                if let latest {
+                    HStack(spacing: 8) {
+                        SleepStagePill(title: "Çekirdek", minutes: latest.sleepCoreMinutes, color: TempoTheme.blue)
+                        SleepStagePill(title: "Derin", minutes: latest.sleepDeepMinutes, color: TempoTheme.purple)
+                        SleepStagePill(title: "REM", minutes: latest.sleepREMMinutes, color: TempoTheme.green)
+                        SleepStagePill(title: "Uyanık", minutes: latest.sleepAwakeMinutes, color: TempoTheme.orange)
+                    }
+                } else {
+                    Label("Uyku evresi verisi henüz bulunamadı.", systemImage: "moon.zzz")
+                        .font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct SleepStagePill: View {
+    let title: String
+    let minutes: Double?
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Circle().fill(color).frame(width: 6, height: 6)
+                Text(title.tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            }
+            Text(minutes.map { TempoFormat.duration($0 * 60) } ?? "—")
+                .font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct CardioFitnessCard: View {
+    let points: [HealthDayPoint]
+
+    private func latest(_ keyPath: KeyPath<TempoHealthMetrics, Double?>) -> Double? {
+        points.reversed().compactMap { $0.metrics[keyPath: keyPath] }.first
+    }
+
+    private func series(_ keyPath: KeyPath<TempoHealthMetrics, Double?>) -> [HealthTrendPoint] {
+        points.suffix(14).compactMap { point in
+            guard let value = point.metrics[keyPath: keyPath] else { return nil }
+            return HealthTrendPoint(day: point.day, value: value)
+        }
+    }
+
+    private func value(_ number: Double?, digits: Int = 1) -> String {
+        guard let number else { return "—" }
+        return number.formatted(.number.locale(.autoupdatingCurrent).precision(.fractionLength(digits)))
+    }
+
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("KALP VE KONDİSYON".tempoLocalized)
+                        .font(.caption2.bold()).tracking(1.25).foregroundStyle(.pink)
+                    Text("Kişisel eğilimlerin".tempoLocalized).font(.title3.bold())
+                    Text("Son ölçümler ve 14 günlük değişim".tempoLocalized)
+                        .font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
+
+                HStack(spacing: 10) {
+                    HealthTrendTile(
+                        title: "Dinlenik nabız", value: value(latest(\.restingHeartRateBpm)), unit: "atım/dk",
+                        icon: "heart.fill", color: .pink, points: series(\.restingHeartRateBpm)
+                    )
+                    HealthTrendTile(
+                        title: "HRV", value: value(latest(\.hrvMs)), unit: "ms",
+                        icon: "waveform.path.ecg", color: TempoTheme.purple, points: series(\.hrvMs)
+                    )
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    CompactHealthValue(title: "Kardiyo kondisyonu", value: value(latest(\.vo2Max)), unit: "VO₂ max", icon: "lungs.fill", color: TempoTheme.green)
+                    CompactHealthValue(title: "Solunum", value: value(latest(\.respiratoryRate)), unit: "nefes/dk", icon: "wind", color: TempoTheme.blue)
+                    CompactHealthValue(title: "Kandaki oksijen", value: value(latest(\.oxygenSaturationPct)), unit: "%", icon: "drop.degreesign.fill", color: TempoTheme.blue)
+                    CompactHealthValue(title: "Nabız toparlanması", value: value(latest(\.heartRateRecoveryBpm)), unit: "atım/dk", icon: "heart.arrow.triangle.branch", color: TempoTheme.green)
+                    CompactHealthValue(title: "Yürüme nabzı", value: value(latest(\.walkingHeartRateBpm)), unit: "atım/dk", icon: "figure.walk", color: TempoTheme.orange)
+                    CompactHealthValue(title: "Bilek sıcaklığı", value: value(latest(\.wristTemperatureC)), unit: "°C", icon: "thermometer.medium", color: TempoTheme.orange)
+                }
+
+                Text("Boş ölçüler, Apple Sağlık’ta veri olmadığı veya ilgili okuma izninin verilmediği anlamına gelebilir.".tempoLocalized)
+                    .font(.caption2).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+            }
+        }
+    }
+}
+
+private struct HealthTrendPoint: Identifiable {
+    let day: Date
+    let value: Double
+    var id: Date { day }
+}
+
+private struct HealthTrendTile: View {
+    let title: String
+    let value: String
+    let unit: String
+    let icon: String
+    let color: Color
+    let points: [HealthTrendPoint]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: icon).foregroundStyle(color)
+                Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                Spacer()
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value).font(.title3.bold().monospacedDigit())
+                Text(unit.tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            }
+            Chart(points) { point in
+                LineMark(x: .value("Gün".tempoLocalized, point.day), y: .value(title.tempoLocalized, point.value))
+                    .foregroundStyle(color).interpolationMethod(.catmullRom)
+                AreaMark(x: .value("Gün".tempoLocalized, point.day), y: .value(title.tempoLocalized, point.value))
+                    .foregroundStyle(LinearGradient(colors: [color.opacity(0.28), .clear], startPoint: .top, endPoint: .bottom))
+                    .interpolationMethod(.catmullRom)
+            }
+            .chartXAxis(.hidden).chartYAxis(.hidden).frame(height: 52)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct CompactHealthValue: View {
+    let title: String
+    let value: String
+    let unit: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).font(.subheadline).foregroundStyle(color)
+                .frame(width: 32, height: 32).background(color.opacity(0.11), in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title.tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary).lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(value).font(.subheadline.bold().monospacedDigit())
+                    Text(unit.tempoLocalized).font(.system(size: 9)).foregroundStyle(TempoTheme.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(11)
+        .background(TempoTheme.raised.opacity(0.75), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 

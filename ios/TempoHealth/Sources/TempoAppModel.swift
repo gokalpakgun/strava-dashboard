@@ -33,6 +33,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var hasAttemptedAccountRestore = false
     private var accountAccessToken: String?
     private var lastDashboardRefresh: Date?
+    private static let dashboardCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("tempo-dashboard-v2.json")
     private var accessToken: String? {
         didSet { isConnected = accessToken != nil }
     }
@@ -44,7 +46,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isConnected = storedToken != nil
         isRestoringConnection = storedToken == nil
         if storedToken != nil {
-            status = "Strava bağlı. Verilerin hazırlanıyor."
+            dashboard = Self.loadCachedDashboard()
+            status = dashboard == nil ? "Strava bağlı. Verilerin hazırlanıyor." : "Kayıtlı Strava verilerin gösteriliyor; güncelleniyor."
             Task { await reloadAll() }
         }
         if healthSyncEnabled {
@@ -91,7 +94,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 isConnected = true
                 status = "Strava bağlantın hazır."
                 isRestoringConnection = false
-                if dashboard == nil { await reloadAll() }
+                if dashboard == nil { dashboard = Self.loadCachedDashboard() }
+                Task { await reloadAll() }
                 return
             }
 
@@ -200,9 +204,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func reloadAll() async {
-        await refreshDashboard()
-        if healthSyncEnabled { await syncAppleHealth() }
-        else { await refreshWater() }
+        async let dashboardRefresh: Void = refreshDashboard()
+        if healthSyncEnabled {
+            async let healthRefresh: Void = syncAppleHealth()
+            _ = await (dashboardRefresh, healthRefresh)
+        } else {
+            async let waterRefresh: Void = refreshWater()
+            _ = await (dashboardRefresh, waterRefresh)
+        }
     }
 
     func refreshDashboard() async {
@@ -235,7 +244,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
-                dashboard = try decoder.decode(TempoDashboard.self, from: data)
+                let decoded = try decoder.decode(TempoDashboard.self, from: data)
+                dashboard = decoded
+                Self.saveCachedDashboard(decoded)
                 lastDashboardRefresh = Date()
                 status = "Strava verilerin güncel."
                 return
@@ -321,16 +332,21 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             )
         }
 
-        if let sleep = latestSleep?.minutes {
+        if let sleepRecord = records.first(where: { ($0.value.sleepMinutes ?? 0) > 0 }),
+           let sleep = sleepRecord.value.sleepMinutes {
             let hours = sleep / 60
-            let score: Int
+            let durationScore: Int
             switch hours {
-            case ..<4.5: score = bounded(20 + hours * 5)
-            case 4.5..<6: score = bounded(45 + (hours - 4.5) * 16)
-            case 6..<7: score = bounded(70 + (hours - 6) * 20)
-            case 7...9: score = 100
-            default: score = bounded(100 - (hours - 9) * 10)
+            case ..<4.5: durationScore = bounded(20 + hours * 5)
+            case 4.5..<6: durationScore = bounded(45 + (hours - 4.5) * 16)
+            case 6..<7: durationScore = bounded(70 + (hours - 6) * 20)
+            case 7...9: durationScore = 100
+            default: durationScore = bounded(100 - (hours - 9) * 10)
             }
+            let restorativeMinutes = (sleepRecord.value.sleepDeepMinutes ?? 0) + (sleepRecord.value.sleepREMMinutes ?? 0)
+            let restorativeRatio = sleep > 0 ? restorativeMinutes / sleep : 0
+            let stageScore = restorativeMinutes > 0 ? bounded(55 + restorativeRatio * 125) : durationScore
+            let score = bounded(Double(durationScore) * 0.72 + Double(stageScore) * 0.28)
             weightedFactors.append((
                 TempoBalanceFactor(id: "sleep", title: "Uyku", value: TempoFormat.duration(sleep * 60), score: score, symbol: "moon.zzz.fill", tint: "blue"),
                 0.32
@@ -375,6 +391,39 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             weightedFactors.append((
                 TempoBalanceFactor(id: "load", title: "Hareket yükü", value: "\(number(current)) kcal", score: score, symbol: "flame.fill", tint: "orange"),
                 0.12
+            ))
+        }
+
+        let respiratoryValues = values(\.respiratoryRate)
+        if let current = respiratoryValues.first {
+            let baseline = average(respiratoryValues.dropFirst().prefix(21))
+            let score = baseline.map { reference in
+                bounded(94 - abs(current - reference) * 10)
+            } ?? 82
+            weightedFactors.append((
+                TempoBalanceFactor(id: "respiratory", title: "Solunum ritmi", value: "\(number(current, digits: 1)) \("nefes/dk".tempoLocalized)", score: score, symbol: "lungs.fill", tint: "blue"),
+                0.08
+            ))
+        }
+
+        let temperatureValues = values(\.wristTemperatureC)
+        if let current = temperatureValues.first {
+            let baseline = average(temperatureValues.dropFirst().prefix(21))
+            let score = baseline.map { reference in
+                bounded(94 - abs(current - reference) * 35)
+            } ?? 82
+            weightedFactors.append((
+                TempoBalanceFactor(id: "temperature", title: "Bilek sıcaklığı", value: "\(number(current, digits: 1)) °C", score: score, symbol: "thermometer.medium", tint: "orange"),
+                0.06
+            ))
+        }
+
+        let oxygenValues = values(\.oxygenSaturationPct)
+        if let current = oxygenValues.first {
+            let score = bounded(70 + (current - 92) * 6)
+            weightedFactors.append((
+                TempoBalanceFactor(id: "oxygen", title: "Kandaki oksijen", value: "\(number(current, digits: 1))%", score: score, symbol: "lungs.fill", tint: "green"),
+                0.05
             ))
         }
 
@@ -533,6 +582,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             SecureTokenStore.delete()
             accessToken = nil
             dashboard = nil
+            Self.clearCachedDashboard()
             dashboardError = nil
             todayWaterMl = 0
             healthStore.disableBackgroundDelivery()
@@ -588,7 +638,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                     }
                     accessToken = token
                     status = "Strava bağlı. Verilerin hazırlanıyor."
-                    await reloadAll()
+                    dashboard = Self.loadCachedDashboard()
+                    Task { await reloadAll() }
                     return
                 }
 
@@ -669,6 +720,22 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
+    }
+
+    private static func loadCachedDashboard() -> TempoDashboard? {
+        guard let data = try? Data(contentsOf: dashboardCacheURL) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try? decoder.decode(TempoDashboard.self, from: data)
+    }
+
+    private static func saveCachedDashboard(_ dashboard: TempoDashboard) {
+        guard let data = try? JSONEncoder().encode(dashboard) else { return }
+        try? data.write(to: dashboardCacheURL, options: .atomic)
+    }
+
+    private static func clearCachedDashboard() {
+        try? FileManager.default.removeItem(at: dashboardCacheURL)
     }
 
     private static func randomVerifier() -> String {

@@ -13,7 +13,7 @@ extension String {
     }
 }
 
-struct TempoDashboard: Decodable {
+struct TempoDashboard: Codable {
     let athlete: TempoAthlete
     let segments: [TempoSegment]
     let photos: [TempoPhoto]
@@ -22,7 +22,7 @@ struct TempoDashboard: Decodable {
     let activities: [TempoActivity]
 }
 
-struct TempoAthlete: Decodable {
+struct TempoAthlete: Codable {
     let id: Int64
     let firstname: String?
     let lastname: String?
@@ -46,7 +46,7 @@ struct TempoAthlete: Decodable {
     }
 }
 
-struct TempoGear: Decodable, Identifiable {
+struct TempoGear: Codable, Identifiable {
     let id: String
     let name: String?
     let distance: Double?
@@ -54,7 +54,7 @@ struct TempoGear: Decodable, Identifiable {
     let type: String?
 }
 
-struct TempoSegment: Decodable, Identifiable {
+struct TempoSegment: Codable, Identifiable {
     let id: Int64
     let name: String?
     let distance: Double?
@@ -63,14 +63,14 @@ struct TempoSegment: Decodable, Identifiable {
     let starCount: Int?
 }
 
-struct TempoPhoto: Decodable, Identifiable {
+struct TempoPhoto: Codable, Identifiable {
     let activityId: Int64
     let activityName: String?
     let image: String
     var id: Int64 { activityId }
 }
 
-struct TempoActivity: Decodable, Identifiable, Hashable {
+struct TempoActivity: Codable, Identifiable, Hashable {
     let id: Int64
     let name: String?
     let type: String?
@@ -153,7 +153,7 @@ enum TempoSport: Equatable {
 }
 
 
-struct TempoAchievement: Decodable {
+struct TempoAchievement: Codable {
     let level: Int
     let title: String
     let totalXp: Int
@@ -180,7 +180,7 @@ struct TempoAchievement: Decodable {
     var unlockedBadges: [TempoBadge] { badges.filter(\.unlocked) }
 }
 
-struct TempoBadge: Decodable, Identifiable {
+struct TempoBadge: Codable, Identifiable {
     let id: String
     let title: String
     let description: String
@@ -214,32 +214,70 @@ struct TempoCoachResponse: Decodable {
 struct TempoHealthMetrics: Codable, Equatable {
     var waterMl: Double?
     var sleepMinutes: Double?
+    var sleepCoreMinutes: Double?
+    var sleepDeepMinutes: Double?
+    var sleepREMMinutes: Double?
+    var sleepAwakeMinutes: Double?
     var steps: Double?
     var activeEnergyKcal: Double?
+    var exerciseMinutes: Double?
     var restingHeartRateBpm: Double?
     var hrvMs: Double?
+    var respiratoryRate: Double?
+    var oxygenSaturationPct: Double?
+    var vo2Max: Double?
+    var walkingHeartRateBpm: Double?
+    var heartRateRecoveryBpm: Double?
+    var wristTemperatureC: Double?
     var bodyMassKg: Double?
 
     init(
         waterMl: Double? = nil,
         sleepMinutes: Double? = nil,
+        sleepCoreMinutes: Double? = nil,
+        sleepDeepMinutes: Double? = nil,
+        sleepREMMinutes: Double? = nil,
+        sleepAwakeMinutes: Double? = nil,
         steps: Double? = nil,
         activeEnergyKcal: Double? = nil,
+        exerciseMinutes: Double? = nil,
         restingHeartRateBpm: Double? = nil,
         hrvMs: Double? = nil,
+        respiratoryRate: Double? = nil,
+        oxygenSaturationPct: Double? = nil,
+        vo2Max: Double? = nil,
+        walkingHeartRateBpm: Double? = nil,
+        heartRateRecoveryBpm: Double? = nil,
+        wristTemperatureC: Double? = nil,
         bodyMassKg: Double? = nil
     ) {
         self.waterMl = waterMl
         self.sleepMinutes = sleepMinutes
+        self.sleepCoreMinutes = sleepCoreMinutes
+        self.sleepDeepMinutes = sleepDeepMinutes
+        self.sleepREMMinutes = sleepREMMinutes
+        self.sleepAwakeMinutes = sleepAwakeMinutes
         self.steps = steps
         self.activeEnergyKcal = activeEnergyKcal
+        self.exerciseMinutes = exerciseMinutes
         self.restingHeartRateBpm = restingHeartRateBpm
         self.hrvMs = hrvMs
+        self.respiratoryRate = respiratoryRate
+        self.oxygenSaturationPct = oxygenSaturationPct
+        self.vo2Max = vo2Max
+        self.walkingHeartRateBpm = walkingHeartRateBpm
+        self.heartRateRecoveryBpm = heartRateRecoveryBpm
+        self.wristTemperatureC = wristTemperatureC
         self.bodyMassKg = bodyMassKg
     }
 
     var hasData: Bool {
-        [waterMl, sleepMinutes, steps, activeEnergyKcal, restingHeartRateBpm, hrvMs, bodyMassKg].contains { $0 != nil }
+        [
+            waterMl, sleepMinutes, sleepCoreMinutes, sleepDeepMinutes, sleepREMMinutes, sleepAwakeMinutes,
+            steps, activeEnergyKcal, exerciseMinutes, restingHeartRateBpm, hrvMs, respiratoryRate,
+            oxygenSaturationPct, vo2Max, walkingHeartRateBpm, heartRateRecoveryBpm, wristTemperatureC,
+            bodyMassKg,
+        ].contains { $0 != nil }
     }
 }
 
