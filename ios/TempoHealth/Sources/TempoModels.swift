@@ -231,6 +231,23 @@ struct TempoHealthMetrics: Codable, Equatable {
     }
 }
 
+struct TempoBalanceFactor: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let value: String
+    let score: Int
+    let symbol: String
+    let tint: String
+}
+
+struct TempoBalanceScore: Equatable {
+    let value: Int
+    let state: String
+    let recommendation: String
+    let confidence: String
+    let factors: [TempoBalanceFactor]
+}
+
 struct TempoHealthSyncPayload: Encodable {
     let days: [String: TempoHealthMetrics]
 }

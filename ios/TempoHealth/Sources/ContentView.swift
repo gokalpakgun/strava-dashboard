@@ -411,6 +411,12 @@ private struct HomeScreen: View {
                 HomeHeader()
                 if let dashboard = model.dashboard {
                     hero(dashboard.athlete)
+                    if let balance = model.tempoBalance {
+                        NavigationLink(destination: HealthScreen()) {
+                            TempoBalanceHomeCard(balance: balance)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     weeklyMetrics
                     challengeCard
                     dailyMotivation
@@ -1222,6 +1228,15 @@ private struct HealthScreen: View {
             } else if !model.healthSyncEnabled {
                 connectCard
             } else {
+                if let balance = model.tempoBalance {
+                    TempoBalanceDetailCard(balance: balance)
+                } else {
+                    TempoCard {
+                        Label("Tempo Dengesi için henüz yeterli ölçüm yok. Apple Sağlık verileri geldikçe puanın oluşacak.", systemImage: "gauge.with.dots.needle.33percent")
+                            .font(.subheadline)
+                            .foregroundStyle(TempoTheme.secondary)
+                    }
+                }
                 healthOverview
                 SectionHeading(title: "Bugünkü ölçüler", caption: "APPLE SAĞLIK", padding: false)
                 LazyVGrid(columns: columns, spacing: 12) {
@@ -1353,6 +1368,161 @@ private struct HealthMetricTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private struct TempoBalanceHomeCard: View {
+    let balance: TempoBalanceScore
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle().stroke(.white.opacity(0.08), lineWidth: 7)
+                Circle()
+                    .trim(from: 0, to: CGFloat(balance.value) / 100)
+                    .stroke(
+                        LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                Text("\(balance.value)")
+                    .font(.title3.monospacedDigit().bold())
+            }
+            .frame(width: 66, height: 66)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("TEMPO DENGESİ")
+                    .font(.caption2.bold())
+                    .tracking(1.25)
+                    .foregroundStyle(TempoTheme.green)
+                Text(balance.state).font(.headline)
+                Text(balance.recommendation)
+                    .font(.caption)
+                    .foregroundStyle(TempoTheme.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.caption.bold())
+                .foregroundStyle(.white.opacity(0.3))
+        }
+        .foregroundStyle(.white)
+        .padding(17)
+        .background(
+            LinearGradient(
+                colors: [TempoTheme.green.opacity(0.11), TempoTheme.blue.opacity(0.07), TempoTheme.card],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(TempoTheme.green.opacity(0.18)))
+    }
+}
+
+private struct TempoBalanceDetailCard: View {
+    let balance: TempoBalanceScore
+
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .center, spacing: 18) {
+                    ZStack {
+                        Circle().stroke(.white.opacity(0.08), lineWidth: 11)
+                        Circle()
+                            .trim(from: 0, to: CGFloat(balance.value) / 100)
+                            .stroke(
+                                AngularGradient(colors: [TempoTheme.green, TempoTheme.blue, TempoTheme.green], center: .center),
+                                style: StrokeStyle(lineWidth: 11, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 0) {
+                            Text("\(balance.value)")
+                                .font(.system(size: 34, weight: .bold, design: .rounded).monospacedDigit())
+                            Text("/ 100")
+                                .font(.caption2)
+                                .foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                    .frame(width: 112, height: 112)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("TEMPO DENGESİ")
+                            .font(.caption.bold())
+                            .tracking(1.35)
+                            .foregroundStyle(TempoTheme.green)
+                        Text(balance.state)
+                            .font(.title2.bold())
+                        Text(balance.confidence)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(TempoTheme.blue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(TempoTheme.blue.opacity(0.12), in: Capsule())
+                    }
+                }
+
+                Text(balance.recommendation)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.76))
+                    .lineSpacing(4)
+
+                Divider().overlay(.white.opacity(0.08))
+
+                VStack(spacing: 15) {
+                    ForEach(balance.factors) { factor in
+                        TempoBalanceFactorRow(factor: factor)
+                    }
+                }
+
+                Text("Puan; kişisel geçmişindeki uyku, HRV, dinlenik nabız, hareket yükü ve sıvı ölçümlerinden mevcut olanlarla hesaplanır. Tıbbi değerlendirme değildir.")
+                    .font(.caption2)
+                    .foregroundStyle(TempoTheme.secondary)
+                    .lineSpacing(3)
+            }
+        }
+    }
+}
+
+private struct TempoBalanceFactorRow: View {
+    let factor: TempoBalanceFactor
+
+    private var color: Color {
+        switch factor.tint {
+        case "orange": return TempoTheme.orange
+        case "blue": return TempoTheme.blue
+        case "purple": return TempoTheme.purple
+        case "pink": return .pink
+        default: return TempoTheme.green
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: factor.symbol)
+                .font(.subheadline)
+                .foregroundStyle(color)
+                .frame(width: 38, height: 38)
+                .background(color.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(factor.title).font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(factor.value).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
+                }
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.07))
+                        Capsule().fill(color).frame(width: proxy.size.width * CGFloat(factor.score) / 100)
+                    }
+                }
+                .frame(height: 5)
+            }
+            Text("\(factor.score)")
+                .font(.caption.monospacedDigit().bold())
+                .foregroundStyle(color)
+                .frame(width: 27, alignment: .trailing)
+        }
     }
 }
 
@@ -1529,6 +1699,15 @@ private struct HomeHeader: View {
                     .font(.title3.bold())
             }
             Spacer()
+            NavigationLink(destination: NearbyFacilitiesScreen()) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(TempoTheme.blue)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(TempoTheme.blue.opacity(0.24)))
+            }
+            .accessibilityLabel("Yakındaki spor alanlarını aç")
             Button { Task { await model.reloadAll() } } label: {
                 Group {
                     if model.isLoadingDashboard {

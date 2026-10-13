@@ -296,6 +296,120 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthDays.sorted { $0.key > $1.key }.compactMap { $0.value.bodyMassKg }.first
     }
 
+    var tempoBalance: TempoBalanceScore? {
+        let records = healthDays.sorted { $0.key > $1.key }
+        var weightedFactors: [(factor: TempoBalanceFactor, weight: Double)] = []
+
+        func values(_ keyPath: KeyPath<TempoHealthMetrics, Double?>) -> [Double] {
+            records.compactMap { $0.value[keyPath: keyPath] }.filter { $0.isFinite && $0 > 0 }
+        }
+
+        func average(_ values: ArraySlice<Double>) -> Double? {
+            guard !values.isEmpty else { return nil }
+            return values.reduce(0, +) / Double(values.count)
+        }
+
+        func bounded(_ value: Double) -> Int {
+            Int(min(max(value, 0), 100).rounded())
+        }
+
+        func number(_ value: Double, digits: Int = 0) -> String {
+            value.formatted(
+                .number
+                    .locale(Locale(identifier: "tr_TR"))
+                    .precision(.fractionLength(digits))
+            )
+        }
+
+        if let sleep = latestSleep?.minutes {
+            let hours = sleep / 60
+            let score: Int
+            switch hours {
+            case ..<4.5: score = bounded(20 + hours * 5)
+            case 4.5..<6: score = bounded(45 + (hours - 4.5) * 16)
+            case 6..<7: score = bounded(70 + (hours - 6) * 20)
+            case 7...9: score = 100
+            default: score = bounded(100 - (hours - 9) * 10)
+            }
+            weightedFactors.append((
+                TempoBalanceFactor(id: "sleep", title: "Uyku", value: TempoFormat.duration(sleep * 60), score: score, symbol: "moon.zzz.fill", tint: "blue"),
+                0.32
+            ))
+        }
+
+        let hrvValues = values(\.hrvMs)
+        if let current = hrvValues.first {
+            let baseline = average(hrvValues.dropFirst().prefix(21))
+            let score = baseline.map { bounded(90 + ((current / max($0, 1)) - 1) * 100) } ?? 82
+            let comparison = baseline.map { " · ort. \(number($0))" } ?? ""
+            weightedFactors.append((
+                TempoBalanceFactor(id: "hrv", title: "HRV", value: "\(number(current)) ms\(comparison)", score: score, symbol: "waveform.path.ecg", tint: "purple"),
+                0.26
+            ))
+        }
+
+        let restingValues = values(\.restingHeartRateBpm)
+        if let current = restingValues.first {
+            let baseline = average(restingValues.dropFirst().prefix(21))
+            let score = baseline.map { reference in
+                let difference = current - reference
+                return bounded(difference <= 0 ? 92 + abs(difference) * 2 : 92 - difference * 7)
+            } ?? 82
+            let comparison = baseline.map { " · ort. \(number($0))" } ?? ""
+            weightedFactors.append((
+                TempoBalanceFactor(id: "resting-heart", title: "Dinlenik nabız", value: "\(number(current)) atım/dk\(comparison)", score: score, symbol: "heart.fill", tint: "pink"),
+                0.22
+            ))
+        }
+
+        let energyValues = values(\.activeEnergyKcal)
+        if let current = energyValues.first {
+            let baseline = average(energyValues.dropFirst().prefix(14))
+            let score = baseline.map { reference in
+                let ratio = current / max(reference, 1)
+                if ratio > 1.8 { return bounded(100 - (ratio - 1.8) * 42) }
+                if ratio > 1.25 { return bounded(92 - (ratio - 1.25) * 35) }
+                if ratio < 0.25 { return 76 }
+                return 92
+            } ?? 82
+            weightedFactors.append((
+                TempoBalanceFactor(id: "load", title: "Hareket yükü", value: "\(number(current)) kcal", score: score, symbol: "flame.fill", tint: "orange"),
+                0.12
+            ))
+        }
+
+        let waterValues = values(\.waterMl)
+        if let current = waterValues.first {
+            let score = bounded((current / Double(dailyGoalMl)) * 100)
+            weightedFactors.append((
+                TempoBalanceFactor(id: "water", title: "Sıvı dengesi", value: "\(number(current)) ml", score: score, symbol: "drop.fill", tint: "blue"),
+                0.08
+            ))
+        }
+
+        guard !weightedFactors.isEmpty else { return nil }
+        let totalWeight = weightedFactors.reduce(0) { $0 + $1.weight }
+        let value = bounded(weightedFactors.reduce(0) { $0 + Double($1.factor.score) * $1.weight } / totalWeight)
+        let state: String
+        let recommendation: String
+        switch value {
+        case 85...:
+            state = "Yüksek ritim"
+            recommendation = "Vücudunun işaretleri güçlü. Planındaki kaliteli veya yoğun antrenman için uygun bir gün."
+        case 70..<85:
+            state = "Dengeli"
+            recommendation = "Normal antrenman planını sürdürebilirsin; ısınma sırasında nasıl hissettiğini kontrol et."
+        case 55..<70:
+            state = "Kontrollü tempo"
+            recommendation = "Orta şiddet, teknik çalışma veya kısa bir seans bugün daha dengeli olabilir."
+        default:
+            state = "Toparlanma odağı"
+            recommendation = "Hafif hareket, mobilite ve dinlenmeye ağırlık vermek daha uygun görünüyor."
+        }
+        let confidence = weightedFactors.count >= 4 ? "Güçlü veri" : (weightedFactors.count >= 3 ? "Orta veri" : "Sınırlı veri")
+        return TempoBalanceScore(value: value, state: state, recommendation: recommendation, confidence: confidence, factors: weightedFactors.map { $0.factor })
+    }
+
     func connectAppleHealth() {
         guard healthStore.isAvailable, !isHealthSyncing else {
             healthError = "Apple Sağlık bu cihazda kullanılamıyor."

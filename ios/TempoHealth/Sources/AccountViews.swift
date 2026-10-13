@@ -917,32 +917,74 @@ struct AccountSettingsScreen: View {
     @State private var photoError = ""
     @State private var loaded = false
     @State private var confirmDelete = false
+    @State private var isEditingSports = false
+    @State private var showAccountActions = false
 
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    OnboardingTitle(title: "Tempo Hesabı", subtitle: "Profilini ve ilgilendiğin sporları düzenle.")
+                    OnboardingTitle(title: "Tempo Hesabı", subtitle: "Profilin, sporların ve hesap ayarların.")
 
                     PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                         HStack(spacing: 16) {
-                            AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 82)
+                            AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 68)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Profil fotoğrafı").font(.headline).foregroundStyle(.white)
-                                Text("Değiştirmek için dokun").font(.caption).foregroundStyle(TempoTheme.secondary)
+                                Text(displayName.isEmpty ? "Profil fotoğrafı" : displayName).font(.headline).foregroundStyle(.white)
+                                Text("Fotoğrafı değiştir").font(.caption).foregroundStyle(TempoTheme.green)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
+                            Image(systemName: "photo.badge.plus").foregroundStyle(TempoTheme.secondary)
                         }
-                        .padding(16).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
 
-                    AccountTextField(title: "Görünen ad", icon: "person.fill", text: $displayName, contentType: .name)
-                    AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("PROFİL BİLGİLERİ").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
+                        AccountTextField(title: "Görünen ad", icon: "person.fill", text: $displayName, contentType: .name)
+                        AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
+                    }
 
-                    Text("SPORLARIM").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
-                    SportSelectionGrid(selection: $selectedSports)
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("SPORLARIM").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
+                                Text("\(selectedSports.count) spor seçili").font(.caption).foregroundStyle(TempoTheme.secondary)
+                            }
+                            Spacer()
+                            Button(isEditingSports ? "Bitti" : "Düzenle") {
+                                withAnimation(.snappy) { isEditingSports.toggle() }
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(isEditingSports ? .black : TempoTheme.green)
+                            .padding(.horizontal, 13).padding(.vertical, 8)
+                            .background(isEditingSports ? TempoTheme.green : TempoTheme.green.opacity(0.11), in: Capsule())
+                        }
+
+                        if !selectedSports.isEmpty {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                                ForEach(TempoSportChoice.allCases.filter { selectedSports.contains($0) }) { sport in
+                                    Label(sport.title, systemImage: sport.symbol)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.white.opacity(0.86))
+                                        .padding(.horizontal, 11).padding(.vertical, 9)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(TempoTheme.raised, in: Capsule())
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+
+                        if isEditingSports {
+                            Divider().overlay(.white.opacity(0.08))
+                            SportSelectionGrid(selection: $selectedSports)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .padding(16)
+                    .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.055)))
 
                     if !photoError.isEmpty {
                         Label(photoError, systemImage: "photo.badge.exclamationmark")
@@ -961,20 +1003,29 @@ struct AccountSettingsScreen: View {
                     .buttonStyle(AccountPrimaryButtonStyle())
                     .disabled(account.isBusy || isPreparingPhoto || displayName.isEmpty || selectedSports.isEmpty)
 
-                    Divider().overlay(.white.opacity(0.08)).padding(.vertical, 6)
+                    DisclosureGroup(isExpanded: $showAccountActions) {
+                        VStack(spacing: 10) {
+                            Button(role: .destructive) {
+                                model.disconnect()
+                                Task { await account.signOut() }
+                            } label: {
+                                Label("Tempo hesabından çık", systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(AccountDangerButtonStyle())
 
-                    Button(role: .destructive) {
-                        model.disconnect()
-                        Task { await account.signOut() }
+                            Button(role: .destructive) { confirmDelete = true } label: {
+                                Label("Hesabı kalıcı olarak sil", systemImage: "trash.fill").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(AccountDangerButtonStyle())
+                        }
+                        .padding(.top, 12)
                     } label: {
-                        Label("Tempo hesabından çık", systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity)
+                        Label("Hesap ve güvenlik", systemImage: "lock.shield.fill")
+                            .font(.subheadline.weight(.semibold))
                     }
-                    .buttonStyle(AccountDangerButtonStyle())
-
-                    Button(role: .destructive) { confirmDelete = true } label: {
-                        Label("Hesabı kalıcı olarak sil", systemImage: "trash.fill").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(AccountDangerButtonStyle())
+                    .tint(TempoTheme.secondary)
+                    .padding(16)
+                    .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
                 .padding(18)
             }
