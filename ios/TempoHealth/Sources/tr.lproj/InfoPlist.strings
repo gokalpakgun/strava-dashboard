@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "Tempo";
+"NSLocationWhenInUseUsageDescription" = "Tempo, yakınındaki tenis kortu, basketbol sahası ve diğer spor alanlarını göstermek için konumunu kullanır.";
+"NSPhotoLibraryUsageDescription" = "Tempo, seçtiğin fotoğrafı profil resmin olarak kullanabilmek için fotoğraf arşivine erişir.";
+"NSHealthShareUsageDescription" = "Tempo; su tüketimi, uyku, adım, aktif enerji, dinlenik nabız, HRV ve kilo verilerini spor gelişimini göstermek ve kişisel koç değerlendirmesini iyileştirmek için okur.";
+"NSHealthUpdateUsageDescription" = "Tempo, uygulamada eklediğin su miktarını Apple Sağlık hesabına kaydeder.";

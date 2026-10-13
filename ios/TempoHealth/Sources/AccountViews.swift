@@ -223,7 +223,7 @@ private struct WellnessPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon).foregroundStyle(color)
-            Text(title).foregroundStyle(.white.opacity(0.84))
+            Text(title.tempoLocalized).foregroundStyle(.white.opacity(0.84))
         }
         .font(.caption.weight(.semibold))
         .frame(maxWidth: .infinity)
@@ -272,10 +272,10 @@ private struct AccountFormView: View {
                     .padding(.top, 7)
 
                     VStack(spacing: 8) {
-                        Text(mode.title)
+                        Text(mode.title.tempoLocalized)
                             .font(.system(size: 33, weight: .bold, design: .rounded))
                             .tracking(-0.7)
-                        Text(mode.subtitle)
+                        Text(mode.subtitle.tempoLocalized)
                             .font(.subheadline)
                             .foregroundStyle(TempoTheme.secondary)
                             .multilineTextAlignment(.center)
@@ -373,10 +373,10 @@ private struct AccountFormView: View {
                     .shadow(color: .black.opacity(0.18), radius: 18, y: 9)
 
                     HStack(spacing: 5) {
-                        Text(mode.alternatePrompt)
+                        Text(mode.alternatePrompt.tempoLocalized)
                             .foregroundStyle(TempoTheme.secondary)
                         NavigationLink(destination: AccountFormView(mode: mode == .signUp ? .signIn : .signUp)) {
-                            Text(mode.alternateTitle)
+                            Text(mode.alternateTitle.tempoLocalized)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(TempoTheme.green)
                         }
@@ -496,7 +496,7 @@ private struct AccountFormFieldLabel<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            Text(title.tempoLocalized)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.78))
             content
@@ -655,7 +655,7 @@ struct AccountOnboardingView: View {
                 action: model.connectAppleHealth
             )
 
-            Text(model.status).font(.footnote).foregroundStyle(TempoTheme.secondary)
+            Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
             accountError
 
             HStack(spacing: 10) {
@@ -787,7 +787,7 @@ struct AchievementsScreen: View {
                     HStack {
                         Text("ROZETLER").font(.caption.bold()).tracking(1.4).foregroundStyle(TempoTheme.green)
                         Spacer()
-                        Text("\(achievement.unlockedBadgeCount) / \(achievement.totalBadgeCount) açıldı")
+                        Text("%d / %d açıldı".tempoFormatted(achievement.unlockedBadgeCount, achievement.totalBadgeCount))
                             .font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
 
@@ -841,7 +841,7 @@ struct AchievementsScreen: View {
 
             VStack(spacing: 8) {
                 HStack {
-                    Text("\(achievement.totalXp.formatted()) toplam XP").font(.subheadline.bold())
+                    Text("%@ toplam XP".tempoFormatted(achievement.totalXp.formatted())).font(.subheadline.bold())
                     Spacer()
                     Text(achievement.nextLevelXp > 0 ? "Sonraki seviyeye \(max(achievement.nextLevelXp - achievement.currentLevelXp, 0)) XP" : "En yüksek seviye")
                         .font(.caption).foregroundStyle(TempoTheme.secondary)
@@ -950,7 +950,7 @@ struct AccountSettingsScreen: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("SPORLARIM").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
-                                Text("\(selectedSports.count) spor seçili").font(.caption).foregroundStyle(TempoTheme.secondary)
+                                Text("%d spor seçili".tempoFormatted(selectedSports.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
                             }
                             Spacer()
                             Button(isEditingSports ? "Bitti" : "Düzenle") {
@@ -1116,8 +1116,8 @@ private struct ConnectionCard: View {
             Image(systemName: icon).font(.title2).foregroundStyle(color)
                 .frame(width: 50, height: 50).background(color.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                Text(title.tempoLocalized).font(.headline)
+                Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
             }
             Spacer()
             Button(action: action) {
@@ -1137,8 +1137,8 @@ private struct OnboardingTitle: View {
     let subtitle: String
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title).font(.system(size: 30, weight: .bold, design: .rounded))
-            Text(subtitle).font(.subheadline).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+            Text(title.tempoLocalized).font(.system(size: 30, weight: .bold, design: .rounded))
+            Text(subtitle.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -1152,7 +1152,7 @@ private struct AccountTextField: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon).foregroundStyle(TempoTheme.green).frame(width: 22)
-            TextField(title, text: $text)
+            TextField(title.tempoLocalized, text: $text)
                 .textContentType(contentType)
                 .textInputAutocapitalization(contentType == .name ? .words : .never)
                 .autocorrectionDisabled(contentType != .name)
@@ -1178,7 +1178,7 @@ private struct AccountSecureField: View {
                 if hidesPassword {
                     SecureField(title, text: $text)
                 } else {
-                    TextField(title, text: $text)
+                    TextField(title.tempoLocalized, text: $text)
                 }
             }
             .textContentType(.password)

@@ -143,7 +143,7 @@ private struct TempoGlassTabBar: View {
                             .foregroundStyle(isSelected ? TempoTheme.green : .white.opacity(0.76))
                             .frame(height: 22)
 
-                        Text(tab.title)
+                        Text(tab.title.tempoLocalized)
                             .font(.system(size: 9.5, weight: isSelected ? .bold : .medium, design: .rounded))
                             .foregroundStyle(isSelected ? .white : .white.opacity(0.64))
                             .lineLimit(1)
@@ -182,7 +182,7 @@ private struct TempoGlassTabBar: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(tab.title)
+                .accessibilityLabel(tab.title.tempoLocalized)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
@@ -269,7 +269,7 @@ private struct WelcomeScreen: View {
                                 Image(systemName: "info.circle.fill")
                                     .foregroundStyle(TempoTheme.green)
                             }
-                            Text(model.status)
+                            Text(model.status.tempoLocalized)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .font(.caption)
@@ -302,7 +302,7 @@ private struct StravaTrustRow: View {
         VStack(spacing: 6) {
             Image(systemName: icon)
                 .foregroundStyle(TempoTheme.green)
-            Text(title)
+            Text(title.tempoLocalized)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.7))
         }
@@ -385,7 +385,7 @@ private struct ImportPill: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .foregroundStyle(TempoTheme.green)
-            Text(title)
+            Text(title.tempoLocalized)
                 .foregroundStyle(.white.opacity(0.82))
         }
         .font(.caption.weight(.semibold))
@@ -550,7 +550,7 @@ private struct HomeHeroPill: View {
                 .font(.subheadline.bold())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            Text(label)
+            Text(label.tempoLocalized)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(TempoTheme.secondary)
         }
@@ -649,7 +649,7 @@ private struct ActivitiesScreen: View {
                         }
                     }
                 }
-                Text("\(filtered.count) aktivite").font(.caption.bold()).tracking(1.2).foregroundStyle(TempoTheme.secondary)
+                Text("%d aktivite".tempoFormatted(filtered.count)).font(.caption.bold()).tracking(1.2).foregroundStyle(TempoTheme.secondary)
                 LazyVStack(spacing: 10) {
                     ForEach(filtered) { activity in
                         NavigationLink(destination: ActivityDetailScreen(activity: activity)) { ActivityRow(activity: activity) }
@@ -886,7 +886,7 @@ private struct ActivityTimelineScreen: View {
         let calendar = Calendar.current
         let now = Date()
         let previousWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: now) ?? now
-        let locale = Locale(identifier: "tr_TR")
+        let locale = Locale.autoupdatingCurrent
         let monthFormatter = DateFormatter()
         monthFormatter.locale = locale
         monthFormatter.dateFormat = "LLLL yyyy"
@@ -959,7 +959,7 @@ private struct ActivityTimelineScreen: View {
                                 Button {
                                     withAnimation(.easeOut(duration: 0.18)) { filter = option }
                                 } label: {
-                                    Text(option.title)
+                                    Text(option.title.tempoLocalized)
                                         .font(.caption.bold())
                                         .foregroundStyle(filter == option ? .black : .white)
                                         .padding(.horizontal, 15)
@@ -978,8 +978,8 @@ private struct ActivityTimelineScreen: View {
                             VStack(spacing: 9) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(group.title).font(.headline)
-                                        Text("\(group.activities.count) aktivite")
+                                        Text(group.title.tempoLocalized).font(.headline)
+                                        Text("%d aktivite".tempoFormatted(group.activities.count))
                                             .font(.caption)
                                             .foregroundStyle(TempoTheme.secondary)
                                     }
@@ -1195,7 +1195,7 @@ private struct MoreScreen: View {
                 TempoCard {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("BAĞLANTI DURUMU").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
-                        Text(model.status).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        Text(model.status.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
                     }
                 }
                 Button(role: .destructive, action: model.disconnect) {
@@ -1251,7 +1251,7 @@ private struct HealthScreen: View {
             if let error = model.healthError {
                 Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text(model.status).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
             if model.healthSyncEnabled {
                 HStack(spacing: 10) {
                     Button { Task { await model.syncAppleHealth() } } label: {
@@ -1337,12 +1337,12 @@ private struct HealthScreen: View {
 
     private func whole(_ value: Double?) -> String {
         guard let value else { return "—" }
-        return Int(value.rounded()).formatted(.number.locale(Locale(identifier: "tr_TR")))
+        return Int(value.rounded()).formatted(.number.locale(Locale.autoupdatingCurrent))
     }
 
     private func decimal(_ value: Double?) -> String {
         guard let value else { return "—" }
-        return value.formatted(.number.locale(Locale(identifier: "tr_TR")).precision(.fractionLength(1)))
+        return value.formatted(.number.locale(Locale.autoupdatingCurrent).precision(.fractionLength(1)))
     }
 }
 
@@ -1358,10 +1358,10 @@ private struct HealthMetricTile: View {
             Image(systemName: icon).font(.title3).foregroundStyle(color)
                 .frame(width: 38, height: 38).background(color.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(value).font(.title3.bold())
-                    if !unit.isEmpty { Text(unit).font(.caption2).foregroundStyle(TempoTheme.secondary) }
+                    if !unit.isEmpty { Text(unit.tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary) }
                 }
             }
         }
@@ -1395,8 +1395,8 @@ private struct TempoBalanceHomeCard: View {
                     .font(.caption2.bold())
                     .tracking(1.25)
                     .foregroundStyle(TempoTheme.green)
-                Text(balance.state).font(.headline)
-                Text(balance.recommendation)
+                Text(balance.state.tempoLocalized).font(.headline)
+                Text(balance.recommendation.tempoLocalized)
                     .font(.caption)
                     .foregroundStyle(TempoTheme.secondary)
                     .lineLimit(2)
@@ -1451,9 +1451,9 @@ private struct TempoBalanceDetailCard: View {
                             .font(.caption.bold())
                             .tracking(1.35)
                             .foregroundStyle(TempoTheme.green)
-                        Text(balance.state)
+                        Text(balance.state.tempoLocalized)
                             .font(.title2.bold())
-                        Text(balance.confidence)
+                        Text(balance.confidence.tempoLocalized)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(TempoTheme.blue)
                             .padding(.horizontal, 10)
@@ -1462,7 +1462,7 @@ private struct TempoBalanceDetailCard: View {
                     }
                 }
 
-                Text(balance.recommendation)
+                Text(balance.recommendation.tempoLocalized)
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.76))
                     .lineSpacing(4)
@@ -1506,7 +1506,7 @@ private struct TempoBalanceFactorRow: View {
                 .background(color.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(factor.title).font(.subheadline.weight(.semibold))
+                    Text(factor.title.tempoLocalized).font(.subheadline.weight(.semibold))
                     Spacer()
                     Text(factor.value).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                 }
@@ -1545,7 +1545,7 @@ private struct MonthlyStatsScreen: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(TempoFormat.monthLong.string(from: item.date).capitalized).font(.headline)
-                            Text("\(item.count) aktivite · \(TempoFormat.duration(item.seconds))").font(.caption).foregroundStyle(TempoTheme.secondary)
+                            Text("%d aktivite · %@".tempoFormatted(item.count, TempoFormat.duration(item.seconds))).font(.caption).foregroundStyle(TempoTheme.secondary)
                         }
                         Spacer(); Text(TempoFormat.distance(item.distanceKm)).font(.headline).foregroundStyle(TempoTheme.green)
                     }
@@ -1610,7 +1610,7 @@ private struct EddingtonScreen: View {
             TempoCard {
                 VStack(spacing: 16) {
                     Text("\(number)").font(.system(size: 92, weight: .bold, design: .rounded)).foregroundStyle(TempoTheme.green)
-                    Text("\(number) farklı günde en az \(number) km koştun.").font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                    Text("%d farklı günde en az %d km koştun.".tempoFormatted(number, number)).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
                     Text("Bu sayı düzenli ve uzun mesafeli koşular yaptıkça yükselir.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
                 }.padding(.vertical, 28).frame(maxWidth: .infinity)
             }
@@ -1731,8 +1731,8 @@ private struct PageTitle: View {
     let subtitle: String
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(subtitle.uppercased()).font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
-            Text(title).font(.system(size: 31, weight: .bold, design: .rounded))
+            Text(subtitle.tempoLocalized.uppercased()).font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+            Text(title.tempoLocalized).font(.system(size: 31, weight: .bold, design: .rounded))
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
     }
 }
@@ -1781,7 +1781,7 @@ private struct StravaConnectionCard: View {
                     }
                     Text(athlete.fullName.isEmpty ? "Strava Sporcusu" : athlete.fullName)
                         .font(.headline).foregroundStyle(.white).lineLimit(1)
-                    Text("\(dashboard.activities.count) aktivite · \(TempoFormat.distance(totalDistance))")
+                    Text("%d aktivite · %@".tempoFormatted(dashboard.activities.count, TempoFormat.distance(totalDistance)))
                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                 }
 
@@ -1823,7 +1823,7 @@ private struct MetricCard: View {
         VStack(alignment: .leading, spacing: 9) {
             Image(systemName: icon).font(.subheadline).foregroundStyle(color)
             Text(value).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            Text(label.tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
         }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
     }
 }
@@ -1832,8 +1832,8 @@ private struct SectionHeading: View {
     let title: String; let caption: String; var padding = true
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(caption).font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
-            Text(title).font(.title3.bold())
+            Text(caption.tempoLocalized).font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+            Text(title.tempoLocalized).font(.title3.bold())
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, padding ? 7 : 0)
     }
 }
@@ -1865,8 +1865,8 @@ private struct MoreLink: View {
         NavigationLink(destination: destination) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack { Image(systemName: icon).font(.title3).foregroundStyle(color); Spacer(); Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(TempoTheme.secondary) }
-                Text(title).font(.headline).foregroundStyle(.white)
-                Text(subtitle).font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text(title.tempoLocalized).font(.headline).foregroundStyle(.white)
+                Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
             }.padding(17).frame(maxWidth: .infinity, minHeight: 135, alignment: .leading).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         }.buttonStyle(.plain)
     }
@@ -1875,7 +1875,7 @@ private struct MoreLink: View {
 private struct EmptyCard: View {
     let icon: String; let text: String
     var body: some View {
-        VStack(spacing: 11) { Image(systemName: icon).font(.title).foregroundStyle(TempoTheme.secondary); Text(text).font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center) }
+        VStack(spacing: 11) { Image(systemName: icon).font(.title).foregroundStyle(TempoTheme.secondary); Text(text.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center) }
             .padding(28).frame(maxWidth: .infinity).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
@@ -1894,14 +1894,14 @@ private struct LoadingDashboardCard: View {
 private struct SearchField: View {
     @Binding var text: String; let placeholder: String
     var body: some View {
-        HStack { Image(systemName: "magnifyingglass").foregroundStyle(TempoTheme.secondary); TextField(placeholder, text: $text); if !text.isEmpty { Button { text = "" } label: { Image(systemName: "xmark.circle.fill") }.foregroundStyle(TempoTheme.secondary) } }
+        HStack { Image(systemName: "magnifyingglass").foregroundStyle(TempoTheme.secondary); TextField(placeholder.tempoLocalized, text: $text); if !text.isEmpty { Button { text = "" } label: { Image(systemName: "xmark.circle.fill") }.foregroundStyle(TempoTheme.secondary) } }
             .padding(.horizontal, 16).frame(height: 48).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 }
 
 private struct DetailLine: View {
     let label: String; let value: String
-    var body: some View { HStack { Text(label).foregroundStyle(TempoTheme.secondary); Spacer(); Text(value).fontWeight(.semibold) }.font(.subheadline).padding(.vertical, 3) }
+    var body: some View { HStack { Text(label.tempoLocalized).foregroundStyle(TempoTheme.secondary); Spacer(); Text(value).fontWeight(.semibold) }.font(.subheadline).padding(.vertical, 3) }
 }
 
 private struct SummaryLine: View {
@@ -1909,7 +1909,7 @@ private struct SummaryLine: View {
     var body: some View {
         HStack(spacing: 15) {
             Image(systemName: icon).foregroundStyle(color).frame(width: 44, height: 44).background(color.opacity(0.12), in: Circle())
-            Text(title).font(.headline); Spacer(); Text(value).font(.headline).foregroundStyle(color)
+            Text(title.tempoLocalized).font(.headline); Spacer(); Text(value).font(.headline).foregroundStyle(color)
         }.padding(17).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
     }
 }

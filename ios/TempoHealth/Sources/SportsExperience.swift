@@ -72,7 +72,7 @@ private struct SportSummaryCard: View {
                     .frame(width: 50, height: 50).background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sport.title).font(.title3.bold())
-                    Text("\(matching.count) kayıtlı aktivite").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Text("%d kayıtlı aktivite".tempoFormatted(matching.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
@@ -94,7 +94,7 @@ private struct SportMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(value).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            Text(label.tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
         }
         .padding(11).frame(maxWidth: .infinity, alignment: .leading)
         .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
@@ -112,8 +112,8 @@ private struct ToolCard: View {
             Image(systemName: icon).font(.title2).foregroundStyle(color)
                 .frame(width: 52, height: 52).background(color.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline).foregroundStyle(.white)
-                Text(subtitle).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                Text(title.tempoLocalized).font(.headline).foregroundStyle(.white)
+                Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
             }
             Spacer()
             Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
@@ -510,7 +510,7 @@ struct NearbyPlace: Identifiable {
     private let mapItem: MKMapItem?
 
     var sourceTitle: String {
-        source == .openStreetMap ? "OpenStreetMap" : "Apple Haritalar"
+        source == .openStreetMap ? "OpenStreetMap" : "Apple Haritalar".tempoLocalized
     }
 
     var normalizedName: String {
@@ -525,9 +525,9 @@ struct NearbyPlace: Identifiable {
 
     init(_ mapItem: MKMapItem, origin: CLLocation) {
         self.mapItem = mapItem
-        name = mapItem.name ?? "Spor alanı"
+        name = mapItem.name ?? "Spor alanı".tempoLocalized
         coordinate = mapItem.placemark.coordinate
-        address = mapItem.placemark.title ?? "Adres bilgisi yok"
+        address = mapItem.placemark.title ?? "Adres bilgisi yok".tempoLocalized
         source = .appleMaps
         distanceMeters = origin.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
         id = String(format: "apple:%.6f,%.6f,%@", coordinate.latitude, coordinate.longitude, name)
@@ -544,7 +544,7 @@ struct NearbyPlace: Identifiable {
         let street = [tags["addr:street"], tags["addr:housenumber"]].compactMap { $0 }.joined(separator: " ")
         let area = [tags["addr:district"], tags["addr:suburb"], tags["addr:city"]].compactMap { $0 }.joined(separator: ", ")
         let parts = [street, area].filter { !$0.isEmpty }
-        address = parts.isEmpty ? "Açık harita kaydı" : parts.joined(separator: " · ")
+        address = parts.isEmpty ? "Açık harita kaydı".tempoLocalized : parts.joined(separator: " · ")
 
         source = .openStreetMap
         mapItem = nil

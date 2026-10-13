@@ -32,19 +32,19 @@ enum TempoSportChoice: String, CaseIterable, Codable, Identifiable {
 
     var title: String {
         switch self {
-        case .run: return "Koşu"
-        case .cycling: return "Bisiklet"
-        case .walking: return "Yürüyüş"
-        case .hiking: return "Doğa yürüyüşü"
-        case .swimming: return "Yüzme"
-        case .fitness: return "Fitness"
-        case .tennis: return "Tenis"
-        case .basketball: return "Basketbol"
-        case .football: return "Futbol"
-        case .volleyball: return "Voleybol"
-        case .padel: return "Padel"
-        case .badminton: return "Badminton"
-        case .yoga: return "Yoga"
+        case .run: return "Koşu".tempoLocalized
+        case .cycling: return "Bisiklet".tempoLocalized
+        case .walking: return "Yürüyüş".tempoLocalized
+        case .hiking: return "Doğa yürüyüşü".tempoLocalized
+        case .swimming: return "Yüzme".tempoLocalized
+        case .fitness: return "Fitness".tempoLocalized
+        case .tennis: return "Tenis".tempoLocalized
+        case .basketball: return "Basketbol".tempoLocalized
+        case .football: return "Futbol".tempoLocalized
+        case .volleyball: return "Voleybol".tempoLocalized
+        case .padel: return "Padel".tempoLocalized
+        case .badminton: return "Badminton".tempoLocalized
+        case .yoga: return "Yoga".tempoLocalized
         }
     }
 

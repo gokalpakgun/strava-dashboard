@@ -316,7 +316,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         func number(_ value: Double, digits: Int = 0) -> String {
             value.formatted(
                 .number
-                    .locale(Locale(identifier: "tr_TR"))
+                    .locale(.autoupdatingCurrent)
                     .precision(.fractionLength(digits))
             )
         }
@@ -341,9 +341,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         if let current = hrvValues.first {
             let baseline = average(hrvValues.dropFirst().prefix(21))
             let score = baseline.map { bounded(90 + ((current / max($0, 1)) - 1) * 100) } ?? 82
-            let comparison = baseline.map { " · ort. \(number($0))" } ?? ""
+            let comparison = baseline.map { " · ort. %@".tempoFormatted(number($0)) } ?? ""
             weightedFactors.append((
-                TempoBalanceFactor(id: "hrv", title: "HRV", value: "\(number(current)) ms\(comparison)", score: score, symbol: "waveform.path.ecg", tint: "purple"),
+                TempoBalanceFactor(id: "hrv", title: "HRV", value: "\(number(current)) \("ms".tempoLocalized)\(comparison)", score: score, symbol: "waveform.path.ecg", tint: "purple"),
                 0.26
             ))
         }
@@ -355,9 +355,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 let difference = current - reference
                 return bounded(difference <= 0 ? 92 + abs(difference) * 2 : 92 - difference * 7)
             } ?? 82
-            let comparison = baseline.map { " · ort. \(number($0))" } ?? ""
+            let comparison = baseline.map { " · ort. %@".tempoFormatted(number($0)) } ?? ""
             weightedFactors.append((
-                TempoBalanceFactor(id: "resting-heart", title: "Dinlenik nabız", value: "\(number(current)) atım/dk\(comparison)", score: score, symbol: "heart.fill", tint: "pink"),
+                TempoBalanceFactor(id: "resting-heart", title: "Dinlenik nabız", value: "\(number(current)) \("atım/dk".tempoLocalized)\(comparison)", score: score, symbol: "heart.fill", tint: "pink"),
                 0.22
             ))
         }

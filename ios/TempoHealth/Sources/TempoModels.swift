@@ -1,6 +1,18 @@
 import CoreLocation
 import Foundation
 
+extension String {
+    /// Resolves app owned copy through Localizable.strings while preserving
+    /// server and user supplied text when a translation key does not exist.
+    var tempoLocalized: String {
+        Bundle.main.localizedString(forKey: self, value: self, table: nil)
+    }
+
+    func tempoFormatted(_ arguments: CVarArg...) -> String {
+        String(format: tempoLocalized, locale: .autoupdatingCurrent, arguments: arguments)
+    }
+}
+
 struct TempoDashboard: Decodable {
     let athlete: TempoAthlete
     let segments: [TempoSegment]
@@ -103,20 +115,20 @@ enum TempoSport: Equatable {
 
     var title: String {
         switch self {
-        case .run: return "Koşu"
-        case .ride: return "Bisiklet"
-        case .walk: return "Yürüyüş"
-        case .hike: return "Doğa yürüyüşü"
-        case .swim: return "Yüzme"
-        case .tennis: return "Tenis"
-        case .basketball: return "Basketbol"
-        case .football: return "Futbol"
-        case .volleyball: return "Voleybol"
-        case .padel: return "Padel"
-        case .badminton: return "Badminton"
-        case .yoga: return "Yoga"
-        case .workout: return "Antrenman"
-        case .other: return "Aktivite"
+        case .run: return "Koşu".tempoLocalized
+        case .ride: return "Bisiklet".tempoLocalized
+        case .walk: return "Yürüyüş".tempoLocalized
+        case .hike: return "Doğa yürüyüşü".tempoLocalized
+        case .swim: return "Yüzme".tempoLocalized
+        case .tennis: return "Tenis".tempoLocalized
+        case .basketball: return "Basketbol".tempoLocalized
+        case .football: return "Futbol".tempoLocalized
+        case .volleyball: return "Voleybol".tempoLocalized
+        case .padel: return "Padel".tempoLocalized
+        case .badminton: return "Badminton".tempoLocalized
+        case .yoga: return "Yoga".tempoLocalized
+        case .workout: return "Antrenman".tempoLocalized
+        case .other: return "Aktivite".tempoLocalized
         }
     }
 
@@ -273,37 +285,39 @@ enum TempoFormat {
     }()
     static let shortDate: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.locale = .autoupdatingCurrent
         formatter.dateFormat = "d MMM"
         return formatter
     }()
     static let longDate: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.locale = .autoupdatingCurrent
         formatter.dateFormat = "d MMMM yyyy"
         return formatter
     }()
     static let month: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.locale = .autoupdatingCurrent
         formatter.dateFormat = "MMM"
         return formatter
     }()
     static let monthLong: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.locale = .autoupdatingCurrent
         formatter.dateFormat = "MMMM"
         return formatter
     }()
 
     static func distance(_ kilometers: Double) -> String {
-        kilometers.formatted(.number.locale(Locale(identifier: "tr_TR")).precision(.fractionLength(1))) + " km"
+        kilometers.formatted(.number.locale(.autoupdatingCurrent).precision(.fractionLength(1))) + " km"
     }
     static func duration(_ seconds: Double) -> String {
         let totalMinutes = Int(seconds / 60)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        return hours > 0 ? "\(hours) sa \(minutes) dk" : "\(minutes) dk"
+        return hours > 0
+            ? "%d sa %d dk".tempoFormatted(hours, minutes)
+            : "%d dk".tempoFormatted(minutes)
     }
 }
 
