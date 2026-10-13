@@ -146,10 +146,9 @@ struct NearbyFacilitiesScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                TempoTheme.background.ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 12) {
+        ZStack {
+            TempoTheme.background.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text("YAKININDA").font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
@@ -258,24 +257,25 @@ struct NearbyFacilitiesScreen: View {
                         }
                         .padding(.horizontal, 18)
                     }
-                }
-                .padding(.top, 12)
-                .padding(.bottom, 8)
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .onAppear {
-                if selectedSport == nil { selectedSport = availableSports.first }
-                searchModel.requestLocation()
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+        }
+        .navigationTitle("Spor alanları")
+        .navigationBarTitleDisplayMode(.inline)
+        .tempoGlassBackButton()
+        .onAppear {
+            if selectedSport == nil { selectedSport = availableSports.first }
+            searchModel.requestLocation()
+        }
+        .onChange(of: searchModel.region?.center.latitude) { _, _ in
+            if let region = searchModel.region { camera = .region(region) }
+            if let selectedSport {
+                Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) }
             }
-            .onChange(of: searchModel.region?.center.latitude) { _, _ in
-                if let region = searchModel.region { camera = .region(region) }
-                if let selectedSport {
-                    Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) }
-                }
-            }
-            .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in
-                if let region = searchModel.region { camera = .region(region) }
-            }
+        }
+        .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in
+            if let region = searchModel.region { camera = .region(region) }
         }
     }
 }
