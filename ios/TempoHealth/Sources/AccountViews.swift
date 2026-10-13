@@ -1027,8 +1027,11 @@ struct AccountSettingsScreen: View {
                     .padding(16)
                     .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
-                .padding(18)
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 132)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .navigationTitle("Hesap")
         .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
