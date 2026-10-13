@@ -74,7 +74,7 @@ final class TempoHealthStore {
 
         return Dictionary(uniqueKeysWithValues: keys.map { day in
             let sleep = values.13[day]
-            (day, TempoHealthMetrics(
+            return (day, TempoHealthMetrics(
                 waterMl: values.0[day],
                 sleepMinutes: sleep?.totalMinutes,
                 sleepCoreMinutes: sleep?.coreMinutes,
