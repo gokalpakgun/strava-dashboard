@@ -7,14 +7,7 @@ struct TempoLaunchView: View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
             VStack(spacing: 18) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 38, weight: .semibold))
-                        .foregroundStyle(.black)
-                }
-                .frame(width: 82, height: 82)
+                TempoBrandMark(size: 82)
                 Text("TEMPO").font(.headline.bold()).tracking(4).foregroundStyle(TempoTheme.green)
                 ProgressView().tint(TempoTheme.green)
             }
@@ -26,30 +19,9 @@ struct TempoBrandMark: View {
     var size: CGFloat = 76
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.30, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.12, green: 0.23, blue: 0.30), Color(red: 0.05, green: 0.10, blue: 0.15)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            Circle()
-                .fill(TempoTheme.green.opacity(0.24))
-                .frame(width: size * 0.70, height: size * 0.70)
-                .blur(radius: size * 0.22)
-                .offset(x: -size * 0.20, y: -size * 0.22)
-            Image(systemName: "waveform.path.ecg")
-                .font(.system(size: size * 0.40, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [TempoTheme.green, Color(red: 0.47, green: 0.83, blue: 1)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-        }
+        Image("TempoLogo")
+            .resizable()
+            .scaledToFit()
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.30, style: .continuous))
         .overlay(
@@ -97,13 +69,21 @@ struct AccountWelcomeView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
+                        VStack(spacing: 8) {
+                            TempoBrandMark(size: 82)
+                            Text("TEMPO")
+                                .font(.subheadline.bold())
+                                .tracking(3.4)
+                                .foregroundStyle(TempoTheme.green)
+                        }
+
                         VStack(spacing: 10) {
-                            Text("Daha net hareket et.\nDaha iyi hisset.")
+                            Text("Hareketinle güçlen.\nRitmini yakala.")
                                 .font(.system(size: 35, weight: .bold, design: .rounded))
                                 .tracking(-1.1)
                                 .multilineTextAlignment(.center)
                                 .minimumScaleFactor(0.84)
-                            Text("Aktivite ve sağlık verilerini sakin, kişisel ve güçlü bir günlük deneyimde buluştur.")
+                            Text("Sporlarını, sağlığını ve günlük gelişimini tek bir kişisel alanda takip et.")
                                 .font(.subheadline)
                                 .foregroundStyle(TempoTheme.secondary)
                                 .multilineTextAlignment(.center)
@@ -143,11 +123,10 @@ struct AccountWelcomeView: View {
                             .buttonStyle(AccountOutlineButtonStyle())
                         }
 
-                        Label("Verilerin senin kontrolünde ve yalnızca izin verdiğin amaçlarla kullanılır.", systemImage: "checkmark.shield.fill")
+                        Text("Tempo, hareketini günlük bir ritme dönüştürür.")
                             .font(.caption)
                             .foregroundStyle(TempoTheme.secondary)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 8)
                     }
                     .padding(.horizontal, 21)
                     .padding(.top, 30)
@@ -263,11 +242,10 @@ private struct AccountFormView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 25) {
                     VStack(spacing: 9) {
-                        TempoBrandMark(size: 66)
-                        Text("TEMPO HESABI")
-                            .font(.system(size: 9, weight: .bold))
-                            .tracking(1.8)
-                            .foregroundStyle(TempoTheme.green)
+                        TempoBrandMark(size: 62)
+                        Text("Tempo")
+                            .font(.headline.bold())
+                            .foregroundStyle(.white.opacity(0.9))
                     }
                     .padding(.top, 7)
 
@@ -768,8 +746,48 @@ struct AccountProfileCard: View {
 
 struct AchievementsScreen: View {
     @EnvironmentObject private var model: TempoAppModel
+    @State private var selectedCategory = "all"
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
     private var achievement: TempoAchievement { model.dashboard?.achievement ?? .empty }
+
+    private let categories: [AchievementCategory] = [
+        .init(id: "all", title: "Tümü", symbol: "square.grid.2x2.fill"),
+        .init(id: "general", title: "Genel", symbol: "sparkles"),
+        .init(id: "run", title: "Koşu", symbol: "figure.run"),
+        .init(id: "ride", title: "Bisiklet", symbol: "bicycle"),
+        .init(id: "walk", title: "Yürüyüş", symbol: "figure.walk"),
+        .init(id: "hike", title: "Doğa", symbol: "figure.hiking"),
+        .init(id: "swim", title: "Yüzme", symbol: "figure.pool.swim"),
+        .init(id: "fitness", title: "Fitness", symbol: "dumbbell.fill"),
+        .init(id: "tennis", title: "Tenis", symbol: "tennis.racket"),
+        .init(id: "basketball", title: "Basketbol", symbol: "basketball.fill"),
+        .init(id: "football", title: "Futbol", symbol: "soccerball"),
+        .init(id: "volleyball", title: "Voleybol", symbol: "volleyball.fill"),
+        .init(id: "padel", title: "Padel", symbol: "figure.racquetball"),
+        .init(id: "badminton", title: "Badminton", symbol: "figure.badminton"),
+        .init(id: "yoga", title: "Yoga", symbol: "figure.yoga")
+    ]
+
+    private var sportCategoryIDs: Set<String> {
+        Set(categories.map(\.id).filter { $0 != "all" && $0 != "general" })
+    }
+
+    private var filteredBadges: [TempoBadge] {
+        let values: [TempoBadge]
+        if selectedCategory == "all" {
+            values = achievement.badges
+        } else if selectedCategory == "general" {
+            values = achievement.badges.filter { badge in
+                !sportCategoryIDs.contains { badge.id.hasPrefix("\($0)_") }
+            }
+        } else {
+            values = achievement.badges.filter { $0.id.hasPrefix("\(selectedCategory)_") }
+        }
+        return values.sorted { left, right in
+            if left.unlocked != right.unlocked { return left.unlocked && !right.unlocked }
+            return left.safeProgress > right.safeProgress
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -791,6 +809,24 @@ struct AchievementsScreen: View {
                             .font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
 
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 9) {
+                            ForEach(categories) { category in
+                                let selected = selectedCategory == category.id
+                                Button {
+                                    withAnimation(.snappy) { selectedCategory = category.id }
+                                } label: {
+                                    Label(category.title, systemImage: category.symbol)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(selected ? .black : .white.opacity(0.82))
+                                        .padding(.horizontal, 13).padding(.vertical, 9)
+                                        .background(selected ? TempoTheme.green : TempoTheme.raised, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
                     if achievement.badges.isEmpty {
                         VStack(spacing: 12) {
                             ProgressView().tint(TempoTheme.green)
@@ -800,10 +836,7 @@ struct AchievementsScreen: View {
                         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     } else {
                         LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(achievement.badges.sorted { left, right in
-                                if left.unlocked != right.unlocked { return left.unlocked && !right.unlocked }
-                                return left.safeProgress > right.safeProgress
-                            }) { badge in
+                            ForEach(filteredBadges) { badge in
                                 AchievementBadgeCard(badge: badge)
                             }
                         }
@@ -853,6 +886,12 @@ struct AchievementsScreen: View {
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 27, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(.white.opacity(0.055)))
     }
+}
+
+private struct AchievementCategory: Identifiable {
+    let id: String
+    let title: String
+    let symbol: String
 }
 
 private struct AchievementBadgeCard: View {
@@ -917,6 +956,7 @@ struct AccountSettingsScreen: View {
     @State private var photoError = ""
     @State private var loaded = false
     @State private var confirmDelete = false
+    @State private var isEditingProfile = false
     @State private var isEditingSports = false
     @State private var showAccountActions = false
 
@@ -927,23 +967,60 @@ struct AccountSettingsScreen: View {
                 VStack(alignment: .leading, spacing: 18) {
                     OnboardingTitle(title: "Tempo Hesabı", subtitle: "Profilin, sporların ve hesap ayarların.")
 
-                    PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
-                        HStack(spacing: 16) {
-                            AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 68)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(displayName.isEmpty ? "Profil fotoğrafı" : displayName).font(.headline).foregroundStyle(.white)
-                                Text("Fotoğrafı değiştir").font(.caption).foregroundStyle(TempoTheme.green)
+                    HStack(spacing: 15) {
+                        AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 70)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(displayName.isEmpty ? username : displayName)
+                                .font(.title3.bold()).foregroundStyle(.white)
+                            Text("@\(username)").font(.subheadline).foregroundStyle(TempoTheme.green)
+                            if let email = account.profile?.email {
+                                Text(email).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                             }
-                            Spacer()
-                            Image(systemName: "photo.badge.plus").foregroundStyle(TempoTheme.secondary)
                         }
-                        .padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        Spacer(minLength: 8)
+                        Button(isEditingProfile ? "Bitti" : "Düzenle") {
+                            withAnimation(.snappy) { isEditingProfile.toggle() }
+                        }
+                        .font(.caption.bold())
+                        .foregroundStyle(isEditingProfile ? .black : TempoTheme.green)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(isEditingProfile ? TempoTheme.green : TempoTheme.green.opacity(0.11), in: Capsule())
                     }
+                    .padding(16)
+                    .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.055)))
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("PROFİL BİLGİLERİ").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
-                        AccountTextField(title: "Görünen ad", icon: "person.fill", text: $displayName, contentType: .name)
-                        AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
+                    if isEditingProfile {
+                        PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
+                            HStack(spacing: 16) {
+                                AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 62)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Profil fotoğrafı").font(.headline).foregroundStyle(.white)
+                                    Text("Fotoğrafı değiştir").font(.caption).foregroundStyle(TempoTheme.green)
+                                }
+                                Spacer()
+                                Image(systemName: "photo.badge.plus").foregroundStyle(TempoTheme.secondary)
+                            }
+                            .padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }
+
+                        HStack(spacing: 16) {
+                            Image(systemName: "info.circle.fill").foregroundStyle(TempoTheme.blue)
+                            Text("Görünen adını, kullanıcı adını ve profil fotoğrafını buradan değiştirebilirsin.")
+                                .font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("PROFİL BİLGİLERİ").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
+                            AccountTextField(title: "Görünen ad", icon: "person.fill", text: $displayName, contentType: .name)
+                            AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
+                            if let email = account.profile?.email {
+                                Label(email, systemImage: "envelope.fill")
+                                    .font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                                    .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                                    .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -994,14 +1071,23 @@ struct AccountSettingsScreen: View {
                         Text(account.errorMessage).font(.footnote).foregroundStyle(TempoTheme.orange)
                     }
 
-                    Button {
-                        Task { await account.updateProfile(displayName: displayName, username: username, sports: selectedSports, avatarData: avatarData) }
-                    } label: {
-                        Text(isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (account.isBusy ? "Kaydediliyor…" : "Değişiklikleri kaydet"))
-                            .frame(maxWidth: .infinity)
+                    if isEditingProfile || isEditingSports || avatarData != nil {
+                        Button {
+                            Task {
+                                if await account.updateProfile(displayName: displayName, username: username, sports: selectedSports, avatarData: avatarData) {
+                                    withAnimation(.snappy) {
+                                        isEditingProfile = false
+                                        isEditingSports = false
+                                    }
+                                }
+                            }
+                        } label: {
+                            Text(isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (account.isBusy ? "Kaydediliyor…" : "Değişiklikleri kaydet"))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(AccountPrimaryButtonStyle())
+                        .disabled(account.isBusy || isPreparingPhoto || displayName.isEmpty || username.isEmpty || selectedSports.isEmpty)
                     }
-                    .buttonStyle(AccountPrimaryButtonStyle())
-                    .disabled(account.isBusy || isPreparingPhoto || displayName.isEmpty || selectedSports.isEmpty)
 
                     DisclosureGroup(isExpanded: $showAccountActions) {
                         VStack(spacing: 10) {

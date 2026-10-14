@@ -375,10 +375,12 @@ function buildAchievement(activities) {
     activityCount: 0,
     movingHours: 0,
     elevationM: 0,
-    runKm: 0,
-    rideKm: 0,
     longestActivityKm: 0,
   };
+  const sportStats = Object.fromEntries(
+    ["run", "ride", "walk", "hike", "swim", "fitness", "tennis", "basketball", "football", "volleyball", "padel", "badminton", "yoga"]
+      .map((sport) => [sport, { count: 0, km: 0, hours: 0, longestKm: 0 }]),
+  );
   const activeDays = new Set();
   const sports = new Set();
   let totalXP = 0;
@@ -396,9 +398,13 @@ function buildAchievement(activities) {
     totals.longestActivityKm = Math.max(totals.longestActivityKm, distanceKm);
 
     const sport = achievementSport(activity.sport_type || activity.type);
-    if (sport !== "other") sports.add(sport);
-    if (sport === "run") totals.runKm += distanceKm;
-    if (sport === "ride") totals.rideKm += distanceKm;
+    if (sportStats[sport]) {
+      sports.add(sport);
+      sportStats[sport].count += 1;
+      sportStats[sport].km += distanceKm;
+      sportStats[sport].hours += movingMinutes / 60;
+      sportStats[sport].longestKm = Math.max(sportStats[sport].longestKm, distanceKm);
+    }
 
     const localDate = String(activity.start_date_local || "");
     const day = localDate.slice(0, 10);
@@ -438,19 +444,71 @@ function buildAchievement(activities) {
     target,
     unit,
   });
+  const sportSessionBadges = (id, title, symbol, tint, current) => [
+    badge(`${id}_5`, `${title} Başlangıcı`, `5 ${title.toLocaleLowerCase("tr-TR")} aktivitesi tamamla.`, symbol, tint, current, 5, "aktivite"),
+    badge(`${id}_20`, `${title} Ritmi`, `20 ${title.toLocaleLowerCase("tr-TR")} aktivitesi tamamla.`, symbol, tint, current, 20, "aktivite"),
+    badge(`${id}_50`, `${title} Ustası`, `50 ${title.toLocaleLowerCase("tr-TR")} aktivitesi tamamla.`, symbol, tint, current, 50, "aktivite"),
+  ];
 
   const badges = [
     badge("first_activity", "İlk Adım", "İlk Strava aktiviteni tamamla.", "flag.checkered", "green", totals.activityCount, 1, "aktivite"),
     badge("activity_10", "Ritim Yakala", "10 aktivite tamamla.", "10.circle.fill", "blue", totals.activityCount, 10, "aktivite"),
-    badge("active_10_hours", "10 Saat Aktif", "Toplam 10 saat hareket et.", "clock.fill", "purple", totals.movingHours, 10, "saat"),
-    badge("run_50", "Koşu 50", "Toplam 50 km koş.", "figure.run", "orange", totals.runKm, 50, "km"),
-    badge("ride_250", "Pedal 250", "Toplam 250 km bisiklete bin.", "bicycle", "blue", totals.rideKm, 250, "km"),
-    badge("elevation_5000", "Dağcı", "Toplam 5.000 metre yüksel.", "mountain.2.fill", "purple", totals.elevationM, 5000, "m"),
-    badge("streak_7", "Yedi Gün Seri", "7 gün aralıksız aktivite kaydet.", "calendar.badge.checkmark", "green", streak, 7, "gün"),
-    badge("multi_sport", "Çok Yönlü", "En az 3 farklı spor türü yap.", "square.grid.2x2.fill", "pink", sports.size, 3, "spor"),
+    badge("activity_25", "İstikrar", "25 aktivite tamamla.", "25.circle.fill", "green", totals.activityCount, 25, "aktivite"),
+    badge("activity_50", "Aktif 50", "50 aktivite tamamla.", "50.circle.fill", "purple", totals.activityCount, 50, "aktivite"),
     badge("activity_100", "Yüzler Kulübü", "100 aktivite tamamla.", "trophy.fill", "orange", totals.activityCount, 100, "aktivite"),
+    badge("activity_250", "Tempo Ustası", "250 aktivite tamamla.", "crown.fill", "pink", totals.activityCount, 250, "aktivite"),
+    badge("active_10_hours", "10 Saat Aktif", "Toplam 10 saat hareket et.", "clock.fill", "purple", totals.movingHours, 10, "saat"),
+    badge("active_50_hours", "50 Saat Aktif", "Toplam 50 saat hareket et.", "clock.badge.checkmark.fill", "blue", totals.movingHours, 50, "saat"),
+    badge("active_100_hours", "Yüz Saat", "Toplam 100 saat hareket et.", "hourglass.tophalf.filled", "green", totals.movingHours, 100, "saat"),
+    badge("active_250_hours", "Dayanıklılık", "Toplam 250 saat hareket et.", "bolt.heart.fill", "orange", totals.movingHours, 250, "saat"),
+    badge("elevation_1000", "İlk Zirve", "Toplam 1.000 metre yüksel.", "mountain.2", "green", totals.elevationM, 1000, "m"),
+    badge("elevation_5000", "Dağcı", "Toplam 5.000 metre yüksel.", "mountain.2.fill", "purple", totals.elevationM, 5000, "m"),
+    badge("elevation_10000", "Yüksek İrtifa", "Toplam 10.000 metre yüksel.", "mountain.2.fill", "blue", totals.elevationM, 10000, "m"),
+    badge("elevation_25000", "Zirvelerin Ustası", "Toplam 25.000 metre yüksel.", "mountain.2.fill", "orange", totals.elevationM, 25000, "m"),
+    badge("streak_3", "Üç Gün Seri", "3 gün aralıksız aktivite kaydet.", "flame.fill", "orange", streak, 3, "gün"),
+    badge("streak_7", "Yedi Gün Seri", "7 gün aralıksız aktivite kaydet.", "calendar.badge.checkmark", "green", streak, 7, "gün"),
+    badge("streak_14", "İki Haftalık Seri", "14 gün aralıksız aktivite kaydet.", "calendar.badge.checkmark", "blue", streak, 14, "gün"),
+    badge("streak_30", "Aylık Seri", "30 gün aralıksız aktivite kaydet.", "calendar.badge.checkmark", "purple", streak, 30, "gün"),
+    badge("multi_sport_3", "Çok Yönlü", "En az 3 farklı spor türü yap.", "square.grid.2x2.fill", "pink", sports.size, 3, "spor"),
+    badge("multi_sport_5", "Spor Kaşifi", "En az 5 farklı spor türü yap.", "safari.fill", "blue", sports.size, 5, "spor"),
+    badge("multi_sport_8", "Her Sahada", "En az 8 farklı spor türü yap.", "star.square.on.square.fill", "orange", sports.size, 8, "spor"),
     badge("century", "Asırlık Sürüş", "Tek aktivitede 100 km tamamla.", "medal.fill", "green", totals.longestActivityKm, 100, "km"),
     badge("early_bird", "Erken Kuş", "Saat 08.00’den önce 5 aktiviteye başla.", "sunrise.fill", "orange", earlyBirdCount, 5, "aktivite"),
+    badge("early_bird_20", "Güneşle Yarış", "Saat 08.00’den önce 20 aktiviteye başla.", "sunrise.circle.fill", "purple", earlyBirdCount, 20, "aktivite"),
+
+    badge("run_5", "Koşuya Başla", "5 koşu tamamla.", "figure.run", "orange", sportStats.run.count, 5, "koşu"),
+    badge("run_50", "Koşu 50", "Toplam 50 km koş.", "figure.run", "orange", sportStats.run.km, 50, "km"),
+    badge("run_250", "Koşu 250", "Toplam 250 km koş.", "figure.run", "purple", sportStats.run.km, 250, "km"),
+    badge("run_10k", "10K", "Tek koşuda 10 km tamamla.", "medal.fill", "green", sportStats.run.longestKm, 10, "km"),
+    badge("run_half", "Yarı Maraton", "Tek koşuda 21,1 km tamamla.", "medal.fill", "blue", sportStats.run.longestKm, 21.1, "km"),
+    badge("run_marathon", "Maraton", "Tek koşuda 42,2 km tamamla.", "trophy.fill", "orange", sportStats.run.longestKm, 42.2, "km"),
+
+    badge("ride_5", "Pedala Başla", "5 bisiklet aktivitesi tamamla.", "bicycle", "blue", sportStats.ride.count, 5, "sürüş"),
+    badge("ride_250", "Pedal 250", "Toplam 250 km bisiklete bin.", "bicycle", "blue", sportStats.ride.km, 250, "km"),
+    badge("ride_1000", "Pedal 1000", "Toplam 1.000 km bisiklete bin.", "bicycle", "purple", sportStats.ride.km, 1000, "km"),
+    badge("ride_50k", "Uzun Sürüş", "Tek sürüşte 50 km tamamla.", "road.lanes", "green", sportStats.ride.longestKm, 50, "km"),
+    badge("ride_century", "Bisiklet Asrı", "Tek sürüşte 100 km tamamla.", "medal.fill", "orange", sportStats.ride.longestKm, 100, "km"),
+
+    badge("walk_10", "Adım Adım", "10 yürüyüş tamamla.", "figure.walk", "green", sportStats.walk.count, 10, "yürüyüş"),
+    badge("walk_100", "Yürüyüş 100", "Toplam 100 km yürü.", "figure.walk", "blue", sportStats.walk.km, 100, "km"),
+    badge("walk_500", "Uzun Yol", "Toplam 500 km yürü.", "shoeprints.fill", "purple", sportStats.walk.km, 500, "km"),
+    badge("hike_5", "Patika Başlangıcı", "5 doğa yürüyüşü tamamla.", "figure.hiking", "green", sportStats.hike.count, 5, "yürüyüş"),
+    badge("hike_50", "Patika 50", "Toplam 50 km doğa yürüyüşü yap.", "figure.hiking", "orange", sportStats.hike.km, 50, "km"),
+    badge("hike_150", "Patika Ustası", "Toplam 150 km doğa yürüyüşü yap.", "mountain.2.fill", "purple", sportStats.hike.km, 150, "km"),
+    badge("swim_5", "Suya Alış", "5 yüzme aktivitesi tamamla.", "figure.pool.swim", "blue", sportStats.swim.count, 5, "yüzme"),
+    badge("swim_10", "Yüzme 10", "Toplam 10 km yüz.", "figure.pool.swim", "green", sportStats.swim.km, 10, "km"),
+    badge("swim_50", "Açık Su Ruhu", "Toplam 50 km yüz.", "water.waves", "purple", sportStats.swim.km, 50, "km"),
+    badge("fitness_10", "Güç Temeli", "10 fitness antrenmanı tamamla.", "dumbbell.fill", "orange", sportStats.fitness.count, 10, "antrenman"),
+    badge("fitness_25h", "25 Saat Güç", "Toplam 25 saat fitness yap.", "dumbbell.fill", "blue", sportStats.fitness.hours, 25, "saat"),
+    badge("fitness_100h", "Güç Ustası", "Toplam 100 saat fitness yap.", "figure.strengthtraining.traditional", "purple", sportStats.fitness.hours, 100, "saat"),
+
+    ...sportSessionBadges("tennis", "Tenis", "tennis.racket", "green", sportStats.tennis.count),
+    ...sportSessionBadges("basketball", "Basketbol", "basketball.fill", "orange", sportStats.basketball.count),
+    ...sportSessionBadges("football", "Futbol", "soccerball", "green", sportStats.football.count),
+    ...sportSessionBadges("volleyball", "Voleybol", "volleyball.fill", "blue", sportStats.volleyball.count),
+    ...sportSessionBadges("padel", "Padel", "figure.racquetball", "purple", sportStats.padel.count),
+    ...sportSessionBadges("badminton", "Badminton", "figure.badminton", "blue", sportStats.badminton.count),
+    ...sportSessionBadges("yoga", "Yoga", "figure.yoga", "pink", sportStats.yoga.count),
   ];
 
   return {

@@ -198,16 +198,13 @@ private struct WelcomeScreen: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
-                    VStack(spacing: 9) {
-                        Text("STRAVA BAĞLANTISI")
-                            .font(.caption.bold())
-                            .tracking(1.7)
-                            .foregroundStyle(TempoTheme.orange)
-                        Text("Hareket geçmişini\nTempo’ya getir.")
-                            .font(.system(size: 35, weight: .bold, design: .rounded))
-                            .tracking(-1)
+                    VStack(spacing: 12) {
+                        TempoBrandMark(size: 78)
+                        Text("Strava hareketlerini\nTempo’ya bağla")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .tracking(-0.8)
                             .multilineTextAlignment(.center)
-                        Text("Aktivitelerin, rotaların ve ilerleme verilerin izin verdiğin ölçüde güvenle eşitlenir.")
+                        Text("Koşuların, sürüşlerin ve diğer aktivitelerin günlük spor görünümüne otomatik eklensin.")
                             .font(.subheadline)
                             .foregroundStyle(TempoTheme.secondary)
                             .multilineTextAlignment(.center)
@@ -258,8 +255,6 @@ private struct WelcomeScreen: View {
                     .buttonStyle(.plain)
                     .disabled(model.isBusy)
                     .opacity(model.isBusy ? 0.76 : 1)
-
-                    StravaTrustRow()
 
                     if !model.status.isEmpty {
                         HStack(spacing: 10) {
@@ -312,46 +307,28 @@ private struct StravaTrustRow: View {
 
 private struct ConnectedAppsCard: View {
     var body: some View {
-        VStack(spacing: 21) {
-            HStack(spacing: 14) {
-                TempoBrandMark(size: 65)
-
-                ZStack {
-                    Capsule()
-                        .fill(.white.opacity(0.09))
-                        .frame(height: 2)
-                    Circle()
-                        .fill(TempoTheme.green)
-                        .frame(width: 22, height: 22)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.black)
-                }
-                .frame(maxWidth: .infinity)
-
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(TempoTheme.orange.opacity(0.14))
-                    Image(systemName: "figure.run")
-                        .font(.system(size: 29, weight: .semibold))
-                        .foregroundStyle(TempoTheme.orange)
-                }
-                .frame(width: 65, height: 65)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(TempoTheme.orange.opacity(0.18))
-                )
+        VStack(alignment: .leading, spacing: 17) {
+            HStack {
+                Label("Aktivitelerin hazır olsun", systemImage: "figure.run.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("STRAVA")
+                    .font(.caption2.bold()).tracking(1.3).foregroundStyle(TempoTheme.orange)
             }
-            .padding(.horizontal, 18)
 
-            VStack(spacing: 8) {
-                Text("Tempo + Strava")
-                    .font(.title3.bold())
-                Text("Bir kez bağla, yeni aktivitelerin otomatik olarak güncellensin.")
-                    .font(.subheadline)
-                    .foregroundStyle(TempoTheme.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
+            HStack(spacing: 13) {
+                Image(systemName: "figure.run")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(TempoTheme.orange, in: Circle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Son aktiviten").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Text("Mesafe, süre ve rota").font(.title3.bold())
+                    Text("Yeni antrenmanların Tempo’da görünür.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
+                Spacer(minLength: 0)
             }
 
             HStack(spacing: 8) {
@@ -360,7 +337,7 @@ private struct ConnectedAppsCard: View {
                 ImportPill(icon: "sparkles", title: "Koç")
             }
         }
-        .padding(20)
+        .padding(19)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .background(
             LinearGradient(
@@ -398,6 +375,7 @@ private struct ImportPill: View {
 private struct HomeScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @AppStorage("tempoWeeklyGoalKm") private var weeklyGoalKm = 40.0
+    @State private var showsNearbyFacilities = false
 
     private var activities: [TempoActivity] { model.dashboard?.activities ?? [] }
     private var weekActivities: [TempoActivity] { activities.filter { $0.date.map(Calendar.current.isDateInCurrentWeek) ?? false } }
@@ -408,7 +386,9 @@ private struct HomeScreen: View {
     var body: some View {
         NavigationStack {
             TempoPage {
-                HomeHeader()
+                HomeHeader {
+                    showsNearbyFacilities = true
+                }
                 if let dashboard = model.dashboard {
                     hero(dashboard.athlete)
                     if let balance = model.tempoBalance {
@@ -427,6 +407,9 @@ private struct HomeScreen: View {
             }
             .refreshable { await model.reloadAll() }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showsNearbyFacilities) {
+                NearbyFacilitiesScreen()
+            }
         }
     }
 
@@ -1918,6 +1901,7 @@ private struct TempoPage<Content: View>: View {
 
 private struct HomeHeader: View {
     @EnvironmentObject private var model: TempoAppModel
+    let onLocationTap: () -> Void
 
     private var dateText: String {
         Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide))
@@ -1934,7 +1918,7 @@ private struct HomeHeader: View {
                     .font(.title3.bold())
             }
             Spacer()
-            NavigationLink(destination: NearbyFacilitiesScreen()) {
+            Button(action: onLocationTap) {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(TempoTheme.blue)
@@ -1942,6 +1926,7 @@ private struct HomeHeader: View {
                     .background(.ultraThinMaterial, in: Circle())
                     .overlay(Circle().stroke(TempoTheme.blue.opacity(0.24)))
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("Yakındaki spor alanlarını aç")
             Button { Task { await model.reloadAll() } } label: {
                 Group {
