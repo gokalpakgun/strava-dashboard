@@ -144,6 +144,15 @@ final class TempoAccountStore: ObservableObject {
 
     private let baseURL = URL(string: "https://apitempo.com")!
     private var sessionToken: String?
+    private static let apiSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 18
+        configuration.timeoutIntervalForResource = 25
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpAdditionalHeaders = ["Accept": "application/json"]
+        return URLSession(configuration: configuration)
+    }()
 
     var isAuthenticated: Bool { profile != nil && sessionToken != nil }
     var authorizationToken: String? { sessionToken }
@@ -284,7 +293,7 @@ final class TempoAccountStore: ObservableObject {
     ) async throws -> AccountEnvelope {
         var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
         request.httpMethod = method
-        request.timeoutInterval = 45
+        request.timeoutInterval = 18
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -294,7 +303,7 @@ final class TempoAccountStore: ObservableObject {
             guard let sessionToken else { throw AccountError.server("Tempo oturumunun süresi doldu.") }
             request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.apiSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sunucudan yanıt alınamadı.") }
         let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil)
         guard (200..<300).contains(http.statusCode) else {
@@ -391,3 +400,4 @@ private enum AccountTokenStore {
         SecItemDelete(query as CFDictionary)
     }
 }
+

@@ -407,7 +407,9 @@ private struct HomeScreen: View {
             }
             .refreshable { await model.reloadAll() }
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(isPresented: $showsNearbyFacilities) {
+        }
+        .fullScreenCover(isPresented: $showsNearbyFacilities) {
+            NavigationStack {
                 NearbyFacilitiesScreen()
             }
         }
@@ -1900,7 +1902,6 @@ private struct TempoPage<Content: View>: View {
 }
 
 private struct HomeHeader: View {
-    @EnvironmentObject private var model: TempoAppModel
     let onLocationTap: () -> Void
 
     private var dateText: String {
@@ -1922,26 +1923,13 @@ private struct HomeHeader: View {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(TempoTheme.blue)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 52, height: 52)
                     .background(.ultraThinMaterial, in: Circle())
                     .overlay(Circle().stroke(TempoTheme.blue.opacity(0.24)))
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Yakındaki spor alanlarını aç")
-            Button { Task { await model.reloadAll() } } label: {
-                Group {
-                    if model.isLoadingDashboard {
-                        ProgressView().tint(TempoTheme.green)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-                .foregroundStyle(TempoTheme.green)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.08)))
-            }
-            .disabled(model.isLoadingDashboard)
         }
     }
 }
@@ -2179,3 +2167,4 @@ private func eddingtonNumber(_ activities: [TempoActivity]) -> Int {
 private extension Calendar {
     func isDateInCurrentWeek(_ date: Date) -> Bool { isDate(date, equalTo: Date(), toGranularity: .weekOfYear) }
 }
+

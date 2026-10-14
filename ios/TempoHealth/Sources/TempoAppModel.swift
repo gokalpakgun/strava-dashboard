@@ -33,6 +33,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var hasAttemptedAccountRestore = false
     private var accountAccessToken: String?
     private var lastDashboardRefresh: Date?
+    private static let apiSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 18
+        configuration.timeoutIntervalForResource = 30
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpAdditionalHeaders = ["Accept": "application/json"]
+        return URLSession(configuration: configuration)
+    }()
     private static let dashboardCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("tempo-dashboard-v2.json")
     private var accessToken: String? {
@@ -41,6 +50,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     override init() {
         super.init()
+        Self.prewarmAPI()
         let storedToken = SecureTokenStore.read()
         accessToken = storedToken
         isConnected = storedToken != nil
@@ -74,13 +84,13 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         do {
             var request = URLRequest(url: URL(string: "/api/mobile/auth/restore", relativeTo: baseURL)!)
             request.httpMethod = "POST"
-            request.timeoutInterval = 20
+            request.timeoutInterval = 12
             request.setValue("Bearer \(accountToken)", forHTTPHeaderField: "Authorization")
             if let accessToken {
                 request.setValue(accessToken, forHTTPHeaderField: "X-Tempo-Mobile-Token")
             }
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await Self.apiSession.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 throw APIError.server("Sunucudan yanıt alınamadı.")
             }
@@ -220,7 +230,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         dashboardError = nil
         defer { isLoadingDashboard = false }
 
-        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000, 2_000_000_000]
+        let retryDelays: [UInt64] = [0, 180_000_000, 500_000_000]
         for attempt in retryDelays.indices {
             if retryDelays[attempt] > 0 {
                 try? await Task.sleep(nanoseconds: retryDelays[attempt])
@@ -229,7 +239,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 var request = URLRequest(url: URL(string: "/api/mobile/dashboard", relativeTo: baseURL)!)
                 request.timeoutInterval = 30
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
 
                 if http.statusCode == 401 {
@@ -275,7 +285,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONEncoder().encode(ManualWaterRequest(date: Self.localDay(), amountMl: amountMl))
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
                 if http.statusCode == 401 { expireSession(); return }
                 let result = try JSONDecoder().decode(ManualWaterResponse.self, from: data)
@@ -524,7 +534,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 var request = URLRequest(url: URL(string: "/api/mobile/health", relativeTo: baseURL)!)
                 request.httpMethod = "DELETE"
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-                _ = try? await URLSession.shared.data(for: request)
+                _ = try? await Self.apiSession.data(for: request)
                 await refreshWater()
             }
             status = "Apple Sağlık eşitlemesi kapatıldı. İzinleri iPhone Ayarlar’dan ayrıca değiştirebilirsin."
@@ -537,7 +547,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             var request = URLRequest(url: URL(string: "/api/mobile/water", relativeTo: baseURL)!)
             request.timeoutInterval = 15
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await Self.apiSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { return }
             if http.statusCode == 401 { expireSession(); return }
             guard (200..<300).contains(http.statusCode) else { return }
@@ -559,7 +569,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONEncoder().encode(CoachRequest(consent: true, question: question, period: period))
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Koç yanıtı alınamadı.") }
                 if http.statusCode == 401 { expireSession(); return }
                 let result = try JSONDecoder().decode(TempoCoachResponse.self, from: data)
@@ -611,7 +621,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         status = "Strava hesabı doğrulanıyor…"
         defer { isBusy = false }
 
-        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000, 2_000_000_000]
+        let retryDelays: [UInt64] = [0, 180_000_000, 500_000_000]
         for attempt in retryDelays.indices {
             if retryDelays[attempt] > 0 {
                 status = "Strava bağlantısı tamamlanıyor…"
@@ -620,13 +630,13 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             do {
                 var request = URLRequest(url: URL(string: "/api/mobile/auth/exchange", relativeTo: baseURL)!)
                 request.httpMethod = "POST"
-                request.timeoutInterval = 20
+                request.timeoutInterval = 12
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 if let accountAccessToken {
                     request.setValue("Bearer \(accountAccessToken)", forHTTPHeaderField: "Authorization")
                 }
                 request.httpBody = try JSONEncoder().encode(TicketRequest(ticket: ticket, verifier: verifier))
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     throw APIError.server("Sunucudan yanıt alınamadı.")
                 }
@@ -659,7 +669,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await Self.apiSession.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.server("Sunucu bağlantıyı kaldıramadı.")
         }
@@ -695,7 +705,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(TempoHealthSyncPayload(days: days))
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.apiSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.server("Sağlık verileri sunucuya eşitlenemedi.") }
         if http.statusCode == 401 { expireSession(); return }
         guard (200..<300).contains(http.statusCode) else {
@@ -711,6 +721,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     private static func serverMessage(_ data: Data, fallback: String) -> String {
         (try? JSONDecoder().decode(ServerError.self, from: data).error) ?? fallback
+    }
+
+    private static func prewarmAPI() {
+        Task.detached(priority: .utility) {
+            guard let url = URL(string: "https://apitempo.com/api/mobile/ping") else { return }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 6
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            _ = try? await apiSession.data(for: request)
+        }
     }
 
     private static func localDay() -> String {
@@ -841,3 +861,4 @@ private extension Data {
             .replacingOccurrences(of: "=", with: "")
     }
 }
+

@@ -29,6 +29,9 @@ export default {
       if (url.pathname === "/mobile/auth/callback" && request.method === "GET") {
         return completeMobileAuthorization(url, env);
       }
+      if (url.pathname === "/api/mobile/ping" && request.method === "GET") {
+        return json({ ok: true, service: "tempo-mobile" });
+      }
       if (url.pathname === "/privacy" && request.method === "GET") {
         return env.ASSETS.fetch(new Request(new URL("/privacy.html", url), request));
       }
@@ -233,7 +236,7 @@ async function getMobileDashboard(request, env) {
   if (context.response) return context.response;
   return buildDashboard(env, {
     sessionKey: `mobile-strava:${context.athleteId}`,
-    cacheKey: `mobile-dashboard:v2:${context.athleteId}`,
+    cacheKey: `mobile-dashboard:v3:${context.athleteId}`,
     saved: context.saved,
     sessionTtl: MOBILE_TOKEN_SECONDS,
   });
@@ -379,7 +382,7 @@ function buildAchievement(activities) {
   };
   const sportStats = Object.fromEntries(
     ["run", "ride", "walk", "hike", "swim", "fitness", "tennis", "basketball", "football", "volleyball", "padel", "badminton", "yoga"]
-      .map((sport) => [sport, { count: 0, km: 0, hours: 0, longestKm: 0 }]),
+      .map((sport) => [sport, { count: 0, km: 0, hours: 0, longestKm: 0, maxMinutes: 0, days: new Set() }]),
   );
   const activeDays = new Set();
   const sports = new Set();
@@ -404,11 +407,15 @@ function buildAchievement(activities) {
       sportStats[sport].km += distanceKm;
       sportStats[sport].hours += movingMinutes / 60;
       sportStats[sport].longestKm = Math.max(sportStats[sport].longestKm, distanceKm);
+      sportStats[sport].maxMinutes = Math.max(sportStats[sport].maxMinutes, movingMinutes);
     }
 
     const localDate = String(activity.start_date_local || "");
     const day = localDate.slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) activeDays.add(day);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      activeDays.add(day);
+      if (sportStats[sport]) sportStats[sport].days.add(day);
+    }
     const hour = Number(localDate.slice(11, 13));
     if (Number.isFinite(hour) && hour >= 4 && hour < 8) earlyBirdCount += 1;
 
@@ -444,11 +451,83 @@ function buildAchievement(activities) {
     target,
     unit,
   });
-  const sportSessionBadges = (id, title, symbol, tint, current) => [
-    badge(`${id}_5`, `${title} Başlangıcı`, `5 ${title.toLocaleLowerCase("tr-TR")} aktivitesi tamamla.`, symbol, tint, current, 5, "aktivite"),
-    badge(`${id}_20`, `${title} Ritmi`, `20 ${title.toLocaleLowerCase("tr-TR")} aktivitesi tamamla.`, symbol, tint, current, 20, "aktivite"),
-    badge(`${id}_50`, `${title} Ustası`, `50 ${title.toLocaleLowerCase("tr-TR")} aktivitesi tamamla.`, symbol, tint, current, 50, "aktivite"),
-  ];
+  const milestoneLabel = (value) => Number.isInteger(value) ? String(value) : String(value).replace(".", ",");
+  const sportMilestoneBadges = ({ id, title, symbol, tint, stats, distanceTargets, longestTargets, sessionMinutes = 90 }) => {
+    const lowerTitle = title.toLocaleLowerCase("tr-TR");
+    const sportStreak = longestAchievementStreak(stats.days);
+    const countTargets = distanceTargets?.length ? [1, 5, 10, 25, 50] : [1, 5, 10, 20, 35, 50, 100];
+    const hourTargets = distanceTargets?.length ? [5, 15, 30, 75] : [5, 10, 25, 50, 100];
+    const streakTargets = distanceTargets?.length ? [3, 7] : [3, 7, 14];
+    const values = [
+      ...countTargets.map((target, index) => badge(
+        `${id}_count_${target}`,
+        index === 0 ? `İlk ${title}` : `${title} · ${target} Aktivite`,
+        `${target} ${lowerTitle} aktivitesi tamamla.`,
+        symbol,
+        tint,
+        stats.count,
+        target,
+        "aktivite",
+      )),
+      ...hourTargets.map((target) => badge(
+        `${id}_hours_${target}`,
+        `${title} · ${target} Saat`,
+        `Toplam ${target} saat ${lowerTitle} yap.`,
+        "clock.fill",
+        tint,
+        stats.hours,
+        target,
+        "saat",
+      )),
+      ...streakTargets.map((target) => badge(
+        `${id}_streak_${target}`,
+        `${title} · ${target} Gün Seri`,
+        `${target} gün aralıksız ${lowerTitle} aktivitesi kaydet.`,
+        "flame.fill",
+        tint,
+        sportStreak,
+        target,
+        "gün",
+      )),
+    ];
+
+    if (distanceTargets?.length) {
+      values.push(
+        ...distanceTargets.map((target) => badge(
+          `${id}_distance_${String(target).replace(".", "_")}`,
+          `${title} · ${milestoneLabel(target)} km`,
+          `Toplam ${milestoneLabel(target)} km ${lowerTitle} yap.`,
+          symbol,
+          tint,
+          stats.km,
+          target,
+          "km",
+        )),
+        ...longestTargets.map((target) => badge(
+          `${id}_longest_${String(target).replace(".", "_")}`,
+          `${title} · Tek Seferde ${milestoneLabel(target)} km`,
+          `Tek bir aktivitede ${milestoneLabel(target)} km tamamla.`,
+          "medal.fill",
+          tint,
+          stats.longestKm,
+          target,
+          "km",
+        )),
+      );
+    } else {
+      values.push(badge(
+        `${id}_single_${sessionMinutes}`,
+        `${title} · Uzun Seans`,
+        `Tek bir aktivitede ${sessionMinutes} dakika tamamla.`,
+        "stopwatch.fill",
+        tint,
+        stats.maxMinutes,
+        sessionMinutes,
+        "dk",
+      ));
+    }
+    return values;
+  };
 
   const badges = [
     badge("first_activity", "İlk Adım", "İlk Strava aktiviteni tamamla.", "flag.checkered", "green", totals.activityCount, 1, "aktivite"),
@@ -476,39 +555,19 @@ function buildAchievement(activities) {
     badge("early_bird", "Erken Kuş", "Saat 08.00’den önce 5 aktiviteye başla.", "sunrise.fill", "orange", earlyBirdCount, 5, "aktivite"),
     badge("early_bird_20", "Güneşle Yarış", "Saat 08.00’den önce 20 aktiviteye başla.", "sunrise.circle.fill", "purple", earlyBirdCount, 20, "aktivite"),
 
-    badge("run_5", "Koşuya Başla", "5 koşu tamamla.", "figure.run", "orange", sportStats.run.count, 5, "koşu"),
-    badge("run_50", "Koşu 50", "Toplam 50 km koş.", "figure.run", "orange", sportStats.run.km, 50, "km"),
-    badge("run_250", "Koşu 250", "Toplam 250 km koş.", "figure.run", "purple", sportStats.run.km, 250, "km"),
-    badge("run_10k", "10K", "Tek koşuda 10 km tamamla.", "medal.fill", "green", sportStats.run.longestKm, 10, "km"),
-    badge("run_half", "Yarı Maraton", "Tek koşuda 21,1 km tamamla.", "medal.fill", "blue", sportStats.run.longestKm, 21.1, "km"),
-    badge("run_marathon", "Maraton", "Tek koşuda 42,2 km tamamla.", "trophy.fill", "orange", sportStats.run.longestKm, 42.2, "km"),
-
-    badge("ride_5", "Pedala Başla", "5 bisiklet aktivitesi tamamla.", "bicycle", "blue", sportStats.ride.count, 5, "sürüş"),
-    badge("ride_250", "Pedal 250", "Toplam 250 km bisiklete bin.", "bicycle", "blue", sportStats.ride.km, 250, "km"),
-    badge("ride_1000", "Pedal 1000", "Toplam 1.000 km bisiklete bin.", "bicycle", "purple", sportStats.ride.km, 1000, "km"),
-    badge("ride_50k", "Uzun Sürüş", "Tek sürüşte 50 km tamamla.", "road.lanes", "green", sportStats.ride.longestKm, 50, "km"),
-    badge("ride_century", "Bisiklet Asrı", "Tek sürüşte 100 km tamamla.", "medal.fill", "orange", sportStats.ride.longestKm, 100, "km"),
-
-    badge("walk_10", "Adım Adım", "10 yürüyüş tamamla.", "figure.walk", "green", sportStats.walk.count, 10, "yürüyüş"),
-    badge("walk_100", "Yürüyüş 100", "Toplam 100 km yürü.", "figure.walk", "blue", sportStats.walk.km, 100, "km"),
-    badge("walk_500", "Uzun Yol", "Toplam 500 km yürü.", "shoeprints.fill", "purple", sportStats.walk.km, 500, "km"),
-    badge("hike_5", "Patika Başlangıcı", "5 doğa yürüyüşü tamamla.", "figure.hiking", "green", sportStats.hike.count, 5, "yürüyüş"),
-    badge("hike_50", "Patika 50", "Toplam 50 km doğa yürüyüşü yap.", "figure.hiking", "orange", sportStats.hike.km, 50, "km"),
-    badge("hike_150", "Patika Ustası", "Toplam 150 km doğa yürüyüşü yap.", "mountain.2.fill", "purple", sportStats.hike.km, 150, "km"),
-    badge("swim_5", "Suya Alış", "5 yüzme aktivitesi tamamla.", "figure.pool.swim", "blue", sportStats.swim.count, 5, "yüzme"),
-    badge("swim_10", "Yüzme 10", "Toplam 10 km yüz.", "figure.pool.swim", "green", sportStats.swim.km, 10, "km"),
-    badge("swim_50", "Açık Su Ruhu", "Toplam 50 km yüz.", "water.waves", "purple", sportStats.swim.km, 50, "km"),
-    badge("fitness_10", "Güç Temeli", "10 fitness antrenmanı tamamla.", "dumbbell.fill", "orange", sportStats.fitness.count, 10, "antrenman"),
-    badge("fitness_25h", "25 Saat Güç", "Toplam 25 saat fitness yap.", "dumbbell.fill", "blue", sportStats.fitness.hours, 25, "saat"),
-    badge("fitness_100h", "Güç Ustası", "Toplam 100 saat fitness yap.", "figure.strengthtraining.traditional", "purple", sportStats.fitness.hours, 100, "saat"),
-
-    ...sportSessionBadges("tennis", "Tenis", "tennis.racket", "green", sportStats.tennis.count),
-    ...sportSessionBadges("basketball", "Basketbol", "basketball.fill", "orange", sportStats.basketball.count),
-    ...sportSessionBadges("football", "Futbol", "soccerball", "green", sportStats.football.count),
-    ...sportSessionBadges("volleyball", "Voleybol", "volleyball.fill", "blue", sportStats.volleyball.count),
-    ...sportSessionBadges("padel", "Padel", "figure.racquetball", "purple", sportStats.padel.count),
-    ...sportSessionBadges("badminton", "Badminton", "figure.badminton", "blue", sportStats.badminton.count),
-    ...sportSessionBadges("yoga", "Yoga", "figure.yoga", "pink", sportStats.yoga.count),
+    ...sportMilestoneBadges({ id: "run", title: "Koşu", symbol: "figure.run", tint: "orange", stats: sportStats.run, distanceTargets: [25, 50, 100, 250], longestTargets: [5, 10, 21.1] }),
+    ...sportMilestoneBadges({ id: "ride", title: "Bisiklet", symbol: "bicycle", tint: "blue", stats: sportStats.ride, distanceTargets: [100, 250, 500, 1000], longestTargets: [25, 50, 100] }),
+    ...sportMilestoneBadges({ id: "walk", title: "Yürüyüş", symbol: "figure.walk", tint: "green", stats: sportStats.walk, distanceTargets: [25, 100, 250, 500], longestTargets: [5, 10, 20] }),
+    ...sportMilestoneBadges({ id: "hike", title: "Doğa Yürüyüşü", symbol: "figure.hiking", tint: "purple", stats: sportStats.hike, distanceTargets: [25, 50, 100, 250], longestTargets: [5, 10, 20] }),
+    ...sportMilestoneBadges({ id: "swim", title: "Yüzme", symbol: "figure.pool.swim", tint: "blue", stats: sportStats.swim, distanceTargets: [5, 10, 25, 50], longestTargets: [1, 2, 5] }),
+    ...sportMilestoneBadges({ id: "fitness", title: "Fitness", symbol: "dumbbell.fill", tint: "orange", stats: sportStats.fitness, sessionMinutes: 90 }),
+    ...sportMilestoneBadges({ id: "tennis", title: "Tenis", symbol: "tennis.racket", tint: "green", stats: sportStats.tennis, sessionMinutes: 90 }),
+    ...sportMilestoneBadges({ id: "basketball", title: "Basketbol", symbol: "basketball.fill", tint: "orange", stats: sportStats.basketball, sessionMinutes: 90 }),
+    ...sportMilestoneBadges({ id: "football", title: "Futbol", symbol: "soccerball", tint: "green", stats: sportStats.football, sessionMinutes: 90 }),
+    ...sportMilestoneBadges({ id: "volleyball", title: "Voleybol", symbol: "volleyball.fill", tint: "blue", stats: sportStats.volleyball, sessionMinutes: 90 }),
+    ...sportMilestoneBadges({ id: "padel", title: "Padel", symbol: "figure.racquetball", tint: "purple", stats: sportStats.padel, sessionMinutes: 90 }),
+    ...sportMilestoneBadges({ id: "badminton", title: "Badminton", symbol: "figure.badminton", tint: "blue", stats: sportStats.badminton, sessionMinutes: 75 }),
+    ...sportMilestoneBadges({ id: "yoga", title: "Yoga", symbol: "figure.yoga", tint: "pink", stats: sportStats.yoga, sessionMinutes: 60 }),
   ];
 
   return {
@@ -703,9 +762,14 @@ async function exchangeMobileTicket(request, env) {
   if (!/^[a-f0-9]{64}$/i.test(ticket)) return json({ error: "Bağlantı kodu geçersiz." }, 400);
   if (!/^[A-Za-z0-9_-]{43}$/.test(verifier)) return json({ error: "Uygulama doğrulaması geçersiz." }, 400);
   const ticketKey = `mobile-ticket:${ticket}`;
-  const ticketData = await env.TOKEN_STORE.get(ticketKey, "json");
+  let ticketData = null;
+  for (const delayMs of [0, 80, 160, 320, 640, 1000]) {
+    if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    ticketData = await env.TOKEN_STORE.get(ticketKey, "json");
+    if (ticketData?.athleteId && ticketData?.codeChallenge && ticketData?.refreshToken) break;
+  }
   if (!ticketData?.athleteId || !ticketData?.codeChallenge || !ticketData?.refreshToken) {
-    return json({ error: "Bağlantı kodu henüz hazırlanıyor. Otomatik olarak yeniden denenecek." }, 401);
+    return json({ error: "Bağlantı kodu hazırlanamadı. Strava bağlantısını yeniden başlat." }, 408);
   }
   if (await sha256Base64Url(verifier) !== ticketData.codeChallenge) {
     return json({ error: "Uygulama doğrulaması eşleşmedi." }, 401);
@@ -1162,7 +1226,7 @@ async function getMobileCoachReview(request, env) {
   if (input.response) return input.response;
   const dashboardResponse = await buildDashboard(env, {
     sessionKey: `mobile-strava:${context.athleteId}`,
-    cacheKey: `mobile-dashboard:v2:${context.athleteId}`,
+    cacheKey: `mobile-dashboard:v3:${context.athleteId}`,
     saved: context.saved,
     sessionTtl: MOBILE_TOKEN_SECONDS,
   });
@@ -1543,3 +1607,4 @@ function readCookie(request, name) {
 function cookie(name, value, maxAge, path) {
   return `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=${path}; Secure; HttpOnly; SameSite=Lax`;
 }
+
