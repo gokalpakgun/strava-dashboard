@@ -112,7 +112,8 @@ jobs:
             --type ios \
             --file "$IPA_PATH" \
             --username "$APPLE_ID" \
-            --password "$APP_SPECIFIC_PASSWORD"
+            --password "$APP_SPECIFIC_PASSWORD" \
+            --team-id DV675SBH9Q
 
       - name: Arşiv raporunu sakla
         if: always()
