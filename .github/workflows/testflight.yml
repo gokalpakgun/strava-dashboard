@@ -18,6 +18,17 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
 
+      - name: Apple görsel kataloğunu hazırla
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' FILE; do
+            TEMP_FILE="${FILE%.png}.apple.png"
+            sips -s format png "$FILE" --out "$TEMP_FILE" >/dev/null
+            mv "$TEMP_FILE" "$FILE"
+          done < <(find ios/TempoHealth/Sources/Assets.xcassets -name '*.png' -print0)
+          sips -g pixelWidth -g pixelHeight ios/TempoHealth/Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+          plutil -lint ios/TempoHealth/Sources/Assets.xcassets/AppIcon.appiconset/Contents.json
+
       - name: App Store imzalama dosyalarını kur
         env:
           CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
