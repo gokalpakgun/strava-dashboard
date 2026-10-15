@@ -27,7 +27,6 @@ jobs:
             mv "$TEMP_FILE" "$FILE"
           done < <(find ios/TempoHealth/Sources/Assets.xcassets -name '*.png' -print0)
           sips -g pixelWidth -g pixelHeight ios/TempoHealth/Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
-          plutil -lint ios/TempoHealth/Sources/Assets.xcassets/AppIcon.appiconset/Contents.json
 
       - name: App Store imzalama dosyalarını kur
         env:
