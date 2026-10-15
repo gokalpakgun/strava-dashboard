@@ -17,11 +17,9 @@ jobs:
           CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_APP_STORE_PROFILE_BASE64 }}
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ASC_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
         run: |
           set -euo pipefail
-          for VALUE in "$CERTIFICATE_BASE64" "$CERTIFICATE_PASSWORD" "$PROVISIONING_PROFILE_BASE64" "$ASC_KEY_ID" "$ASC_KEY_BASE64"; do
+          for VALUE in "$CERTIFICATE_BASE64" "$CERTIFICATE_PASSWORD" "$PROVISIONING_PROFILE_BASE64"; do
             test -n "$VALUE"
           done
 
@@ -46,8 +44,6 @@ jobs:
 
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          printf '%s' "$ASC_KEY_BASE64" | base64 -D > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
@@ -94,17 +90,19 @@ jobs:
 
       - name: TestFlight'a yükle
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APP_STORE_CONNECT_APPLE_ID }}
+          APP_SPECIFIC_PASSWORD: ${{ secrets.APP_STORE_CONNECT_APP_PASSWORD }}
         run: |
           set -euo pipefail
           IPA_PATH="$(find "$RUNNER_TEMP/TempoExport" -name '*.ipa' -print -quit)"
           test -n "$IPA_PATH"
+          test -n "$APPLE_ID"
+          test -n "$APP_SPECIFIC_PASSWORD"
           xcrun altool --upload-app \
             --type ios \
             --file "$IPA_PATH" \
-            --apiKey "$ASC_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
+            --username "$APPLE_ID" \
+            --password "$APP_SPECIFIC_PASSWORD"
 
       - name: Arşiv raporunu sakla
         if: always()
