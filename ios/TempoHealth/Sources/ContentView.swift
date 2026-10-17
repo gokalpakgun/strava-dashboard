@@ -860,53 +860,25 @@ private struct ManualWorkoutForm: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Antrenman") {
-                    Picker("Spor", selection: $sportId) {
-                        ForEach(TempoSportChoice.allCases) { choice in
-                            ManualWorkoutSportPickerOption(choice: choice)
-                                .tag(choice.rawValue)
-                        }
-                        Label("Diğer", systemImage: "figure.mixed.cardio")
-                            .tag("other")
-                    }
-                    TextField("Antrenman adı (isteğe bağlı)", text: $title)
-                    DatePicker("Başlangıç zamanı", selection: $startedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-                    Stepper("Süre: %d dk".tempoFormatted(durationMinutes), value: $durationMinutes, in: 5...360, step: 5)
-                }
-
-                Section("Fotoğraf ve notlar") {
-                    PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-                        Label(photoData == nil ? "Antrenman fotoğrafı ekle (isteğe bağlı)" : "Fotoğraf eklendi · değiştir", systemImage: "photo.badge.plus")
-                    }
-                    if let photoImage {
-                        Image(uiImage: photoImage).resizable().scaledToFill()
-                            .frame(maxWidth: .infinity).frame(height: 150).clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        Button("Fotoğrafı kaldır", role: .destructive) {
-                            photoData = nil
-                            photoImage = nil
-                            photoItem = nil
-                        }
-                    }
-                    TextField("Not (isteğe bağlı)", text: $notes, axis: .vertical).lineLimit(2...5)
-                    Text("Apple Watch gerekmez; iPhone’un hareket sensörü de adım ölçebilir. Kaydetmek için antrenman saatinde anlamlı bir hareket veya Sağlık sinyali gerekir. Fotoğraf tek başına yeterli değildir; ölçümler kesin doğrulama sayılmaz ve kayıtlar cihazda kalır.")
-                        .font(.caption).foregroundStyle(TempoTheme.secondary)
-                    Text("iPhone adım ölçümü için Hareket ve Fitness izni gerekebilir. iPhone sensöründeki adım geçmişi son 7 gün için sorgulanabilir.")
-                        .font(.caption2).foregroundStyle(TempoTheme.secondary)
-                }
+                ManualWorkoutDetailsSection(
+                    sportId: $sportId,
+                    title: $title,
+                    startedAt: $startedAt,
+                    durationMinutes: $durationMinutes
+                )
+                ManualWorkoutEvidenceSection(
+                    photoItem: $photoItem,
+                    photoData: $photoData,
+                    photoImage: $photoImage,
+                    notes: $notes
+                )
             }
             .scrollContentBackground(.hidden)
             .background(TempoTheme.background)
             .navigationTitle("Antrenman ekle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("İptal") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Kaydediliyor…" : "Kaydet") { Task { await saveWorkout() } }
-                        .disabled(isSaving)
-                }
+                ManualWorkoutToolbar(isSaving: isSaving, onCancel: { dismiss() }, onSave: saveTapped)
             }
             .onChange(of: photoItem) { _, item in
                 Task { await loadPhoto(item) }
@@ -925,6 +897,10 @@ private struct ManualWorkoutForm: View {
         let bounded = image.preparingThumbnail(of: CGSize(width: 1400, height: 1400)) ?? image
         photoData = bounded.jpegData(compressionQuality: 0.78)
         photoImage = photoData.flatMap { UIImage(data: $0) }
+    }
+
+    private func saveTapped() {
+        Task { await saveWorkout() }
     }
 
     @MainActor
@@ -947,6 +923,87 @@ private struct ManualWorkoutForm: View {
             errorMessage = error.localizedDescription.tempoLocalized
             showingError = true
         }
+    }
+}
+
+private struct ManualWorkoutToolbar: ToolbarContent {
+    let isSaving: Bool
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("İptal", action: onCancel)
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button(isSaving ? "Kaydediliyor…" : "Kaydet", action: onSave)
+                .disabled(isSaving)
+        }
+    }
+}
+
+private struct ManualWorkoutDetailsSection: View {
+    @Binding var sportId: String
+    @Binding var title: String
+    @Binding var startedAt: Date
+    @Binding var durationMinutes: Int
+
+    var body: some View {
+        Section("Antrenman") {
+            Picker("Spor", selection: $sportId) {
+                ForEach(TempoSportChoice.allCases) { choice in
+                    ManualWorkoutSportPickerOption(choice: choice)
+                        .tag(choice.rawValue)
+                }
+                Label("Diğer", systemImage: "figure.mixed.cardio")
+                    .tag("other")
+            }
+            TextField("Antrenman adı (isteğe bağlı)", text: $title)
+            DatePicker("Başlangıç zamanı", selection: $startedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+            Stepper("Süre: %d dk".tempoFormatted(durationMinutes), value: $durationMinutes, in: 5...360, step: 5)
+        }
+    }
+}
+
+private struct ManualWorkoutEvidenceSection: View {
+    @Binding var photoItem: PhotosPickerItem?
+    @Binding var photoData: Data?
+    @Binding var photoImage: UIImage?
+    @Binding var notes: String
+
+    var body: some View {
+        Section("Fotoğraf ve notlar") {
+            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                Label(photoData == nil ? "Antrenman fotoğrafı ekle (isteğe bağlı)" : "Fotoğraf eklendi · değiştir", systemImage: "photo.badge.plus")
+            }
+            if let previewImage = photoImage {
+                ManualWorkoutPhotoPreview(image: previewImage)
+                Button("Fotoğrafı kaldır", role: .destructive) {
+                    photoData = nil
+                    photoImage = nil
+                    photoItem = nil
+                }
+            }
+            TextField("Not (isteğe bağlı)", text: $notes, axis: .vertical).lineLimit(2...5)
+            Text("Apple Watch gerekmez; iPhone’un hareket sensörü de adım ölçebilir. Kaydetmek için antrenman saatinde anlamlı bir hareket veya Sağlık sinyali gerekir. Fotoğraf tek başına yeterli değildir; ölçümler kesin doğrulama sayılmaz ve kayıtlar cihazda kalır.")
+                .font(.caption).foregroundStyle(TempoTheme.secondary)
+            Text("iPhone adım ölçümü için Hareket ve Fitness izni gerekebilir. iPhone sensöründeki adım geçmişi son 7 gün için sorgulanabilir.")
+                .font(.caption2).foregroundStyle(TempoTheme.secondary)
+        }
+    }
+}
+
+private struct ManualWorkoutPhotoPreview: View {
+    let image: UIImage
+
+    var body: some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(maxWidth: .infinity)
+            .frame(height: 150)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
