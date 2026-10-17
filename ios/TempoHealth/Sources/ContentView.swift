@@ -1212,6 +1212,7 @@ private struct MoreScreen: View {
 
 private struct HealthScreen: View {
     @EnvironmentObject private var model: TempoAppModel
+    @State private var selectedHealthDay: Date?
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
     private var progress: Double { min(Double(model.todayWaterMl) / Double(model.dailyGoalMl), 1) }
 
@@ -1236,17 +1237,19 @@ private struct HealthScreen: View {
                     }
                 }
                 healthOverview
-                SleepDetailCard(points: healthPoints)
+                HealthDaySelector(points: healthPoints, selectedDay: $selectedHealthDay)
+                SleepDetailCard(points: healthPoints, selectedDay: $selectedHealthDay)
                 CardioFitnessCard(points: healthPoints)
-                SectionHeading(title: "Bugünkü ölçüler", caption: "APPLE SAĞLIK", padding: false)
+                SectionHeading(title: selectedHealthDayTitle, caption: "APPLE SAĞLIK", padding: false)
                 LazyVGrid(columns: columns, spacing: 12) {
-                    HealthMetricTile(title: "Adım", value: whole(model.todayHealth.steps), unit: "adım", icon: "figure.walk", color: TempoTheme.green)
-                    HealthMetricTile(title: "Aktif enerji", value: whole(model.todayHealth.activeEnergyKcal), unit: "kcal", icon: "flame.fill", color: TempoTheme.orange)
-                    HealthMetricTile(title: "Egzersiz", value: whole(model.todayHealth.exerciseMinutes), unit: "dk", icon: "figure.run", color: TempoTheme.green)
-                    HealthMetricTile(title: "Dinlenik nabız", value: decimal(model.todayHealth.restingHeartRateBpm), unit: "atım/dk", icon: "heart.fill", color: .pink)
-                    HealthMetricTile(title: "HRV", value: decimal(model.todayHealth.hrvMs), unit: "ms", icon: "waveform.path.ecg", color: TempoTheme.purple)
-                    HealthMetricTile(title: "Son uyku", value: sleepText, unit: model.latestSleep == nil ? "veri yok" : "", icon: "moon.zzz.fill", color: TempoTheme.blue)
-                    HealthMetricTile(title: "Kilo", value: decimal(model.latestWeightKg), unit: "kg", icon: "scalemass.fill", color: TempoTheme.green)
+                    HealthMetricTile(title: "Adım", value: whole(selectedMetrics.steps), unit: "adım", icon: "figure.walk", color: TempoTheme.green)
+                    HealthMetricTile(title: "Aktif enerji", value: whole(selectedMetrics.activeEnergyKcal), unit: "kcal", icon: "flame.fill", color: TempoTheme.orange)
+                    HealthMetricTile(title: "Egzersiz", value: whole(selectedMetrics.exerciseMinutes), unit: "dk", icon: "figure.run", color: TempoTheme.green)
+                    HealthMetricTile(title: "Dinlenik nabız", value: decimal(selectedMetrics.restingHeartRateBpm), unit: "atım/dk", icon: "heart.fill", color: .pink)
+                    HealthMetricTile(title: "HRV", value: decimal(selectedMetrics.hrvMs), unit: "ms", icon: "waveform.path.ecg", color: TempoTheme.purple)
+                    HealthMetricTile(title: "Uyku", value: selectedSleepText, unit: selectedMetrics.sleepMinutes == nil ? "veri yok" : "", icon: "moon.zzz.fill", color: TempoTheme.blue)
+                    HealthMetricTile(title: "Su", value: whole(selectedMetrics.waterMl), unit: "ml", icon: "drop.fill", color: TempoTheme.blue)
+                    HealthMetricTile(title: "Kilo", value: decimal(selectedMetrics.bodyMassKg), unit: "kg", icon: "scalemass.fill", color: TempoTheme.green)
                 }
             }
             if let error = model.healthError {
@@ -1277,6 +1280,8 @@ private struct HealthScreen: View {
         }
         .navigationTitle("Sağlık")
         .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .onAppear { selectLatestHealthDayIfNeeded() }
+        .onChange(of: model.healthDays) { _, _ in selectLatestHealthDayIfNeeded() }
     }
 
     private var connectCard: some View {
@@ -1331,9 +1336,24 @@ private struct HealthScreen: View {
         }
     }
 
-    private var sleepText: String {
-        guard let minutes = model.latestSleep?.minutes else { return "—" }
+    private var selectedSleepText: String {
+        guard let minutes = selectedMetrics.sleepMinutes else { return "—" }
         return TempoFormat.duration(minutes * 60)
+    }
+
+    private var selectedMetrics: TempoHealthMetrics {
+        selectedPoint?.metrics ?? model.todayHealth
+    }
+
+    private var selectedPoint: HealthDayPoint? {
+        guard let selectedHealthDay else { return healthPoints.last }
+        return healthPoints.first { Calendar.autoupdatingCurrent.isDate($0.day, inSameDayAs: selectedHealthDay) }
+    }
+
+    private var selectedHealthDayTitle: String {
+        guard let selectedPoint else { return "Bugünkü ölçüler".tempoLocalized }
+        if Calendar.autoupdatingCurrent.isDateInToday(selectedPoint.day) { return "Bugünkü ölçüler".tempoLocalized }
+        return selectedPoint.day.formatted(.dateTime.day().month(.wide).weekday(.wide)).capitalized
     }
 
     private var healthPoints: [HealthDayPoint] {
@@ -1342,6 +1362,15 @@ private struct HealthScreen: View {
             return HealthDayPoint(day: date, metrics: metrics)
         }
         .sorted { $0.day < $1.day }
+    }
+
+    private func selectLatestHealthDayIfNeeded() {
+        guard !healthPoints.isEmpty else { selectedHealthDay = nil; return }
+        if let selectedHealthDay,
+           healthPoints.contains(where: { Calendar.autoupdatingCurrent.isDate($0.day, inSameDayAs: selectedHealthDay) }) {
+            return
+        }
+        selectedHealthDay = healthPoints.last?.day
     }
 
     private func whole(_ value: Double?) -> String {
@@ -1361,14 +1390,80 @@ private struct HealthDayPoint: Identifiable {
     var id: Date { day }
 }
 
+private struct HealthDaySelector: View {
+    let points: [HealthDayPoint]
+    @Binding var selectedDay: Date?
+
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("SAĞLIK GEÇMİŞİ".tempoLocalized)
+                            .font(.caption2.bold()).tracking(1.2).foregroundStyle(TempoTheme.green)
+                        Text("Önceki kayıtların".tempoLocalized).font(.headline)
+                    }
+                    Spacer()
+                    Text("Son 90 gün".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
+
+                if points.isEmpty {
+                    Label("Henüz geçmiş sağlık kaydı bulunamadı.", systemImage: "calendar.badge.exclamationmark")
+                        .font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 9) {
+                            ForEach(Array(points.suffix(30).reversed())) { point in
+                                let isSelected = selectedDay.map { Calendar.autoupdatingCurrent.isDate($0, inSameDayAs: point.day) } ?? false
+                                let sleepScore = TempoSleepAssessment.evaluate(point.metrics)?.value
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) { selectedDay = point.day }
+                                } label: {
+                                    VStack(spacing: 5) {
+                                        Text(point.day.formatted(.dateTime.day()))
+                                            .font(.headline.monospacedDigit())
+                                        Text(point.day.formatted(.dateTime.month(.abbreviated)))
+                                            .font(.caption2)
+                                        if let sleepScore {
+                                            Label("\(sleepScore)", systemImage: "moon.fill")
+                                                .font(.caption2.bold())
+                                        } else {
+                                            Text("Ölçüm".tempoLocalized).font(.caption2.bold())
+                                        }
+                                    }
+                                    .foregroundStyle(isSelected ? Color.black : Color.white)
+                                    .frame(width: 64, height: 76)
+                                    .background(isSelected ? TempoTheme.green : TempoTheme.raised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isSelected ? TempoTheme.green : .white.opacity(0.06)))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(point.day.formatted(date: .complete, time: .omitted))
+                            }
+                        }
+                    }
+                    Text("Bir güne dokunarak o tarihteki uyku puanını, evreleri ve diğer Apple Sağlık ölçülerini inceleyebilirsin.")
+                        .font(.caption2).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+                }
+            }
+        }
+    }
+}
+
 private struct SleepDetailCard: View {
     let points: [HealthDayPoint]
+    @Binding var selectedDay: Date?
 
     private var sleepPoints: [HealthDayPoint] {
         points.filter { ($0.metrics.sleepMinutes ?? 0) > 0 }
     }
 
-    private var latest: TempoHealthMetrics? { sleepPoints.last?.metrics }
+    private var selectedPoint: HealthDayPoint? {
+        guard let selectedDay else { return sleepPoints.last }
+        return sleepPoints.first { Calendar.autoupdatingCurrent.isDate($0.day, inSameDayAs: selectedDay) }
+    }
+
+    private var selectedMetrics: TempoHealthMetrics? { selectedPoint?.metrics }
+    private var assessment: TempoSleepAssessment? { selectedMetrics.flatMap(TempoSleepAssessment.evaluate) }
 
     private var weeklyAverage: Double? {
         let values = sleepPoints.suffix(7).compactMap(\.metrics.sleepMinutes)
@@ -1394,8 +1489,42 @@ private struct SleepDetailCard: View {
                     }
                 }
 
+                if let selectedMetrics, let assessment {
+                    HStack(spacing: 17) {
+                        ZStack {
+                            Circle().stroke(.white.opacity(0.08), lineWidth: 10)
+                            Circle()
+                                .trim(from: 0, to: CGFloat(assessment.value) / 100)
+                                .stroke(
+                                    AngularGradient(colors: [TempoTheme.blue, TempoTheme.purple, TempoTheme.green], center: .center),
+                                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                                )
+                                .rotationEffect(.degrees(-90))
+                            VStack(spacing: 0) {
+                                Text("\(assessment.value)").font(.system(size: 30, weight: .bold, design: .rounded).monospacedDigit())
+                                Text("UYKU PUANI".tempoLocalized).font(.system(size: 8, weight: .bold)).foregroundStyle(TempoTheme.secondary)
+                            }
+                        }
+                        .frame(width: 102, height: 102)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(selectedPoint?.day.formatted(date: .long, time: .omitted).capitalized ?? "")
+                                .font(.caption).foregroundStyle(TempoTheme.secondary)
+                            Text(assessment.state.tempoLocalized).font(.title3.bold())
+                            Text(TempoFormat.duration((selectedMetrics.sleepMinutes ?? 0) * 60))
+                                .font(.headline).foregroundStyle(TempoTheme.blue)
+                            Text(assessment.confidence.tempoLocalized)
+                                .font(.caption2.bold()).foregroundStyle(TempoTheme.green)
+                        }
+                    }
+
+                    Text(assessment.summary.tempoLocalized)
+                        .font(.subheadline).foregroundStyle(.white.opacity(0.76)).lineSpacing(3)
+                }
+
                 if !sleepPoints.isEmpty {
-                    Chart(Array(sleepPoints.suffix(7))) { point in
+                    Text("Uyku süresi · 14 gün".tempoLocalized).font(.caption.bold()).foregroundStyle(TempoTheme.secondary)
+                    Chart(Array(sleepPoints.suffix(14))) { point in
                         BarMark(
                             x: .value("Gün".tempoLocalized, point.day, unit: .day),
                             y: .value("Saat".tempoLocalized, (point.metrics.sleepMinutes ?? 0) / 60)
@@ -1419,20 +1548,92 @@ private struct SleepDetailCard: View {
                         }
                     }
                     .frame(height: 138)
+
+                    Text("Uyku puanı · 14 gün".tempoLocalized).font(.caption.bold()).foregroundStyle(TempoTheme.secondary)
+                    Chart(Array(sleepPoints.suffix(14))) { point in
+                        if let score = TempoSleepAssessment.evaluate(point.metrics)?.value {
+                            LineMark(
+                                x: .value("Gün".tempoLocalized, point.day, unit: .day),
+                                y: .value("Puan".tempoLocalized, score)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(TempoTheme.green)
+                            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                            PointMark(
+                                x: .value("Gün".tempoLocalized, point.day, unit: .day),
+                                y: .value("Puan".tempoLocalized, score)
+                            )
+                            .foregroundStyle(TempoTheme.green)
+                        }
+                    }
+                    .chartYScale(domain: 0...100)
+                    .chartXAxis(.hidden)
+                    .chartYAxis {
+                        AxisMarks(position: .leading, values: [0, 50, 100]) { value in
+                            AxisGridLine().foregroundStyle(.white.opacity(0.06))
+                            AxisValueLabel().foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                    .frame(height: 105)
                 }
 
-                if let latest {
-                    HStack(spacing: 8) {
-                        SleepStagePill(title: "Çekirdek", minutes: latest.sleepCoreMinutes, color: TempoTheme.blue)
-                        SleepStagePill(title: "Derin", minutes: latest.sleepDeepMinutes, color: TempoTheme.purple)
-                        SleepStagePill(title: "REM", minutes: latest.sleepREMMinutes, color: TempoTheme.green)
-                        SleepStagePill(title: "Uyanık", minutes: latest.sleepAwakeMinutes, color: TempoTheme.orange)
+                if let selectedMetrics {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 9) {
+                        SleepStagePill(title: "Çekirdek", minutes: selectedMetrics.sleepCoreMinutes, color: TempoTheme.blue)
+                        SleepStagePill(title: "Derin", minutes: selectedMetrics.sleepDeepMinutes, color: TempoTheme.purple)
+                        SleepStagePill(title: "REM", minutes: selectedMetrics.sleepREMMinutes, color: TempoTheme.green)
+                        SleepStagePill(title: "Uyanık", minutes: selectedMetrics.sleepAwakeMinutes, color: TempoTheme.orange)
+                    }
+
+                    if let assessment {
+                        Divider().overlay(.white.opacity(0.08))
+                        VStack(spacing: 13) {
+                            ForEach(assessment.factors) { factor in
+                                SleepFactorRow(factor: factor)
+                            }
+                        }
                     }
                 } else {
                     Label("Uyku evresi verisi henüz bulunamadı.", systemImage: "moon.zzz")
                         .font(.subheadline).foregroundStyle(TempoTheme.secondary)
                 }
             }
+        }
+    }
+}
+
+private struct SleepFactorRow: View {
+    let factor: TempoSleepFactor
+
+    private var color: Color {
+        switch factor.score {
+        case 85...: return TempoTheme.green
+        case 65..<85: return TempoTheme.blue
+        case 45..<65: return TempoTheme.orange
+        default: return .pink
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: factor.symbol)
+                .font(.caption.bold()).foregroundStyle(color)
+                .frame(width: 32, height: 32).background(color.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(factor.title.tempoLocalized).font(.caption.weight(.semibold))
+                    Spacer()
+                    Text(factor.value).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                }
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.07))
+                        Capsule().fill(color).frame(width: proxy.size.width * CGFloat(factor.score) / 100)
+                    }
+                }
+                .frame(height: 5)
+            }
+            Text("\(factor.score)").font(.caption.monospacedDigit().bold()).foregroundStyle(color).frame(width: 26)
         }
     }
 }

@@ -44,6 +44,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }()
     private static let dashboardCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("tempo-dashboard-v2.json")
+    private static let healthCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("tempo-health-days-v1.json")
+    private static let healthLastSyncKey = "tempoHealthLastSyncV1"
     private var accessToken: String? {
         didSet { isConnected = accessToken != nil }
     }
@@ -60,6 +63,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             status = dashboard == nil ? "Strava bağlı. Verilerin hazırlanıyor." : "Kayıtlı Strava verilerin gösteriliyor; güncelleniyor."
         }
         if healthSyncEnabled {
+            healthDays = Self.loadCachedHealthDays()
+            healthLastSync = UserDefaults.standard.object(forKey: Self.healthLastSyncKey) as? Date
+            todayWaterMl = Int((healthDays[Self.localDay()]?.waterMl ?? 0).rounded())
             startHealthObservers()
             Task { await syncAppleHealth() }
         }
@@ -356,22 +362,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
 
         if let sleepRecord = records.first(where: { ($0.value.sleepMinutes ?? 0) > 0 }),
-           let sleep = sleepRecord.value.sleepMinutes {
-            let hours = sleep / 60
-            let durationScore: Int
-            switch hours {
-            case ..<4.5: durationScore = bounded(20 + hours * 5)
-            case 4.5..<6: durationScore = bounded(45 + (hours - 4.5) * 16)
-            case 6..<7: durationScore = bounded(70 + (hours - 6) * 20)
-            case 7...9: durationScore = 100
-            default: durationScore = bounded(100 - (hours - 9) * 10)
-            }
-            let restorativeMinutes = (sleepRecord.value.sleepDeepMinutes ?? 0) + (sleepRecord.value.sleepREMMinutes ?? 0)
-            let restorativeRatio = sleep > 0 ? restorativeMinutes / sleep : 0
-            let stageScore = restorativeMinutes > 0 ? bounded(55 + restorativeRatio * 125) : durationScore
-            let score = bounded(Double(durationScore) * 0.72 + Double(stageScore) * 0.28)
+           let sleep = sleepRecord.value.sleepMinutes,
+           let assessment = TempoSleepAssessment.evaluate(sleepRecord.value) {
             weightedFactors.append((
-                TempoBalanceFactor(id: "sleep", title: "Uyku", value: TempoFormat.duration(sleep * 60), score: score, symbol: "moon.zzz.fill", tint: "blue"),
+                TempoBalanceFactor(id: "sleep", title: "Uyku", value: TempoFormat.duration(sleep * 60), score: assessment.value, symbol: "moon.zzz.fill", tint: "blue"),
                 0.32
             ))
         }
@@ -515,6 +509,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             let days = try await healthStore.readRecentDays()
             healthDays = days
             healthLastSync = Date()
+            Self.saveCachedHealthDays(days)
+            UserDefaults.standard.set(healthLastSync, forKey: Self.healthLastSyncKey)
             todayWaterMl = Int((days[Self.localDay()]?.waterMl ?? 0).rounded())
             if accessToken != nil {
                 do {
@@ -541,6 +537,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
         healthDays = [:]
         healthLastSync = nil
+        Self.clearCachedHealthDays()
         todayWaterMl = 0
         Task {
             if let accessToken {
@@ -613,6 +610,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthDays = [:]
             healthLastSync = nil
             healthError = nil
+            Self.clearCachedHealthDays()
             UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
             coachAnswer = ""
             hasAttemptedAccountRestore = true
@@ -769,6 +767,21 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     private static func clearCachedDashboard() {
         try? FileManager.default.removeItem(at: dashboardCacheURL)
+    }
+
+    private static func loadCachedHealthDays() -> [String: TempoHealthMetrics] {
+        guard let data = try? Data(contentsOf: healthCacheURL) else { return [:] }
+        return (try? JSONDecoder().decode([String: TempoHealthMetrics].self, from: data)) ?? [:]
+    }
+
+    private static func saveCachedHealthDays(_ days: [String: TempoHealthMetrics]) {
+        guard let data = try? JSONEncoder().encode(days) else { return }
+        try? data.write(to: healthCacheURL, options: .atomic)
+    }
+
+    private static func clearCachedHealthDays() {
+        try? FileManager.default.removeItem(at: healthCacheURL)
+        UserDefaults.standard.removeObject(forKey: healthLastSyncKey)
     }
 
     private static func randomVerifier() -> String {

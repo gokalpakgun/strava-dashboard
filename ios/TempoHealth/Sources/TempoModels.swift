@@ -281,6 +281,166 @@ struct TempoHealthMetrics: Codable, Equatable {
     }
 }
 
+struct TempoSleepFactor: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let value: String
+    let score: Int
+    let symbol: String
+}
+
+struct TempoSleepAssessment: Equatable {
+    let value: Int
+    let state: String
+    let summary: String
+    let confidence: String
+    let factors: [TempoSleepFactor]
+
+    static func evaluate(_ metrics: TempoHealthMetrics) -> TempoSleepAssessment? {
+        guard let totalMinutes = metrics.sleepMinutes, totalMinutes > 0 else { return nil }
+        var weighted: [(TempoSleepFactor, Double)] = []
+
+        let durationScore = scoreDuration(totalMinutes)
+        weighted.append((
+            TempoSleepFactor(
+                id: "duration",
+                title: "Toplam uyku",
+                value: TempoFormat.duration(totalMinutes * 60),
+                score: durationScore,
+                symbol: "clock.fill"
+            ),
+            0.50
+        ))
+
+        if let deep = metrics.sleepDeepMinutes, deep >= 0 {
+            let ratio = deep / totalMinutes
+            weighted.append((
+                TempoSleepFactor(
+                    id: "deep",
+                    title: "Derin uyku",
+                    value: stageValue(deep, total: totalMinutes),
+                    score: ratioScore(ratio, ideal: 0.13...0.23, hard: 0.03...0.38),
+                    symbol: "moon.stars.fill"
+                ),
+                0.14
+            ))
+        }
+
+        if let rem = metrics.sleepREMMinutes, rem >= 0 {
+            let ratio = rem / totalMinutes
+            weighted.append((
+                TempoSleepFactor(
+                    id: "rem",
+                    title: "REM uykusu",
+                    value: stageValue(rem, total: totalMinutes),
+                    score: ratioScore(ratio, ideal: 0.20...0.30, hard: 0.07...0.45),
+                    symbol: "brain.head.profile"
+                ),
+                0.14
+            ))
+        }
+
+        let restorativeMinutes = (metrics.sleepDeepMinutes ?? 0) + (metrics.sleepREMMinutes ?? 0)
+        if metrics.sleepDeepMinutes != nil || metrics.sleepREMMinutes != nil {
+            let ratio = restorativeMinutes / totalMinutes
+            weighted.append((
+                TempoSleepFactor(
+                    id: "restorative",
+                    title: "Onarıcı uyku",
+                    value: stageValue(restorativeMinutes, total: totalMinutes),
+                    score: ratioScore(ratio, ideal: 0.33...0.53, hard: 0.15...0.70),
+                    symbol: "sparkles"
+                ),
+                0.12
+            ))
+        }
+
+        if let awake = metrics.sleepAwakeMinutes, awake >= 0 {
+            let timeInBed = totalMinutes + awake
+            let efficiency = timeInBed > 0 ? totalMinutes / timeInBed : 0
+            weighted.append((
+                TempoSleepFactor(
+                    id: "continuity",
+                    title: "Uyku devamlılığı",
+                    value: "\(Int((efficiency * 100).rounded()))%",
+                    score: continuityScore(efficiency),
+                    symbol: "waveform.path.ecg"
+                ),
+                0.10
+            ))
+        }
+
+        let totalWeight = weighted.reduce(0) { $0 + $1.1 }
+        let score = bounded(weighted.reduce(0) { $0 + Double($1.0.score) * $1.1 } / totalWeight)
+        let state: String
+        let summary: String
+        switch score {
+        case 88...:
+            state = "Çok iyi uyku"
+            summary = "Süre ve uyku evrelerin güçlü bir geceye işaret ediyor."
+        case 75..<88:
+            state = "İyi uyku"
+            summary = "Genel uyku düzenin dengeli; küçük iyileştirmelerle daha da güçlenebilir."
+        case 60..<75:
+            state = "Orta düzey uyku"
+            summary = "Toparlanma var ancak süre veya uyku evrelerinden biri hedefin altında."
+        case 45..<60:
+            state = "Düşük uyku"
+            summary = "Bugün antrenman yoğunluğunu seçerken uykunun sınırlı olduğunu hesaba kat."
+        default:
+            state = "Zayıf uyku"
+            summary = "Uyku süreni ve gece devamlılığını geliştirmeye öncelik verebilirsin."
+        }
+
+        let stageCount = [metrics.sleepCoreMinutes, metrics.sleepDeepMinutes, metrics.sleepREMMinutes, metrics.sleepAwakeMinutes]
+            .compactMap { $0 }.count
+        let confidence = stageCount >= 4 ? "Tüm evrelerle hesaplandı" : (stageCount >= 2 ? "Kısmi evre verisi" : "Yalnızca süre verisi")
+        return TempoSleepAssessment(value: score, state: state, summary: summary, confidence: confidence, factors: weighted.map { $0.0 })
+    }
+
+    private static func scoreDuration(_ minutes: Double) -> Int {
+        let hours = minutes / 60
+        switch hours {
+        case ..<4.5: return bounded(18 + hours * 6)
+        case 4.5..<6: return bounded(45 + (hours - 4.5) * 18)
+        case 6..<7: return bounded(72 + (hours - 6) * 23)
+        case 7...9: return 100
+        case 9..<10: return bounded(100 - (hours - 9) * 12)
+        default: return bounded(88 - (hours - 10) * 12)
+        }
+    }
+
+    private static func ratioScore(_ value: Double, ideal: ClosedRange<Double>, hard: ClosedRange<Double>) -> Int {
+        if ideal.contains(value) { return 100 }
+        if value < ideal.lowerBound {
+            guard value > hard.lowerBound else { return 25 }
+            let progress = (value - hard.lowerBound) / (ideal.lowerBound - hard.lowerBound)
+            return bounded(25 + progress * 75)
+        }
+        guard value < hard.upperBound else { return 35 }
+        let progress = (hard.upperBound - value) / (hard.upperBound - ideal.upperBound)
+        return bounded(35 + progress * 65)
+    }
+
+    private static func continuityScore(_ efficiency: Double) -> Int {
+        switch efficiency {
+        case 0.90...: return 100
+        case 0.82..<0.90: return bounded(72 + (efficiency - 0.82) / 0.08 * 28)
+        case 0.70..<0.82: return bounded(42 + (efficiency - 0.70) / 0.12 * 30)
+        default: return bounded(15 + efficiency / 0.70 * 27)
+        }
+    }
+
+    private static func stageValue(_ minutes: Double, total: Double) -> String {
+        let percentage = total > 0 ? Int((minutes / total * 100).rounded()) : 0
+        return "\(TempoFormat.duration(minutes * 60)) · \(percentage)%"
+    }
+
+    private static func bounded(_ value: Double) -> Int {
+        Int(min(max(value, 0), 100).rounded())
+    }
+}
+
 struct TempoBalanceFactor: Identifiable, Equatable {
     let id: String
     let title: String
