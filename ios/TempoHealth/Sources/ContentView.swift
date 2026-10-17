@@ -886,8 +886,8 @@ private struct ManualWorkoutEvidenceSection: View {
             PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
                 Label(photoData == nil ? "Antrenman fotoğrafı ekle (isteğe bağlı)" : "Fotoğraf eklendi · değiştir", systemImage: "photo.badge.plus")
             }
-            if let photoImage {
-                ManualWorkoutPhotoPreview(image: photoImage)
+            if let previewImage = photoImage {
+                ManualWorkoutPhotoPreview(image: previewImage)
                 Button("Fotoğrafı kaldır", role: .destructive) {
                     photoData = nil
                     photoImage = nil
