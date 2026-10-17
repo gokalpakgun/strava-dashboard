@@ -42,13 +42,22 @@ async function signUp(request, env) {
   const parsed = await readBody(request, 8192);
   if (parsed.response) return parsed.response;
 
+  const requestId = String(request.headers.get("X-Tempo-Request-ID") || "").trim().toLowerCase();
+  const idempotencyKey = /^[a-f0-9-]{20,64}$/.test(requestId)
+    ? "account-signup-request:" + await sha256Hex(requestId)
+    : "";
+  if (idempotencyKey) {
+    const completed = await env.TOKEN_STORE.get(idempotencyKey, "json");
+    if (completed?.token && completed?.user) return responseJSON(completed, 201);
+  }
+
   const email = normalizeEmail(parsed.value.email);
   const username = normalizeUsername(parsed.value.username);
   const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
   const validation = validateCredentials(email, username, password);
   if (validation) return responseJSON({ error: validation }, 400);
 
-  const limited = await rateLimit(request, env, "signup", 6);
+  const limited = await rateLimit(request, env, "signup", 10);
   if (limited) return limited;
 
   const emailKey = "account-email:" + await sha256Hex(email);
@@ -85,7 +94,11 @@ async function signUp(request, env) {
     env.TOKEN_STORE.put(usernameKey, id),
   ]);
   const session = await createSession(env, id);
-  return responseJSON({ token: session.token, user: publicUser(user) }, 201);
+  const result = { token: session.token, user: publicUser(user) };
+  if (idempotencyKey) {
+    await env.TOKEN_STORE.put(idempotencyKey, JSON.stringify(result), { expirationTtl: 600 });
+  }
+  return responseJSON(result, 201);
 }
 
 async function signIn(request, env) {
@@ -102,7 +115,7 @@ async function signIn(request, env) {
     return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
-  const limited = await rateLimit(request, env, "login", 10);
+  const limited = await rateLimit(request, env, "login", 15);
   if (limited) return limited;
 
   const userId = identifierIsEmail

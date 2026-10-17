@@ -159,7 +159,8 @@ final class TempoAccountStore: ObservableObject {
 
     init() {
         sessionToken = AccountTokenStore.read()
-        isRestoring = sessionToken != nil
+        profile = sessionToken == nil ? nil : AccountProfileCache.read()
+        isRestoring = sessionToken != nil && profile == nil
         if sessionToken != nil {
             Task { await restoreSession() }
         }
@@ -167,7 +168,9 @@ final class TempoAccountStore: ObservableObject {
 
     @discardableResult
     func signUp(email: String, username: String, password: String) async -> Bool {
-        await authenticate(path: "/api/account/signup", payload: AccountCredentials(email: email, username: username, password: password))
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return await authenticate(path: "/api/account/signup", payload: AccountCredentials(email: cleanEmail, username: cleanUsername, password: password))
     }
 
     @discardableResult
@@ -222,6 +225,7 @@ final class TempoAccountStore: ObservableObject {
             let envelope = try await request(path: "/api/account/profile", method: "PATCH", body: payload, authenticated: true)
             guard let user = envelope.user else { throw AccountError.server("Profil kaydedilemedi.") }
             profile = user
+            AccountProfileCache.save(user)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -234,6 +238,12 @@ final class TempoAccountStore: ObservableObject {
             _ = try? await request(path: "/api/account/logout", method: "POST", body: EmptyPayload(), authenticated: true)
         }
         clearLocalSession()
+    }
+
+    func restoreSessionIfNeeded() {
+        guard sessionToken != nil, profile == nil, !isRestoring, !isBusy else { return }
+        isRestoring = true
+        Task { await restoreSession() }
     }
 
     @discardableResult
@@ -258,8 +268,13 @@ final class TempoAccountStore: ObservableObject {
             let envelope = try await request(path: "/api/account/me", method: "GET", body: Optional<EmptyPayload>.none, authenticated: true)
             guard let user = envelope.user else { throw AccountError.server("Hesap bilgisi alınamadı.") }
             profile = user
+            AccountProfileCache.save(user)
         } catch {
-            clearLocalSession()
+            // A temporary connection problem must not sign the user out. The
+            // request method clears the session only when the server returns 401.
+            if profile == nil, sessionToken != nil {
+                errorMessage = "Hesabına şu anda ulaşılamadı. Bağlantı yeniden kurulunca otomatik olarak denenecek."
+            }
         }
     }
 
@@ -278,6 +293,7 @@ final class TempoAccountStore: ObservableObject {
             }
             sessionToken = token
             profile = user
+            AccountProfileCache.save(user)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -295,6 +311,7 @@ final class TempoAccountStore: ObservableObject {
         request.httpMethod = method
         request.timeoutInterval = 18
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Tempo-Request-ID")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
@@ -303,21 +320,70 @@ final class TempoAccountStore: ObservableObject {
             guard let sessionToken else { throw AccountError.server("Tempo oturumunun süresi doldu.") }
             request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         }
-        let (data, response) = try await Self.apiSession.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sunucudan yanıt alınamadı.") }
-        let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil)
-        guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 401 && authenticated { clearLocalSession() }
-            throw AccountError.server(envelope.error ?? "İşlem tamamlanamadı.")
+        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000]
+        var lastError: Error = AccountError.server("Sunucudan yanıt alınamadı.")
+
+        for attempt in retryDelays.indices {
+            if retryDelays[attempt] > 0 {
+                try? await Task.sleep(nanoseconds: retryDelays[attempt])
+            }
+            do {
+                let (data, response) = try await Self.apiSession.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw AccountError.server("Sunucudan yanıt alınamadı.")
+                }
+                let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil)
+                guard (200..<300).contains(http.statusCode) else {
+                    if http.statusCode == 401 && authenticated { clearLocalSession() }
+                    let message = envelope.error ?? envelope.message ?? "İşlem tamamlanamadı."
+                    let retryable = http.statusCode == 408 || http.statusCode >= 500
+                    if retryable, attempt < retryDelays.count - 1 {
+                        lastError = AccountError.server(message)
+                        continue
+                    }
+                    throw AccountError.server(message)
+                }
+                return envelope
+            } catch {
+                lastError = error
+                if error is AccountError { throw error }
+                if attempt < retryDelays.count - 1 { continue }
+            }
         }
-        return envelope
+        if let urlError = lastError as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost, .cannotFindHost:
+                throw AccountError.server("Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.")
+            default: break
+            }
+        }
+        throw lastError
     }
 
     private func clearLocalSession() {
         AccountTokenStore.delete()
+        AccountProfileCache.delete()
         sessionToken = nil
         profile = nil
         isRestoring = false
+    }
+}
+
+private enum AccountProfileCache {
+    private static let key = "tempoAccountProfileCacheV1"
+
+    static func read() -> TempoUserProfile? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(TempoUserProfile.self, from: data)
+    }
+
+    static func save(_ profile: TempoUserProfile) {
+        guard let data = try? JSONEncoder().encode(profile) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    static func delete() {
+        UserDefaults.standard.removeObject(forKey: key)
     }
 }
 
@@ -400,4 +466,3 @@ private enum AccountTokenStore {
         SecItemDelete(query as CFDictionary)
     }
 }
-

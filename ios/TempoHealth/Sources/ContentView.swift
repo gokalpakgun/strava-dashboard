@@ -11,6 +11,7 @@ enum TempoTheme {
     static let blue = Color(red: 0.32, green: 0.65, blue: 1.0)
     static let purple = Color(red: 0.71, green: 0.52, blue: 1.0)
     static let secondary = Color.white.opacity(0.55)
+    static let scrollBottomClearance: CGFloat = 132
 }
 
 struct ContentView: View {
@@ -987,7 +988,7 @@ private struct ActivityTimelineScreen: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-                .padding(.bottom, 36)
+                .padding(.bottom, TempoTheme.scrollBottomClearance)
             }
         }
         .navigationTitle("Aktivite Geçmişi")
@@ -1051,7 +1052,7 @@ private struct RouteMap: View {
     var body: some View {
         Map(position: $camera) {
             ForEach(visible) { activity in
-                MapPolyline(coordinates: activity.route)
+                MapPolyline(coordinates: optimizedRoute(activity.route))
                     .stroke(selectedActivity == nil ? TempoTheme.orange.opacity(0.6) : TempoTheme.green, style: StrokeStyle(lineWidth: selectedActivity == nil ? 3 : 5, lineCap: .round, lineJoin: .round))
             }
         }
@@ -1065,11 +1066,23 @@ private struct RouteMap: View {
     }
 
     private func fitCamera() {
-        let points = visible.flatMap(\.route)
+        let points = visible.flatMap { optimizedRoute($0.route) }
         guard let first = points.first else { return }
         var rect = MKMapRect(origin: MKMapPoint(first), size: MKMapSize(width: 1, height: 1))
         for point in points.dropFirst() { rect = rect.union(MKMapRect(origin: MKMapPoint(point), size: MKMapSize(width: 1, height: 1))) }
         camera = .rect(rect.insetBy(dx: -max(rect.width * 0.12, 1_500), dy: -max(rect.height * 0.12, 1_500)))
+    }
+
+    private func optimizedRoute(_ points: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D] {
+        let limit = selectedActivity == nil ? 220 : 900
+        guard points.count > limit else { return points }
+        let step = max(1, Int(ceil(Double(points.count) / Double(limit))))
+        var sampled = stride(from: 0, to: points.count, by: step).map { points[$0] }
+        if let last = points.last,
+           sampled.last?.latitude != last.latitude || sampled.last?.longitude != last.longitude {
+            sampled.append(last)
+        }
+        return sampled
     }
 }
 
@@ -1895,8 +1908,9 @@ private struct TempoPage<Content: View>: View {
                 VStack(spacing: 16) { content }
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
-                    .padding(.bottom, 92)
+                    .padding(.bottom, TempoTheme.scrollBottomClearance)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 }
@@ -2167,4 +2181,3 @@ private func eddingtonNumber(_ activities: [TempoActivity]) -> Int {
 private extension Calendar {
     func isDateInCurrentWeek(_ date: Date) -> Bool { isDate(date, equalTo: Date(), toGranularity: .weekOfYear) }
 }
-

@@ -58,7 +58,6 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         if storedToken != nil {
             dashboard = Self.loadCachedDashboard()
             status = dashboard == nil ? "Strava bağlı. Verilerin hazırlanıyor." : "Kayıtlı Strava verilerin gösteriliyor; güncelleniyor."
-            Task { await reloadAll() }
         }
         if healthSyncEnabled {
             startHealthObservers()
@@ -111,7 +110,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
             if http.statusCode == 404 {
                 isRestoringConnection = false
-                if !hadLocalToken {
+                if hadLocalToken {
+                    Task { await reloadAll() }
+                } else {
                     status = "Strava hesabını bir kez bağla; sonraki açılışlarda bağlantın korunacak."
                 }
                 return
@@ -119,13 +120,17 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
             if http.statusCode == 401 {
                 isRestoringConnection = false
+                if hadLocalToken { Task { await reloadAll() } }
                 return
             }
 
             throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
         } catch {
             isRestoringConnection = false
-            if !hadLocalToken {
+            hasAttemptedAccountRestore = false
+            if hadLocalToken {
+                Task { await reloadAll() }
+            } else {
                 status = "Kayıtlı Strava bağlantısı şu anda doğrulanamadı. Yeniden deneyebilirsin."
             }
         }
@@ -138,6 +143,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         let verifier = Self.randomVerifier()
         let challenge = Self.codeChallenge(for: verifier)
         pendingVerifier = verifier
+        OAuthVerifierStore.save(verifier)
         guard var components = URLComponents(url: URL(string: "/mobile/auth/start", relativeTo: baseURL)!, resolvingAgainstBaseURL: true) else { return }
         components.queryItems = [URLQueryItem(name: "code_challenge", value: challenge)]
         guard let url = components.url else { return }
@@ -156,6 +162,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 if self.isCompletingAuthorization { return }
 
                 self.pendingVerifier = nil
+                OAuthVerifierStore.delete()
                 self.isBusy = false
                 self.status = error == nil
                     ? "Strava bağlantı yanıtı alınamadı. Yeniden dene."
@@ -168,6 +175,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         if !session.start() {
             webAuthSession = nil
             pendingVerifier = nil
+            OAuthVerifierStore.delete()
             isBusy = false
             status = "Strava giriş ekranı açılamadı. Biraz sonra yeniden dene."
         }
@@ -182,7 +190,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         guard !isCompletingAuthorization else { return }
         guard let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "ticket" })?.value,
-              let verifier = pendingVerifier else {
+              let verifier = pendingVerifier ?? OAuthVerifierStore.read() else {
             if accessToken == nil {
                 isBusy = false
                 status = "Strava bağlantı bilgisi alınamadı. Yeniden dene."
@@ -193,17 +201,22 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isCompletingAuthorization = true
         pendingVerifier = nil
         isBusy = true
-        webAuthSession?.cancel()
         webAuthSession = nil
 
         Task {
             await exchangeTicket(ticket, verifier: verifier)
+            OAuthVerifierStore.delete()
             isCompletingAuthorization = false
         }
     }
 
     func syncWhenActive() {
-        guard accessToken != nil else { return }
+        guard accessToken != nil else {
+            if let accountAccessToken, !hasAttemptedAccountRestore {
+                Task { await restoreConnectionIfNeeded(accountToken: accountAccessToken) }
+            }
+            return
+        }
         Task {
             if healthSyncEnabled { await syncAppleHealth() }
             else { await refreshWater() }
@@ -853,6 +866,30 @@ private enum SecureTokenStore {
     }
 }
 
+private enum OAuthVerifierStore {
+    private static let verifierKey = "tempoPendingOAuthVerifierV1"
+    private static let createdAtKey = "tempoPendingOAuthVerifierCreatedAtV1"
+
+    static func save(_ verifier: String) {
+        UserDefaults.standard.set(verifier, forKey: verifierKey)
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: createdAtKey)
+    }
+
+    static func read() -> String? {
+        let createdAt = UserDefaults.standard.double(forKey: createdAtKey)
+        guard createdAt > 0, Date().timeIntervalSince1970 - createdAt < 15 * 60 else {
+            delete()
+            return nil
+        }
+        return UserDefaults.standard.string(forKey: verifierKey)
+    }
+
+    static func delete() {
+        UserDefaults.standard.removeObject(forKey: verifierKey)
+        UserDefaults.standard.removeObject(forKey: createdAtKey)
+    }
+}
+
 private extension Data {
     func base64URLEncodedString() -> String {
         base64EncodedString()
@@ -861,4 +898,3 @@ private extension Data {
             .replacingOccurrences(of: "=", with: "")
     }
 }
-

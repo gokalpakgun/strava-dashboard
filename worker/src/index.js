@@ -10,7 +10,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
-      if (url.pathname.startsWith("/api/account/")) {
+      if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {
         const accountResponse = await handleAccountRequest(request, env, url);
         if (accountResponse) return accountResponse;
       }
@@ -1607,4 +1607,3 @@ function readCookie(request, name) {
 function cookie(name, value, maxAge, path) {
   return `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=${path}; Secure; HttpOnly; SameSite=Lax`;
 }
-

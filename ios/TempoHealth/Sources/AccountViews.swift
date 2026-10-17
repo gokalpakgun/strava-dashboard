@@ -846,7 +846,7 @@ struct AchievementsScreen: View {
                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 34)
+                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, TempoTheme.scrollBottomClearance)
             }
         }
         .navigationTitle("Başarılar")
@@ -1115,7 +1115,7 @@ struct AccountSettingsScreen: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
-                .padding(.bottom, 132)
+                .padding(.bottom, TempoTheme.scrollBottomClearance)
             }
             .scrollDismissesKeyboard(.interactively)
         }
