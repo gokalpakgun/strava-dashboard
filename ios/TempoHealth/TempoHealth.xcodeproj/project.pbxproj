@@ -13,6 +13,11 @@
 		A10000000000000000000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* Assets.xcassets */; };
 		A10000000000000000000006 /* TempoHealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* TempoHealthStore.swift */; };
 		A10000000000000000000007 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* HealthKit.framework */; };
+		A10000000000000000000008 /* TempoAccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* TempoAccountStore.swift */; };
+		A10000000000000000000009 /* AccountViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* AccountViews.swift */; };
+		A10000000000000000000010 /* SportsExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* SportsExperience.swift */; };
+		A10000000000000000000011 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* Localizable.strings */; };
+		A10000000000000000000012 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000005 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +31,13 @@
 		A20000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000000000000000000009 /* TempoHealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoHealthStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		A20000000000000000000011 /* TempoAccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoAccountStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* AccountViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* SportsExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportsExperience.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* English */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = English; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A20000000000000000000015 /* Turkish */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Turkish; path = tr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A20000000000000000000016 /* English */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = English; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20000000000000000000017 /* Turkish */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Turkish; path = tr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +63,11 @@
 				A20000000000000000000003 /* TempoAppModel.swift */,
 				A20000000000000000000007 /* TempoModels.swift */,
 				A20000000000000000000009 /* TempoHealthStore.swift */,
+				A20000000000000000000011 /* TempoAccountStore.swift */,
+				A20000000000000000000012 /* AccountViews.swift */,
+				A20000000000000000000013 /* SportsExperience.swift */,
+				A40000000000000000000004 /* Localizable.strings */,
+				A40000000000000000000005 /* InfoPlist.strings */,
 				A20000000000000000000008 /* Assets.xcassets */,
 			);
 			path = Sources;
@@ -99,8 +116,29 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A90000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000005 /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000005 /* Assets.xcassets in Resources */, A10000000000000000000011 /* Localizable.strings in Resources */, A10000000000000000000012 /* InfoPlist.strings in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		A40000000000000000000004 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A20000000000000000000014 /* English */,
+				A20000000000000000000015 /* Turkish */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000005 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A20000000000000000000016 /* English */,
+				A20000000000000000000017 /* Turkish */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A80000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
@@ -109,6 +147,9 @@
 			A10000000000000000000003 /* TempoAppModel.swift in Sources */,
 			A10000000000000000000004 /* TempoModels.swift in Sources */,
 			A10000000000000000000006 /* TempoHealthStore.swift in Sources */,
+			A10000000000000000000008 /* TempoAccountStore.swift in Sources */,
+			A10000000000000000000009 /* AccountViews.swift in Sources */,
+			A10000000000000000000010 /* SportsExperience.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

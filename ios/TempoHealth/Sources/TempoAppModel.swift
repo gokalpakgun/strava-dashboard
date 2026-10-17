@@ -8,6 +8,7 @@ import UIKit
 @MainActor
 final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     @Published private(set) var isConnected = false
+    @Published private(set) var isRestoringConnection = true
     @Published private(set) var isBusy = false
     @Published private(set) var isLoadingDashboard = false
     @Published private(set) var isCoachLoading = false
@@ -28,81 +29,200 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private let healthStore = TempoHealthStore()
     private var webAuthSession: ASWebAuthenticationSession?
     private var pendingVerifier: String?
+    private var isCompletingAuthorization = false
+    private var hasAttemptedAccountRestore = false
+    private var accountAccessToken: String?
     private var lastDashboardRefresh: Date?
+    private static let apiSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 18
+        configuration.timeoutIntervalForResource = 30
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpAdditionalHeaders = ["Accept": "application/json"]
+        return URLSession(configuration: configuration)
+    }()
+    private static let dashboardCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("tempo-dashboard-v2.json")
+    private static let healthCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("tempo-health-days-v1.json")
+    private static let healthLastSyncKey = "tempoHealthLastSyncV1"
     private var accessToken: String? {
         didSet { isConnected = accessToken != nil }
     }
 
     override init() {
         super.init()
-        let savedToken = SecureTokenStore.read()
-        if savedToken != nil && !UserDefaults.standard.bool(forKey: "tempoNativeAPIReadyV1") {
-            SecureTokenStore.delete()
-            accessToken = nil
-            status = "Yeni native uygulama için Strava hesabını bir kez yeniden bağla."
-        } else {
-            accessToken = savedToken
-        }
-        if accessToken != nil {
-            status = "Strava bağlı. Verilerin hazırlanıyor."
-            Task { await reloadAll() }
+        Self.prewarmAPI()
+        let storedToken = SecureTokenStore.read()
+        accessToken = storedToken
+        isConnected = storedToken != nil
+        isRestoringConnection = storedToken == nil
+        if storedToken != nil {
+            dashboard = Self.loadCachedDashboard()
+            status = dashboard == nil ? "Strava bağlı. Verilerin hazırlanıyor." : "Kayıtlı Strava verilerin gösteriliyor; güncelleniyor."
         }
         if healthSyncEnabled {
+            healthDays = Self.loadCachedHealthDays()
+            healthLastSync = UserDefaults.standard.object(forKey: Self.healthLastSyncKey) as? Date
+            todayWaterMl = Int((healthDays[Self.localDay()]?.waterMl ?? 0).rounded())
             startHealthObservers()
             Task { await syncAppleHealth() }
         }
     }
 
+    func restoreConnectionIfNeeded(accountToken: String?) async {
+        accountAccessToken = accountToken
+        guard !hasAttemptedAccountRestore else {
+            isRestoringConnection = false
+            return
+        }
+        guard let accountToken, !accountToken.isEmpty else {
+            isRestoringConnection = false
+            return
+        }
+
+        hasAttemptedAccountRestore = true
+        let hadLocalToken = accessToken != nil
+        isRestoringConnection = !hadLocalToken
+
+        do {
+            var request = URLRequest(url: URL(string: "/api/mobile/auth/restore", relativeTo: baseURL)!)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 12
+            request.setValue("Bearer \(accountToken)", forHTTPHeaderField: "Authorization")
+            if let accessToken {
+                request.setValue(accessToken, forHTTPHeaderField: "X-Tempo-Mobile-Token")
+            }
+
+            let (data, response) = try await Self.apiSession.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw APIError.server("Sunucudan yanıt alınamadı.")
+            }
+            let result = try? JSONDecoder().decode(TicketResponse.self, from: data)
+
+            if http.statusCode == 200, let restoredToken = result?.token {
+                guard SecureTokenStore.save(restoredToken) else {
+                    throw APIError.server("Bağlantı iPhone’da saklanamadı.")
+                }
+                accessToken = restoredToken
+                isConnected = true
+                status = "Strava bağlantın hazır."
+                isRestoringConnection = false
+                if dashboard == nil { dashboard = Self.loadCachedDashboard() }
+                Task { await reloadAll() }
+                return
+            }
+
+            if http.statusCode == 404 {
+                isRestoringConnection = false
+                if hadLocalToken {
+                    Task { await reloadAll() }
+                } else {
+                    status = "Strava hesabını bir kez bağla; sonraki açılışlarda bağlantın korunacak."
+                }
+                return
+            }
+
+            if http.statusCode == 401 {
+                isRestoringConnection = false
+                if hadLocalToken { Task { await reloadAll() } }
+                return
+            }
+
+            throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
+        } catch {
+            isRestoringConnection = false
+            hasAttemptedAccountRestore = false
+            if hadLocalToken {
+                Task { await reloadAll() }
+            } else {
+                status = "Kayıtlı Strava bağlantısı şu anda doğrulanamadı. Yeniden deneyebilirsin."
+            }
+        }
+    }
+
     func connectStrava() {
+        guard !isBusy, !isCompletingAuthorization else { return }
+        webAuthSession?.cancel()
+
         let verifier = Self.randomVerifier()
         let challenge = Self.codeChallenge(for: verifier)
         pendingVerifier = verifier
+        OAuthVerifierStore.save(verifier)
         guard var components = URLComponents(url: URL(string: "/mobile/auth/start", relativeTo: baseURL)!, resolvingAgainstBaseURL: true) else { return }
         components.queryItems = [URLQueryItem(name: "code_challenge", value: challenge)]
         guard let url = components.url else { return }
+
         isBusy = true
         status = "Strava bağlantısı açılıyor…"
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "tempohealth") { [weak self] callbackURL, error in
             Task { @MainActor in
                 guard let self else { return }
-                self.isBusy = false
-                if let error {
-                    self.pendingVerifier = nil
-                    self.status = "Strava bağlantısı tamamlanmadı: \(error.localizedDescription)"
+                self.webAuthSession = nil
+
+                if let callbackURL {
+                    self.processAuthorizationCallback(callbackURL)
                     return
                 }
-                guard let callbackURL,
-                      URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.host == "auth",
-                      let ticket = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "ticket" })?.value,
-                      let verifier = self.pendingVerifier else {
-                    self.pendingVerifier = nil
-                    self.status = "Strava bağlantı bilgisi alınamadı. Yeniden dene."
-                    return
-                }
+                if self.isCompletingAuthorization { return }
+
                 self.pendingVerifier = nil
-                await self.exchangeTicket(ticket, verifier: verifier)
+                OAuthVerifierStore.delete()
+                self.isBusy = false
+                self.status = error == nil
+                    ? "Strava bağlantı yanıtı alınamadı. Yeniden dene."
+                    : "Strava bağlantısı tamamlanmadı: \(error!.localizedDescription)"
             }
         }
         session.presentationContextProvider = self
         session.prefersEphemeralWebBrowserSession = false
         webAuthSession = session
         if !session.start() {
+            webAuthSession = nil
             pendingVerifier = nil
+            OAuthVerifierStore.delete()
             isBusy = false
             status = "Strava giriş ekranı açılamadı. Biraz sonra yeniden dene."
         }
     }
 
     func handleCallback(_ url: URL) {
-        guard url.scheme == "tempohealth", url.host == "auth",
-              let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "ticket" })?.value,
-              let verifier = pendingVerifier else { return }
+        guard url.scheme == "tempohealth", url.host == "auth" else { return }
+        processAuthorizationCallback(url)
+    }
+
+    private func processAuthorizationCallback(_ url: URL) {
+        guard !isCompletingAuthorization else { return }
+        guard let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "ticket" })?.value,
+              let verifier = pendingVerifier ?? OAuthVerifierStore.read() else {
+            if accessToken == nil {
+                isBusy = false
+                status = "Strava bağlantı bilgisi alınamadı. Yeniden dene."
+            }
+            return
+        }
+
+        isCompletingAuthorization = true
         pendingVerifier = nil
-        Task { await exchangeTicket(ticket, verifier: verifier) }
+        isBusy = true
+        webAuthSession = nil
+
+        Task {
+            await exchangeTicket(ticket, verifier: verifier)
+            OAuthVerifierStore.delete()
+            isCompletingAuthorization = false
+        }
     }
 
     func syncWhenActive() {
-        guard accessToken != nil else { return }
+        guard accessToken != nil else {
+            if let accountAccessToken, !hasAttemptedAccountRestore {
+                Task { await restoreConnectionIfNeeded(accountToken: accountAccessToken) }
+            }
+            return
+        }
         Task {
             if healthSyncEnabled { await syncAppleHealth() }
             else { await refreshWater() }
@@ -113,9 +233,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func reloadAll() async {
-        await refreshDashboard()
-        if healthSyncEnabled { await syncAppleHealth() }
-        else { await refreshWater() }
+        async let dashboardRefresh: Void = refreshDashboard()
+        if healthSyncEnabled {
+            async let healthRefresh: Void = syncAppleHealth()
+            _ = await (dashboardRefresh, healthRefresh)
+        } else {
+            async let waterRefresh: Void = refreshWater()
+            _ = await (dashboardRefresh, waterRefresh)
+        }
     }
 
     func refreshDashboard() async {
@@ -123,22 +248,42 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isLoadingDashboard = true
         dashboardError = nil
         defer { isLoadingDashboard = false }
-        do {
-            var request = URLRequest(url: URL(string: "/api/mobile/dashboard", relativeTo: baseURL)!)
-            request.timeoutInterval = 45
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
-            if http.statusCode == 401 { expireSession(); return }
-            guard (200..<300).contains(http.statusCode) else { throw APIError.server(Self.serverMessage(data, fallback: "Strava verileri alınamadı.")) }
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            dashboard = try decoder.decode(TempoDashboard.self, from: data)
-            lastDashboardRefresh = Date()
-            status = "Strava verilerin güncel."
-        } catch {
-            dashboardError = error.localizedDescription
-            status = "Veriler yenilenemedi: \(error.localizedDescription)"
+
+        let retryDelays: [UInt64] = [0, 180_000_000, 500_000_000]
+        for attempt in retryDelays.indices {
+            if retryDelays[attempt] > 0 {
+                try? await Task.sleep(nanoseconds: retryDelays[attempt])
+            }
+            do {
+                var request = URLRequest(url: URL(string: "/api/mobile/dashboard", relativeTo: baseURL)!)
+                request.timeoutInterval = 30
+                request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                let (data, response) = try await Self.apiSession.data(for: request)
+                guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
+
+                if http.statusCode == 401 {
+                    if attempt < retryDelays.count - 1 { continue }
+                    expireSession()
+                    return
+                }
+                if http.statusCode >= 500, attempt < retryDelays.count - 1 { continue }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw APIError.server(Self.serverMessage(data, fallback: "Strava verileri alınamadı."))
+                }
+
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let decoded = try decoder.decode(TempoDashboard.self, from: data)
+                dashboard = decoded
+                Self.saveCachedDashboard(decoded)
+                lastDashboardRefresh = Date()
+                status = "Strava verilerin güncel."
+                return
+            } catch {
+                if attempt < retryDelays.count - 1 { continue }
+                dashboardError = error.localizedDescription
+                status = "Veriler yenilenemedi: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -159,7 +304,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONEncoder().encode(ManualWaterRequest(date: Self.localDay(), amountMl: amountMl))
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
                 if http.statusCode == 401 { expireSession(); return }
                 let result = try JSONDecoder().decode(ManualWaterResponse.self, from: data)
@@ -189,6 +334,146 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     var latestWeightKg: Double? {
         healthDays.sorted { $0.key > $1.key }.compactMap { $0.value.bodyMassKg }.first
+    }
+
+    var tempoBalance: TempoBalanceScore? {
+        let records = healthDays.sorted { $0.key > $1.key }
+        var weightedFactors: [(factor: TempoBalanceFactor, weight: Double)] = []
+
+        func values(_ keyPath: KeyPath<TempoHealthMetrics, Double?>) -> [Double] {
+            records.compactMap { $0.value[keyPath: keyPath] }.filter { $0.isFinite && $0 > 0 }
+        }
+
+        func average(_ values: ArraySlice<Double>) -> Double? {
+            guard !values.isEmpty else { return nil }
+            return values.reduce(0, +) / Double(values.count)
+        }
+
+        func bounded(_ value: Double) -> Int {
+            Int(min(max(value, 0), 100).rounded())
+        }
+
+        func number(_ value: Double, digits: Int = 0) -> String {
+            value.formatted(
+                .number
+                    .locale(.autoupdatingCurrent)
+                    .precision(.fractionLength(digits))
+            )
+        }
+
+        if let sleepRecord = records.first(where: { ($0.value.sleepMinutes ?? 0) > 0 }),
+           let sleep = sleepRecord.value.sleepMinutes,
+           let assessment = TempoSleepAssessment.evaluate(sleepRecord.value) {
+            weightedFactors.append((
+                TempoBalanceFactor(id: "sleep", title: "Uyku", value: TempoFormat.duration(sleep * 60), score: assessment.value, symbol: "moon.zzz.fill", tint: "blue"),
+                0.32
+            ))
+        }
+
+        let hrvValues = values(\.hrvMs)
+        if let current = hrvValues.first {
+            let baseline = average(hrvValues.dropFirst().prefix(21))
+            let score = baseline.map { bounded(90 + ((current / max($0, 1)) - 1) * 100) } ?? 82
+            let comparison = baseline.map { " · ort. %@".tempoFormatted(number($0)) } ?? ""
+            weightedFactors.append((
+                TempoBalanceFactor(id: "hrv", title: "HRV", value: "\(number(current)) \("ms".tempoLocalized)\(comparison)", score: score, symbol: "waveform.path.ecg", tint: "purple"),
+                0.26
+            ))
+        }
+
+        let restingValues = values(\.restingHeartRateBpm)
+        if let current = restingValues.first {
+            let baseline = average(restingValues.dropFirst().prefix(21))
+            let score = baseline.map { reference in
+                let difference = current - reference
+                return bounded(difference <= 0 ? 92 + abs(difference) * 2 : 92 - difference * 7)
+            } ?? 82
+            let comparison = baseline.map { " · ort. %@".tempoFormatted(number($0)) } ?? ""
+            weightedFactors.append((
+                TempoBalanceFactor(id: "resting-heart", title: "Dinlenik nabız", value: "\(number(current)) \("atım/dk".tempoLocalized)\(comparison)", score: score, symbol: "heart.fill", tint: "pink"),
+                0.22
+            ))
+        }
+
+        let energyValues = values(\.activeEnergyKcal)
+        if let current = energyValues.first {
+            let baseline = average(energyValues.dropFirst().prefix(14))
+            let score = baseline.map { reference in
+                let ratio = current / max(reference, 1)
+                if ratio > 1.8 { return bounded(100 - (ratio - 1.8) * 42) }
+                if ratio > 1.25 { return bounded(92 - (ratio - 1.25) * 35) }
+                if ratio < 0.25 { return 76 }
+                return 92
+            } ?? 82
+            weightedFactors.append((
+                TempoBalanceFactor(id: "load", title: "Hareket yükü", value: "\(number(current)) kcal", score: score, symbol: "flame.fill", tint: "orange"),
+                0.12
+            ))
+        }
+
+        let respiratoryValues = values(\.respiratoryRate)
+        if let current = respiratoryValues.first {
+            let baseline = average(respiratoryValues.dropFirst().prefix(21))
+            let score = baseline.map { reference in
+                bounded(94 - abs(current - reference) * 10)
+            } ?? 82
+            weightedFactors.append((
+                TempoBalanceFactor(id: "respiratory", title: "Solunum ritmi", value: "\(number(current, digits: 1)) \("nefes/dk".tempoLocalized)", score: score, symbol: "lungs.fill", tint: "blue"),
+                0.08
+            ))
+        }
+
+        let temperatureValues = values(\.wristTemperatureC)
+        if let current = temperatureValues.first {
+            let baseline = average(temperatureValues.dropFirst().prefix(21))
+            let score = baseline.map { reference in
+                bounded(94 - abs(current - reference) * 35)
+            } ?? 82
+            weightedFactors.append((
+                TempoBalanceFactor(id: "temperature", title: "Bilek sıcaklığı", value: "\(number(current, digits: 1)) °C", score: score, symbol: "thermometer.medium", tint: "orange"),
+                0.06
+            ))
+        }
+
+        let oxygenValues = values(\.oxygenSaturationPct)
+        if let current = oxygenValues.first {
+            let score = bounded(70 + (current - 92) * 6)
+            weightedFactors.append((
+                TempoBalanceFactor(id: "oxygen", title: "Kandaki oksijen", value: "\(number(current, digits: 1))%", score: score, symbol: "lungs.fill", tint: "green"),
+                0.05
+            ))
+        }
+
+        let waterValues = values(\.waterMl)
+        if let current = waterValues.first {
+            let score = bounded((current / Double(dailyGoalMl)) * 100)
+            weightedFactors.append((
+                TempoBalanceFactor(id: "water", title: "Sıvı dengesi", value: "\(number(current)) ml", score: score, symbol: "drop.fill", tint: "blue"),
+                0.08
+            ))
+        }
+
+        guard !weightedFactors.isEmpty else { return nil }
+        let totalWeight = weightedFactors.reduce(0) { $0 + $1.weight }
+        let value = bounded(weightedFactors.reduce(0) { $0 + Double($1.factor.score) * $1.weight } / totalWeight)
+        let state: String
+        let recommendation: String
+        switch value {
+        case 85...:
+            state = "Yüksek ritim"
+            recommendation = "Vücudunun işaretleri güçlü. Planındaki kaliteli veya yoğun antrenman için uygun bir gün."
+        case 70..<85:
+            state = "Dengeli"
+            recommendation = "Normal antrenman planını sürdürebilirsin; ısınma sırasında nasıl hissettiğini kontrol et."
+        case 55..<70:
+            state = "Kontrollü tempo"
+            recommendation = "Orta şiddet, teknik çalışma veya kısa bir seans bugün daha dengeli olabilir."
+        default:
+            state = "Toparlanma odağı"
+            recommendation = "Hafif hareket, mobilite ve dinlenmeye ağırlık vermek daha uygun görünüyor."
+        }
+        let confidence = weightedFactors.count >= 4 ? "Güçlü veri" : (weightedFactors.count >= 3 ? "Orta veri" : "Sınırlı veri")
+        return TempoBalanceScore(value: value, state: state, recommendation: recommendation, confidence: confidence, factors: weightedFactors.map { $0.factor })
     }
 
     func connectAppleHealth() {
@@ -224,8 +509,19 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             let days = try await healthStore.readRecentDays()
             healthDays = days
             healthLastSync = Date()
+            Self.saveCachedHealthDays(days)
+            UserDefaults.standard.set(healthLastSync, forKey: Self.healthLastSyncKey)
             todayWaterMl = Int((days[Self.localDay()]?.waterMl ?? 0).rounded())
-            if accessToken != nil { try await uploadHealth(days) }
+            if accessToken != nil {
+                do {
+                    try await uploadHealth(days)
+                } catch {
+                    status = days.isEmpty
+                        ? "Apple Sağlık bağlı; paylaşılmış veri bulunamadı. Sağlık izinlerini kontrol edebilirsin."
+                        : "Apple Sağlık cihazında güncel. Sunucu eşitlemesi daha sonra yeniden denenecek."
+                    return
+                }
+            }
             status = days.isEmpty
                 ? "Apple Sağlık bağlı; paylaşılmış veri bulunamadı. Sağlık izinlerini kontrol edebilirsin."
                 : "Apple Sağlık verilerin güncel."
@@ -241,13 +537,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
         healthDays = [:]
         healthLastSync = nil
+        Self.clearCachedHealthDays()
         todayWaterMl = 0
         Task {
             if let accessToken {
                 var request = URLRequest(url: URL(string: "/api/mobile/health", relativeTo: baseURL)!)
                 request.httpMethod = "DELETE"
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-                _ = try? await URLSession.shared.data(for: request)
+                _ = try? await Self.apiSession.data(for: request)
                 await refreshWater()
             }
             status = "Apple Sağlık eşitlemesi kapatıldı. İzinleri iPhone Ayarlar’dan ayrıca değiştirebilirsin."
@@ -260,7 +557,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             var request = URLRequest(url: URL(string: "/api/mobile/water", relativeTo: baseURL)!)
             request.timeoutInterval = 15
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await Self.apiSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { return }
             if http.statusCode == 401 { expireSession(); return }
             guard (200..<300).contains(http.statusCode) else { return }
@@ -282,7 +579,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONEncoder().encode(CoachRequest(consent: true, question: question, period: period))
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Koç yanıtı alınamadı.") }
                 if http.statusCode == 401 { expireSession(); return }
                 let result = try JSONDecoder().decode(TempoCoachResponse.self, from: data)
@@ -305,6 +602,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             SecureTokenStore.delete()
             accessToken = nil
             dashboard = nil
+            Self.clearCachedDashboard()
             dashboardError = nil
             todayWaterMl = 0
             healthStore.disableBackgroundDelivery()
@@ -312,9 +610,11 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthDays = [:]
             healthLastSync = nil
             healthError = nil
+            Self.clearCachedHealthDays()
             UserDefaults.standard.set(false, forKey: "tempoHealthSyncEnabledV1")
             coachAnswer = ""
-            UserDefaults.standard.set(false, forKey: "tempoNativeAPIReadyV1")
+            hasAttemptedAccountRestore = true
+            isRestoringConnection = false
             isBusy = false
             status = "Strava bağlantısı kaldırıldı."
         }
@@ -331,24 +631,47 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isBusy = true
         status = "Strava hesabı doğrulanıyor…"
         defer { isBusy = false }
-        do {
-            var request = URLRequest(url: URL(string: "/api/mobile/auth/exchange", relativeTo: baseURL)!)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 30
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(TicketRequest(ticket: ticket, verifier: verifier))
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let result = try JSONDecoder().decode(TicketResponse.self, from: data)
-            guard (response as? HTTPURLResponse)?.statusCode == 200, let token = result.token else {
-                throw APIError.server(result.error ?? "Strava doğrulaması başarısız oldu.")
+
+        let retryDelays: [UInt64] = [0, 180_000_000, 500_000_000]
+        for attempt in retryDelays.indices {
+            if retryDelays[attempt] > 0 {
+                status = "Strava bağlantısı tamamlanıyor…"
+                try? await Task.sleep(nanoseconds: retryDelays[attempt])
             }
-            guard SecureTokenStore.save(token) else { throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı.") }
-            accessToken = token
-            UserDefaults.standard.set(true, forKey: "tempoNativeAPIReadyV1")
-            status = "Strava bağlı. Verilerin hazırlanıyor."
-            await reloadAll()
-        } catch {
-            status = error.localizedDescription
+            do {
+                var request = URLRequest(url: URL(string: "/api/mobile/auth/exchange", relativeTo: baseURL)!)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 12
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                if let accountAccessToken {
+                    request.setValue("Bearer \(accountAccessToken)", forHTTPHeaderField: "Authorization")
+                }
+                request.httpBody = try JSONEncoder().encode(TicketRequest(ticket: ticket, verifier: verifier))
+                let (data, response) = try await Self.apiSession.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw APIError.server("Sunucudan yanıt alınamadı.")
+                }
+                let result = try? JSONDecoder().decode(TicketResponse.self, from: data)
+
+                if http.statusCode == 200, let token = result?.token {
+                    guard SecureTokenStore.save(token) else {
+                        throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı.")
+                    }
+                    accessToken = token
+                    status = "Strava bağlı. Verilerin hazırlanıyor."
+                    dashboard = Self.loadCachedDashboard()
+                    Task { await reloadAll() }
+                    return
+                }
+
+                let message = result?.error ?? "Strava doğrulaması başarısız oldu."
+                let retryable = http.statusCode == 401 || http.statusCode == 408 || http.statusCode == 429 || http.statusCode >= 500
+                if retryable, attempt < retryDelays.count - 1 { continue }
+                throw APIError.server(message)
+            } catch {
+                if attempt < retryDelays.count - 1 { continue }
+                status = "Strava bağlantısı tamamlanamadı: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -357,19 +680,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await Self.apiSession.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.server("Sunucu bağlantıyı kaldıramadı.")
         }
     }
 
     private func expireSession() {
-        SecureTokenStore.delete()
-        accessToken = nil
-        dashboard = nil
-        todayWaterMl = 0
-        UserDefaults.standard.set(false, forKey: "tempoNativeAPIReadyV1")
-        status = "Tempo bağlantısının süresi doldu. Strava ile yeniden giriş yap."
+        dashboardError = "Strava oturumuna geçici olarak ulaşılamadı."
+        status = "Strava bağlantın cihazda saklandı. Bağlantı yeniden deneniyor."
     }
 
     private func addWaterToAppleHealth(_ amountMl: Int) {
@@ -397,7 +716,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(TempoHealthSyncPayload(days: days))
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.apiSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.server("Sağlık verileri sunucuya eşitlenemedi.") }
         if http.statusCode == 401 { expireSession(); return }
         guard (200..<300).contains(http.statusCode) else {
@@ -415,6 +734,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         (try? JSONDecoder().decode(ServerError.self, from: data).error) ?? fallback
     }
 
+    private static func prewarmAPI() {
+        Task.detached(priority: .utility) {
+            guard let url = URL(string: "https://apitempo.com/api/mobile/ping") else { return }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 6
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            _ = try? await apiSession.data(for: request)
+        }
+    }
+
     private static func localDay() -> String {
         let formatter = DateFormatter()
         formatter.calendar = .current
@@ -422,6 +751,37 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
+    }
+
+    private static func loadCachedDashboard() -> TempoDashboard? {
+        guard let data = try? Data(contentsOf: dashboardCacheURL) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try? decoder.decode(TempoDashboard.self, from: data)
+    }
+
+    private static func saveCachedDashboard(_ dashboard: TempoDashboard) {
+        guard let data = try? JSONEncoder().encode(dashboard) else { return }
+        try? data.write(to: dashboardCacheURL, options: .atomic)
+    }
+
+    private static func clearCachedDashboard() {
+        try? FileManager.default.removeItem(at: dashboardCacheURL)
+    }
+
+    private static func loadCachedHealthDays() -> [String: TempoHealthMetrics] {
+        guard let data = try? Data(contentsOf: healthCacheURL) else { return [:] }
+        return (try? JSONDecoder().decode([String: TempoHealthMetrics].self, from: data)) ?? [:]
+    }
+
+    private static func saveCachedHealthDays(_ days: [String: TempoHealthMetrics]) {
+        guard let data = try? JSONEncoder().encode(days) else { return }
+        try? data.write(to: healthCacheURL, options: .atomic)
+    }
+
+    private static func clearCachedHealthDays() {
+        try? FileManager.default.removeItem(at: healthCacheURL)
+        UserDefaults.standard.removeObject(forKey: healthLastSyncKey)
     }
 
     private static func randomVerifier() -> String {
@@ -457,6 +817,7 @@ private enum APIError: LocalizedError {
 private enum SecureTokenStore {
     private static let service = "com.apitempo.tempohealth"
     private static let account = "mobile-access-token"
+    private static let fallbackKey = "tempoMobileAccessTokenBackupV3"
 
     static func read() -> String? {
         let query: [String: Any] = [
@@ -467,30 +828,78 @@ private enum SecureTokenStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+           let data = result as? Data,
+           let token = String(data: data, encoding: .utf8),
+           !token.isEmpty {
+            UserDefaults.standard.set(token, forKey: fallbackKey)
+            return token
+        }
+
+        guard let fallback = UserDefaults.standard.string(forKey: fallbackKey),
+              !fallback.isEmpty else { return nil }
+        _ = saveToKeychain(fallback)
+        return fallback
     }
 
     static func save(_ token: String) -> Bool {
-        delete()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: Data(token.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        UserDefaults.standard.set(token, forKey: fallbackKey)
+        UserDefaults.standard.synchronize()
+        let keychainSaved = saveToKeychain(token)
+        return keychainSaved || UserDefaults.standard.string(forKey: fallbackKey) == token
     }
 
     static func delete() {
+        UserDefaults.standard.removeObject(forKey: fallbackKey)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
+    }
+
+    private static func saveToKeychain(_ token: String) -> Bool {
+        let match: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(token.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+        let updateStatus = SecItemUpdate(match as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+
+        var add = match
+        attributes.forEach { add[$0.key] = $0.value }
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+    }
+}
+
+private enum OAuthVerifierStore {
+    private static let verifierKey = "tempoPendingOAuthVerifierV1"
+    private static let createdAtKey = "tempoPendingOAuthVerifierCreatedAtV1"
+
+    static func save(_ verifier: String) {
+        UserDefaults.standard.set(verifier, forKey: verifierKey)
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: createdAtKey)
+    }
+
+    static func read() -> String? {
+        let createdAt = UserDefaults.standard.double(forKey: createdAtKey)
+        guard createdAt > 0, Date().timeIntervalSince1970 - createdAt < 15 * 60 else {
+            delete()
+            return nil
+        }
+        return UserDefaults.standard.string(forKey: verifierKey)
+    }
+
+    static func delete() {
+        UserDefaults.standard.removeObject(forKey: verifierKey)
+        UserDefaults.standard.removeObject(forKey: createdAtKey)
     }
 }
 

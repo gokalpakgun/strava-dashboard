@@ -17,8 +17,14 @@
   <main>
     <p><a href="/">Tempo’ya dön</a></p>
     <h1>Gizlilik Politikası</h1>
-    <p class="updated">Son güncelleme: 7 Ekim 2026</p>
+    <p class="updated">Son güncelleme: 8 Ekim 2026</p>
     <p>Tempo, Strava profilini, aktivitelerini ve rotalarını; kullanıcı izin verirse Apple Sağlık ölçülerini kişisel spor uygulamasında göstermek için çalışır. Veriler reklam, pazarlama veya satış amacıyla kullanılmaz.</p>
+
+    <h2>Tempo hesabı ve profil</h2>
+    <p>Hesap oluştururken e-posta adresi, kullanıcı adı, görünen ad, seçilen sporlar ve isteğe bağlı profil fotoğrafı saklanır. Parola düz metin olarak tutulmaz; rastgele tuz ve PBKDF2 kullanılarak oluşturulan özet saklanır. Hesap oturum anahtarı iPhone Keychain’de korunur.</p>
+
+    <h2>Konum ve yakındaki spor alanları</h2>
+    <p>Konum izni, kullanıcının yakınındaki spor alanlarını Apple MapKit üzerinden aramak için kullanılır. Tempo bu konumu kendi sunucusunda saklamaz. Kullanıcı konum iznini iPhone Ayarlar uygulamasından değiştirebilir.</p>
 
     <h2>Apple Sağlık verileri</h2>
     <p>Apple Sağlık bağlantısı isteğe bağlıdır. Kullanıcı izin verdiğinde Tempo son 90 gündeki su, uyku süresi, adım, aktif enerji, dinlenik nabız, kalp atış hızı değişkenliği (HRV) ve kilo ölçülerini okur. Uygulamadaki hızlı ekleme düğmeleriyle eklenen su miktarı Apple Sağlık’a yazılır. Tempo, izin verilmeyen veri türlerini okuyamaz.</p>
@@ -31,7 +37,7 @@
     <p>Kullanıcı “Koça sor” düğmesine bastığında seçilen dönemin anonimleştirilmiş aktivite özeti ve Apple Sağlık bağlıysa günlük ölçülerden oluşturulan dönem özeti Cloudflare Workers AI hizmetine gönderilir. İsim, aktivite adı, tam saat, konum, rota ve ham Sağlık örnekleri bu özete eklenmez. Yanıt yalnızca spor ve sağlıklı yaşam verilerini değerlendirmek için kullanılır; tıbbi teşhis amacı taşımaz.</p>
 
     <h2>Saklama ve silme</h2>
-    <p>Kullanıcı Apple Sağlık eşitlemesini kapattığında sunucudaki Sağlık özetleri silinir. Strava bağlantısını kaldırdığında mobil oturum, saklanan Strava yenileme anahtarı, mobil pano önbelleği ve sunucudaki Sağlık özetleri silinir. Apple Sağlık izinleri iPhone Ayarlar uygulamasından, Strava yetkisi ise Strava ayarlarından ayrıca değiştirilebilir.</p>
+    <p>Kullanıcı Tempo hesabını uygulamadaki hesap ayarlarından kalıcı olarak silebilir; profil, spor tercihleri ve geçerli hesap oturumu silinir. Kullanıcı Apple Sağlık eşitlemesini kapattığında sunucudaki Sağlık özetleri silinir. Strava bağlantısını kaldırdığında mobil oturum, saklanan Strava yenileme anahtarı, mobil pano önbelleği ve sunucudaki Sağlık özetleri silinir. Apple Sağlık izinleri iPhone Ayarlar uygulamasından, Strava yetkisi ise Strava ayarlarından ayrıca değiştirilebilir.</p>
 
     <h2>Üçüncü taraf hizmetler ve güvenlik</h2>
     <p>Strava hesap ve aktivite verilerinin kaynağıdır. Cloudflare, Tempo’nun sunucu, KV veri saklama ve isteğe bağlı yapay zekâ altyapısını sağlar. İletim HTTPS kullanır; mobil erişim anahtarı iOS Keychain’de saklanır.</p>
