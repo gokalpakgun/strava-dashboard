@@ -983,7 +983,7 @@ private struct PlaceCard: View {
 }
 
 @MainActor
-final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
+final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     @Published var places: [NearbyPlace] = []
     @Published var isSearching = false
     @Published var message: String? = "Yakındaki spor alanlarını görmek için konum izni ver."

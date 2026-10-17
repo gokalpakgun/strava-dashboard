@@ -1,4 +1,5 @@
 import { deleteSocialAccount } from "./social.js";
+import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const ACCOUNT_SESSION_SECONDS = 60 * 60 * 24 * 30;
 // Cloudflare Workers production rejects PBKDF2 counts above 100,000.
@@ -44,23 +45,39 @@ async function signUp(request, env) {
   const parsed = await readBody(request, 8192);
   if (parsed.response) return parsed.response;
 
-  const requestId = String(request.headers.get("X-Tempo-Request-ID") || "").trim().toLowerCase();
-  const idempotencyKey = /^[a-f0-9-]{20,64}$/.test(requestId)
-    ? "account-signup-request:" + await sha256Hex(requestId)
-    : "";
-  if (idempotencyKey) {
-    const completed = await env.TOKEN_STORE.get(idempotencyKey, "json");
-    if (completed?.token && completed?.user) return responseJSON(completed, 201);
-  }
-
   const email = normalizeEmail(parsed.value.email);
   const username = normalizeUsername(parsed.value.username);
   const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
   const validation = validateCredentials(email, username, password);
   if (validation) return responseJSON({ error: validation }, 400);
 
+  const requestId = String(request.headers.get("X-Tempo-Request-ID") || "").trim().toLowerCase();
   const limited = await rateLimit(request, env, "signup", 10);
   if (limited) return limited;
+  const idempotencyKey = /^[a-f0-9-]{20,64}$/.test(requestId)
+    ? "account-signup-request:" + await sha256Hex(requestId)
+    : "";
+  if (idempotencyKey) {
+    const completed = await env.TOKEN_STORE.get(idempotencyKey, "json");
+    const completedUserId = completed?.userId || completed?.user?.id;
+    if (completedUserId) {
+      const completedUser = await env.TOKEN_STORE.get("account-user:" + completedUserId, "json");
+      const sameAccount = completedUser
+        && completedUser.email === email
+        && completedUser.username === username;
+      const passwordMatches = sameAccount
+        && completedUser.passwordHash
+        && constantTimeEqual(
+          await derivePassword(password, completedUser.passwordSalt, completedUser.passwordIterations || PASSWORD_ITERATIONS),
+          completedUser.passwordHash,
+        );
+      if (!passwordMatches) {
+        return responseJSON({ error: "Bu kayıt isteği daha önce kullanılmış. Bilgilerini kontrol edip giriş yap." }, 409);
+      }
+      const session = await createSession(env, completedUser.id, completedUser.sessionVersion || 1);
+      return responseJSON({ token: session.token, user: publicUser(completedUser) }, 201);
+    }
+  }
 
   const emailKey = "account-email:" + await sha256Hex(email);
   const usernameKey = "account-username:" + username;
@@ -85,6 +102,7 @@ async function signUp(request, env) {
     onboardingComplete: false,
     createdAt: now,
     updatedAt: now,
+    sessionVersion: 1,
     passwordSalt: salt,
     passwordHash,
     passwordIterations: PASSWORD_ITERATIONS,
@@ -95,10 +113,11 @@ async function signUp(request, env) {
     env.TOKEN_STORE.put(emailKey, id),
     env.TOKEN_STORE.put(usernameKey, id),
   ]);
-  const session = await createSession(env, id);
+  const session = await createSession(env, id, user.sessionVersion);
   const result = { token: session.token, user: publicUser(user) };
   if (idempotencyKey) {
-    await env.TOKEN_STORE.put(idempotencyKey, JSON.stringify(result), { expirationTtl: 600 });
+    // Never store or replay a bearer token behind a caller-controlled request ID.
+    await env.TOKEN_STORE.put(idempotencyKey, JSON.stringify({ userId: id }), { expirationTtl: 600 });
   }
   return responseJSON(result, 201);
 }
@@ -119,6 +138,8 @@ async function signIn(request, env) {
 
   const limited = await rateLimit(request, env, "login", 15);
   if (limited) return limited;
+  const identityLimit = await rateLimit(request, env, "login-identity", 15, await sha256Hex(identifier));
+  if (identityLimit) return identityLimit;
 
   const userId = identifierIsEmail
     ? await env.TOKEN_STORE.get("account-email:" + await sha256Hex(identifier))
@@ -133,7 +154,7 @@ async function signIn(request, env) {
     return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
-  const session = await createSession(env, user.id);
+  const session = await createSession(env, user.id, user.sessionVersion || 1);
   return responseJSON({ token: session.token, user: publicUser(user) });
 }
 
@@ -151,6 +172,8 @@ async function forgotPassword(request, env, url) {
   if (limited) return limited;
 
   const generic = { message: "Hesap eşleşirse şifre sıfırlama bağlantısı gönderildi." };
+  const emailLimited = await rateLimit(request, env, "password-reset-email", 5, await sha256Hex(email));
+  if (emailLimited) return responseJSON(generic);
   const userId = await env.TOKEN_STORE.get("account-email:" + await sha256Hex(email));
   if (!userId) return responseJSON(generic);
 
@@ -158,7 +181,8 @@ async function forgotPassword(request, env, url) {
   const tokenHash = await sha256Hex(token);
   await env.TOKEN_STORE.put("account-reset:" + tokenHash, userId, { expirationTtl: 1800 });
 
-  const resetLink = url.origin + "/reset-password?token=" + token;
+  // Never derive a credential-bearing link from the incoming Host header.
+  const resetLink = "https://apitempo.com/reset-password?token=" + token;
   const sent = await sendPasswordResetEmail(env, email, resetLink);
   if (!sent) {
     await env.TOKEN_STORE.delete("account-reset:" + tokenHash);
@@ -221,10 +245,11 @@ async function resetPasswordValues(tokenValue, passwordValue, env) {
   user.passwordSalt = salt;
   user.passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS);
   user.passwordIterations = PASSWORD_ITERATIONS;
+  user.sessionVersion = (Number.isInteger(user.sessionVersion) && user.sessionVersion > 0 ? user.sessionVersion : 1) + 1;
   user.updatedAt = new Date().toISOString();
   await Promise.all([
     env.TOKEN_STORE.put("account-user:" + user.id, JSON.stringify(user)),
-    env.TOKEN_STORE.delete(resetKey),
+    invalidatePasswordResetTokens(env, user.id),
   ]);
   return { ok: true, status: 200 };
 }
@@ -239,7 +264,13 @@ export async function handlePasswordResetPage(request, env, url) {
     return passwordResetDocument(token, "", false);
   }
   if (request.method === "POST") {
-    const form = await request.formData();
+    let form;
+    try {
+      const body = await readLimitedText(request, 4096);
+      form = new URLSearchParams(body);
+    } catch {
+      return passwordResetDocument("", "İstek çok büyük veya okunamadı.", false);
+    }
     const password = String(form.get("password") || "");
     const confirmation = String(form.get("confirmation") || "");
     if (password !== confirmation) {
@@ -259,12 +290,15 @@ function passwordResetDocument(token, message, success) {
     : "<h1>Yeni şifre oluştur</h1><p class=\"lead\">Tempo hesabın için güçlü bir şifre belirle.</p>" +
       (safeMessage ? "<div class=\"message\">" + safeMessage + "</div>" : "") +
       (safeToken ? "<form method=\"post\" action=\"/reset-password\"><input type=\"hidden\" name=\"token\" value=\"" + safeToken + "\"><label>Yeni şifre</label><input name=\"password\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><label>Yeni şifre tekrar</label><input name=\"confirmation\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><button type=\"submit\">Şifreyi güncelle</button></form>" : "");
-  const html = "<!doctype html><html lang=\"tr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Tempo şifre sıfırlama</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,#08171c,#07100c);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#f5fff7;padding:20px}.card{width:min(100%,440px);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:28px;padding:28px;box-shadow:0 22px 70px rgba(0,0,0,.35)}.brand{color:#64ef8e;font-weight:800;margin-bottom:28px}.brand span{color:#91a49a;font-weight:500;margin-left:8px}h1{font-size:30px;margin:0 0 8px}.lead,p{color:#a8b5ad;line-height:1.5}.message{color:#ff9b78;background:rgba(255,105,65,.1);padding:12px;border-radius:13px;margin:18px 0}label{display:block;font-size:13px;font-weight:650;margin:16px 0 7px}input{width:100%;height:54px;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:rgba(255,255,255,.06);color:white;padding:0 15px;font-size:16px}button{width:100%;height:56px;border:0;border-radius:16px;background:#64ef8e;color:#061109;font-size:16px;font-weight:750;margin-top:22px}.result{text-align:center}.icon{width:66px;height:66px;border-radius:50%;background:#64ef8e;color:#061109;display:grid;place-items:center;font-size:32px;font-weight:800;margin:0 auto 18px}</style></head><body><main class=\"card\"><div class=\"brand\">TEMPO <span>Sağlık ve spor</span></div>" + content + "</main></body></html>";
+  const html = "<!doctype html><html lang=\"tr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>Tempo şifre sıfırlama</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,#08171c,#07100c);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#f5fff7;padding:20px}.card{width:min(100%,440px);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:28px;padding:28px;box-shadow:0 22px 70px rgba(0,0,0,.35)}.brand{color:#64ef8e;font-weight:800;margin-bottom:28px}.brand span{color:#91a49a;font-weight:500;margin-left:8px}h1{font-size:30px;margin:0 0 8px}.lead,p{color:#a8b5ad;line-height:1.5}.message{color:#ff9b78;background:rgba(255,105,65,.1);padding:12px;border-radius:13px;margin:18px 0}label{display:block;font-size:13px;font-weight:650;margin:16px 0 7px}input{width:100%;height:54px;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:rgba(255,255,255,.06);color:white;padding:0 15px;font-size:16px}button{width:100%;height:56px;border:0;border-radius:16px;background:#64ef8e;color:#061109;font-size:16px;font-weight:750;margin-top:22px}.result{text-align:center}.icon{width:66px;height:66px;border-radius:50%;background:#64ef8e;color:#061109;display:grid;place-items:center;font-size:32px;font-weight:800;margin:0 auto 18px}</style></head><body><main class=\"card\"><div class=\"brand\">TEMPO <span>Sağlık ve spor</span></div>" + content + "</main></body></html>";
   return new Response(html, {
     status: 200,
     headers: {
       ...securityHeaders(),
       "Content-Type": "text/html; charset=utf-8",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "DENY",
+      "X-Robots-Tag": "noindex, nofollow",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     },
   });
@@ -373,11 +407,9 @@ async function deleteAccount(request, env) {
   if (context.response) return context.response;
   const athleteId = await env.TOKEN_STORE.get("account-strava:" + context.user.id);
   const strava = athleteId ? await env.TOKEN_STORE.get("mobile-strava:" + athleteId, "json") : null;
-  if (strava?.refresh_token) {
-    const revoked = await revokeStravaRefreshToken(env, strava.refresh_token);
-    if (!revoked) return responseJSON({ error: "Strava bağlantısı güvenli biçimde kaldırılamadı. İnternet bağlantını kontrol edip yeniden dene." }, 502);
-  }
+  const stravaRevoked = !strava?.refresh_token || await revokeStravaRefreshToken(env, strava.refresh_token);
   await deleteSocialAccount(env, context.user.id);
+  const accountKeys = await accountDataKeysForDeletion(env, context.user.id);
   const linkedHash = athleteId ? await env.TOKEN_STORE.get("mobile-link-for:" + athleteId) : null;
   const webSessionIds = athleteId ? await webSessionsForAthlete(env, athleteId) : [];
   const webSessionKeys = [];
@@ -399,6 +431,7 @@ async function deleteAccount(request, env) {
     "account-email:" + await sha256Hex(context.user.email),
     "account-username:" + context.user.username,
     "account-session:" + context.sessionHash,
+    ...accountKeys,
   ];
   if (athleteId) {
     relatedKeys.push(
@@ -416,7 +449,43 @@ async function deleteAccount(request, env) {
   await Promise.all([
     ...relatedKeys.map(key => env.TOKEN_STORE.delete(key)),
   ]);
-  return new Response(null, { status: 204, headers: securityHeaders() });
+  return responseJSON({ ok: true, stravaRevoked });
+}
+
+async function accountDataKeysForDeletion(env, userId) {
+  const prefixes = ["account-session:", "account-reset:", "account-signup-request:"];
+  const keysToDelete = [];
+  for (const prefix of prefixes) {
+    let cursor;
+    do {
+      const page = await env.TOKEN_STORE.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) });
+      const matches = await Promise.all(page.keys.map(async entry => {
+        const value = await env.TOKEN_STORE.get(entry.name, prefix === "account-signup-request:" ? "json" : undefined);
+        if (prefix === "account-session:") {
+          try { return JSON.parse(value)?.userId === userId ? entry.name : null; } catch { return value === userId ? entry.name : null; }
+        }
+        if (prefix === "account-reset:") return value === userId ? entry.name : null;
+        const linkedUserId = value?.userId || value?.user?.id;
+        return linkedUserId === userId ? entry.name : null;
+      }));
+      keysToDelete.push(...matches.filter(Boolean));
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+  }
+  return keysToDelete;
+}
+
+async function invalidatePasswordResetTokens(env, userId) {
+  const keysToDelete = [];
+  let cursor;
+  do {
+    const page = await env.TOKEN_STORE.list({ prefix: "account-reset:", limit: 1000, ...(cursor ? { cursor } : {}) });
+    const matches = await Promise.all(page.keys.map(async entry =>
+      await env.TOKEN_STORE.get(entry.name) === userId ? entry.name : null));
+    keysToDelete.push(...matches.filter(Boolean));
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  await Promise.all(keysToDelete.map(key => env.TOKEN_STORE.delete(key)));
 }
 
 async function webSessionsForAthlete(env, athleteId) {
@@ -465,43 +534,69 @@ export async function accountContext(request, env) {
     return { response: responseJSON({ error: "Tempo oturumunun süresi doldu." }, 401) };
   }
   const sessionHash = await sha256Hex(token);
-  const userId = await env.TOKEN_STORE.get("account-session:" + sessionHash);
+  const sessionKey = "account-session:" + sessionHash;
+  const storedSession = await env.TOKEN_STORE.get(sessionKey);
+  let session;
+  try {
+    const parsed = JSON.parse(storedSession);
+    session = parsed && typeof parsed === "object" ? parsed : { userId: storedSession, version: 1 };
+  } catch {
+    // Existing sessions stored as a plain user ID are treated as version 1.
+    session = { userId: storedSession, version: 1 };
+  }
+  const userId = typeof session?.userId === "string" ? session.userId : "";
   if (!userId) return { response: responseJSON({ error: "Tempo oturumunun süresi doldu." }, 401) };
   const user = await env.TOKEN_STORE.get("account-user:" + userId, "json");
   if (!user) {
-    await env.TOKEN_STORE.delete("account-session:" + sessionHash);
+    await env.TOKEN_STORE.delete(sessionKey);
     return { response: responseJSON({ error: "Tempo hesabı bulunamadı." }, 401) };
   }
-  await env.TOKEN_STORE.put("account-session:" + sessionHash, userId, { expirationTtl: ACCOUNT_SESSION_SECONDS });
+  const currentVersion = Number.isInteger(user.sessionVersion) && user.sessionVersion > 0 ? user.sessionVersion : 1;
+  const sessionVersion = Number.isInteger(session.version) && session.version > 0 ? session.version : 1;
+  if (sessionVersion !== currentVersion) {
+    await env.TOKEN_STORE.delete(sessionKey);
+    return { response: responseJSON({ error: "Şifren değişti. Güvenliğin için yeniden giriş yap." }, 401) };
+  }
+  // Sessions keep their original 30-day lifetime. Rewriting this same KV key
+  // on every authenticated request can exceed KV's one-write-per-second limit
+  // when the app loads several account-backed screens in parallel.
   return { user, sessionHash };
 }
 
-async function createSession(env, userId) {
+async function createSession(env, userId, version = 1) {
   const token = randomHex(32);
   const hash = await sha256Hex(token);
-  await env.TOKEN_STORE.put("account-session:" + hash, userId, { expirationTtl: ACCOUNT_SESSION_SECONDS });
+  await env.TOKEN_STORE.put("account-session:" + hash, JSON.stringify({ userId, version }), { expirationTtl: ACCOUNT_SESSION_SECONDS });
   return { token, hash };
 }
 
-async function rateLimit(request, env, action, limit) {
+async function rateLimit(request, env, action, limit, identity = "") {
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const key = "account-rate:v2:" + action + ":" + await sha256Hex(ip);
+  const key = "account-rate:v2:" + action + ":" + await sha256Hex(identity || ip);
   const count = Number(await env.TOKEN_STORE.get(key) || 0);
   if (count >= limit) {
     return responseJSON({ error: "Çok fazla deneme yapıldı. 15 dakika sonra yeniden dene." }, 429);
   }
-  await env.TOKEN_STORE.put(key, String(count + 1), { expirationTtl: 900 });
+  try {
+    await env.TOKEN_STORE.put(key, String(count + 1), { expirationTtl: 900 });
+  } catch {
+    // KV also rejects writes to the same key more than once per second.
+    // Treat contention as a short rate limit instead of surfacing a Worker 502.
+    return responseJSON({ error: "Çok hızlı deneme yapıldı. Bir saniye sonra yeniden dene." }, 429, { "Retry-After": "1" });
+  }
   return null;
 }
 
 async function readBody(request, maximum) {
   try {
-    const text = await request.text();
-    if (text.length > maximum) return { response: responseJSON({ error: "İstek çok büyük." }, 413) };
+    const text = await readLimitedText(request, maximum);
     const value = JSON.parse(text);
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid");
     return { value };
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return { response: responseJSON({ error: "İstek çok büyük." }, 413) };
+    }
     return { response: responseJSON({ error: "İstek bilgileri okunamadı." }, 400) };
   }
 }
@@ -585,12 +680,13 @@ function securityHeaders() {
     "X-Content-Type-Options": "nosniff",
   };
 }
-function responseJSON(value, status = 200) {
+function responseJSON(value, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(value), {
     status,
     headers: {
       ...securityHeaders(),
       "Content-Type": "application/json; charset=utf-8",
+      ...extraHeaders,
     },
   });
 }

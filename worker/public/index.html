@@ -36,14 +36,16 @@
         <a class="nav-item" href="#challenges"><span>♧</span> Meydan Okumalar</a>
         <a class="nav-item" href="#photos"><span>▣</span> Fotoğraflar</a>
       </nav>
-      <div class="sidebar-bottom"><div class="sync-icon">↻</div><strong id="connection-title">Örnek veriler</strong><p id="connection-copy">Canlı veriyi görmek için Strava hesabını bağla.</p><a href="/auth/start">Strava’ya bağlan <span>↗</span></a><div class="sidebar-foot">Kişisel antrenman panon</div></div>
+      <div class="sidebar-bottom"><div class="sync-icon">↻</div><strong id="connection-title">Örnek veriler</strong><p id="connection-copy">Canlı veriyi görmek için Strava hesabını bağla.</p><p>Strava verilerin yalnızca kişisel panonda gösterilir. Bağlantıyı istediğin zaman kesebilir ve verilerinin silinmesini isteyebilirsin.</p><a href="/auth/start">Strava’ya bağlan <span>↗</span></a><div class="sidebar-foot">Kişisel antrenman panon</div></div>
     </aside>
 
 
     <main id="top">
       <header class="topbar"><button class="menu-toggle" type="button" aria-label="Menüyü aç" aria-controls="sidebar" aria-expanded="false">☰</button><div class="mobile-brand"><span class="brand-mark">t</span> tempo<span class="brand-dot">.</span></div><div class="breadcrumb">Panel <span>/</span> Genel Bakış</div><div class="top-actions"><button class="icon-button" aria-label="Bildirimler">♧</button><div class="mini-avatar">GK</div></div></header>
       <section class="content" id="overview">
-        <div class="welcome"><div><p class="eyebrow">HAFTALIK ANTRENMAN PANON</p><h1>Selam! <span>✳</span></h1><p class="subhead">İstikrar, büyük hedeflerin gizli yakıtıdır.</p></div><a class="period-button connect-button" id="connect-button" href="/auth/start">Strava’ya bağlan <span>↗</span></a></div>
+        <div class="welcome"><div><p class="eyebrow">HAFTALIK ANTRENMAN PANON</p><h1>Selam! <span>✳</span></h1><p class="subhead">İstikrar, büyük hedeflerin gizli yakıtıdır.</p></div></div>
+        <p class="strava-consent">Strava’ya bağlanarak Tempo’nun OAuth/API üzerinden profil ayrıntılarını (konum, kilo ve takipçi bilgileri dâhil), aktivitelerini (izin verdiğin gizli aktiviteler de dâhil), ekipmanını, favori segmentlerini, fotoğrafları ve GPS rotalarını almasına izin verirsin. Veriler yalnızca senin Tempo panelinde gösterilir; Koç’a veya arkadaşlara aktarılmaz. Bağlantıyı buradan veya <a href="https://www.strava.com/settings/apps" target="_blank" rel="noopener noreferrer">Strava ayarlarından</a> kaldırabilir, Tempo hesabını Hesap ve Güvenlik’ten silerek Tempo verilerini silebilirsin. Tamamlanan silme uygulamada onaylanır. <a href="/privacy">Gizlilik</a> · <a href="/terms">Koşullar</a> · <a href="https://github.com/gokalpakgun/strava-dashboard/issues" target="_blank" rel="noopener noreferrer">Destek</a></p>
+        <div class="connect-cta-row"><a class="period-button connect-button" id="connect-button" href="/auth/start">Strava’ya bağlan <span>↗</span></a></div>
         <section class="panel athlete-panel" id="profile" aria-label="Strava profilin">
           <div class="athlete-identity"><div class="athlete-avatar" id="athlete-avatar">S</div><div><p class="eyebrow">STRAVA PROFİLİ</p><h2 id="athlete-name">Profil bilgileri yükleniyor</h2><p id="athlete-location">Strava hesabından</p></div><a class="text-link" id="strava-profile-link" href="https://www.strava.com/athletes" target="_blank" rel="noopener noreferrer">Strava’da aç <span>↗</span></a></div>
           <div class="athlete-stats"><div><strong id="athlete-followers">—</strong><span>Takipçi</span></div><div><strong id="athlete-following">—</strong><span>Takip edilen</span></div><div><strong id="athlete-weight">—</strong><span>Kilo</span></div></div>
@@ -81,7 +83,7 @@
           <section class="panel feature-panel" id="rewind"><div class="panel-heading"><div><p class="eyebrow">YIL ÖZETİ</p><h2 id="rewind-title">Bu yıl</h2></div></div><div class="rewind-grid" id="rewind-list"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
           <section class="panel feature-panel" id="photos"><div class="panel-heading"><div><p class="eyebrow">FOTOĞRAFLAR</p><h2>Son aktivitelerinden</h2></div></div><div class="photo-grid" id="photos-grid"><p class="data-empty">Strava verileri yükleniyor…</p></div></section>
         </div>
-        <footer><span>© 2026 tempo.</span><span>Koşu tutkusuyla yapıldı <b>♥</b></span><a href="/auth/logout" id="disconnect-link" hidden>Bağlantıyı kes</a></footer>
+        <footer><span>© 2026 tempo.</span><span>Koşu tutkusuyla yapıldı <b>♥</b></span><a href="/privacy">Gizlilik</a><a href="/terms">Kullanım koşulları</a><a href="/auth/logout" id="disconnect-link" hidden>Bağlantıyı kes</a></footer>
       </section>
     </main>
   </div>

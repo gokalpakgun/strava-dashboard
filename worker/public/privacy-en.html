@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="index,follow">
+  <title>Privacy Policy | Tempo</title>
+  <style>
+    :root{color-scheme:light;--ink:#202321;--muted:#626a64;--line:#e7e9e5;--green:#439b72}
+    *{box-sizing:border-box}body{margin:0;background:#f5f5f2;color:var(--ink);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{max-width:760px;margin:48px auto;padding:36px;background:#fff;border:1px solid var(--line);border-radius:18px}
+    h1,h2{line-height:1.25}h1{font-size:32px;margin:0 0 8px}h2{font-size:20px;margin:30px 0 8px}p,li{color:var(--muted)}a{color:#26714c}.updated{font-size:13px;color:#858b86}
+    @media(max-width:600px){main{margin:16px;padding:24px 20px}h1{font-size:27px}}
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back to Tempo</a></p>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: October 18, 2026</p>
+    <p>Tempo is a personal sports and wellness app centered on Apple Health. Connecting Strava is optional. You can use your Tempo account, Apple Health screens, Tempo Coach and social features without Strava. Data is not used for advertising, marketing or sale.</p>
+
+    <h2>Tempo account and profile</h2>
+    <p>When you create an account, Tempo stores your email address, username, display name, selected sports and optional profile photo. Passwords are not stored in plain text; Tempo stores a salted PBKDF2 hash. The iPhone app keeps its Tempo session token in iOS Keychain. Account emails are used for account operations and password resets you request; Tempo does not send marketing email.</p>
+
+    <h2>Location and nearby sports facilities</h2>
+    <p>If you grant location permission, Tempo uses your current location to search Apple Maps and OpenStreetMap Overpass for nearby sports facilities. During a map search, your device sends its location to the relevant map service; Tempo does not store these search coordinates on its own servers. Apple's and OpenStreetMap's own privacy practices apply. You can change location permission in iPhone Settings.</p>
+
+    <h2>Apple Health data</h2>
+    <p>Apple Health is optional and works independently of Strava. If you grant permission, Tempo reads daily summaries for the last 90 days from the supported data types you allow, such as water, sleep, steps, active energy, exercise minutes, heart rate, HRV and other supported measurements. Tempo cannot read data types you have not allowed.</p>
+    <p>Daily summaries are associated with your Tempo account, transmitted over HTTPS to apitempo.com (Cloudflare Workers and KV), and retained for up to 100 days. Raw HealthKit samples, source-device information and minute-by-minute measurements are not uploaded. Turning off Apple Health sync deletes the server-side health summary.</p>
+    <p>Manual workouts, selected photos and measurements collected for a workout time window are stored only on your device, in a directory associated with your Tempo account. They are not uploaded to Tempo servers or shared in competitions. Health and motion measurements are supporting signals; they do not prove that a workout happened. A photo is optional and is never sufficient on its own.</p>
+
+    <h2>Strava data and account</h2>
+    <p>If you connect Strava, Tempo uses Strava OAuth/API to receive profile details (including location, weight and follower information), activities you authorize (including private activities), equipment, starred segments, activity photos and GPS routes. Data from your Strava account is shown only in your Tempo dashboard. It is not sent to Tempo Coach or shared through social features.</p>
+    <p>The server dashboard cache expires after at most 10 minutes. The iPhone dashboard cache expires after at most 24 hours; Tempo does not maintain a permanent archive of Strava activities. Strava refresh tokens are stored in Cloudflare KV while the connection remains active. Your iPhone stores the Tempo mobile access token in iOS Keychain; the server stores only its SHA-256 hash.</p>
+    <p>You can disconnect Strava in Tempo or revoke access in <a href="https://www.strava.com/settings/apps" rel="noopener noreferrer">Strava's connected-app settings</a>. Disconnecting removes Tempo's stored refresh token, server dashboard cache and water-sync link. If Strava revocation fails, the app tells you and links to Strava settings; Tempo's local token and data are still deleted. A Strava deletion or revocation webhook clears the server cache; any short-lived iPhone dashboard cache expires within 24 hours.</p>
+
+    <h2>Tempo Coach</h2>
+    <p>Tempo Coach is a sports and healthy-living chat available with a Tempo account. It does not require Strava or a month selection. Your messages are sent to Cloudflare Workers AI to generate a response and are not stored by Tempo's server. An Apple Health summary is included only when you explicitly enable sharing for that request. Strava data is not sent to the Coach. The Coach does not provide medical diagnosis or treatment.</p>
+
+    <h2>Social features and competitions</h2>
+    <p>After a friend request is accepted, friends can see each other's usernames and display names. Email addresses, passwords and health history are not shown to friends. Weekly competitions are limited to step totals or exercise minutes. Each participant separately and optionally enables sharing of their daily total for each competition; sharing is off by default and can be turned off in the competition. Other health measurements, daily records and raw samples are not shared. Scores are available only while the competition is active.</p>
+
+    <h2>Retention and deletion</h2>
+    <p>You can permanently delete your Tempo account in the app's account settings. Tempo removes your profile, friend relationships, competition records, health summaries and account sessions. Tempo attempts to revoke Strava OAuth and deletes its stored Strava refresh token, associated cache and water-sync link. If Strava revocation fails, the app tells you and links to Strava's connected-app settings; you can remove Tempo there. The app confirms completed Tempo deletion on screen. Apple Health permissions can be changed in iPhone Settings.</p>
+
+    <h2>Third-party services and security</h2>
+    <p>When you use nearby sports-place search, your device's precise location is used in Apple MapKit searches and included in queries sent directly from your device to the OpenStreetMap community's Overpass service. Tempo's server does not receive or store those search coordinates; Apple's and the receiving OpenStreetMap service's own privacy practices apply. Strava provides Strava account and activity data. Strava may monitor and collect usage data, including API usage, and use that data for its own business purposes. Cloudflare provides Tempo's server, KV storage and optional AI infrastructure. Data is transmitted over HTTPS. The Tempo mobile access token is stored in iOS Keychain.</p>
+
+    <h2>Support and contact</h2>
+    <p>For technical support, use the <a href="https://github.com/gokalpakgun/strava-dashboard/issues" rel="noopener noreferrer">Tempo support page</a>. It is public: do not post health data, passwords, access tokens or private Strava information there. You can manage Strava permissions in <a href="https://www.strava.com/settings/apps" rel="noopener noreferrer">Strava's connected-app settings</a>.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>This policy may be updated when Tempo's data practices change. Tempo is independent and is not developed, sponsored or endorsed by Strava or Apple. See the <a href="/terms">Terms of Use</a>.</p>
+  </main>
+</body>
+</html>

@@ -140,6 +140,7 @@ final class TempoAccountStore: ObservableObject {
     @Published private(set) var profile: TempoUserProfile?
     @Published private(set) var isRestoring: Bool
     @Published private(set) var isBusy = false
+    @Published private(set) var stravaRevocationFailed = false
     @Published var errorMessage = ""
 
     private let baseURL = URL(string: "https://apitempo.com")!
@@ -278,9 +279,11 @@ final class TempoAccountStore: ObservableObject {
         guard sessionToken != nil, !isBusy else { return false }
         isBusy = true
         errorMessage = ""
+        stravaRevocationFailed = false
         defer { isBusy = false }
         do {
-            _ = try await request(path: "/api/account", method: "DELETE", body: EmptyPayload(), authenticated: true)
+            let envelope = try await request(path: "/api/account", method: "DELETE", body: EmptyPayload(), authenticated: true)
+            stravaRevocationFailed = envelope.stravaRevoked == false
             clearLocalSession()
             return true
         } catch {
@@ -379,7 +382,7 @@ final class TempoAccountStore: ObservableObject {
                 guard let http = response as? HTTPURLResponse else {
                     throw AccountError.server("Sunucudan yanıt alınamadı.")
                 }
-                let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil)
+                let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil, stravaRevoked: nil)
                 guard (200..<300).contains(http.statusCode) else {
                     if http.statusCode == 401 && authenticated { clearLocalSession() }
                     let message = envelope.error ?? envelope.message ?? "İşlem tamamlanamadı."
@@ -467,6 +470,7 @@ private struct AccountEnvelope: Decodable {
     let user: TempoUserProfile?
     let error: String?
     let message: String?
+    let stravaRevoked: Bool?
 }
 
 private enum AccountError: LocalizedError {

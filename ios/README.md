@@ -1,6 +1,6 @@
 # Tempo iPhone uygulaması
 
-`TempoHealth/TempoHealth.xcodeproj` dosyasını macOS üzerinde Xcode ile aç. `TempoHealth` hedefinde kendi Apple Developer takımını seç ve gerçek bir iPhone'da çalıştır. Proje iOS 17 ve üstünü hedefler; HealthKit yetkisi gerektirmez.
+`TempoHealth/TempoHealth.xcodeproj` dosyasını macOS üzerinde Xcode ile aç. `TempoHealth` hedefinde kendi Apple Developer takımını seç ve gerçek bir iPhone'da çalıştır. Proje iOS 17 ve üstünü hedefler. Apple Sağlık özelliklerini kullanmak için kullanıcıdan ilgili veri türlerine izin alınır; bu izin isteğe bağlıdır.
 
 Uygulama gömülü web sayfası kullanmaz. Profil, aktiviteler, rotalar, istatistikler, ekipman, segmentler, fotoğraflar ve yapay zekâ koçu SwiftUI ile native olarak gösterilir. Her kullanıcı kendi Strava OAuth girişiyle tanınır. Mobil erişim anahtarı iPhone Keychain'de, Strava yenileme anahtarı Cloudflare KV'de tutulur. Su miktarı kullanıcı tarafından uygulamadaki hızlı ekleme düğmeleriyle kaydedilir.
 

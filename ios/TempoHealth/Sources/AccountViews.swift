@@ -362,10 +362,22 @@ private struct AccountFormView: View {
                     .font(.subheadline)
 
                     if mode == .signUp {
-                        Text("Devam ederek hesap ve gizlilik koşullarını kabul etmiş olursun.")
-                            .font(.caption2)
-                            .foregroundStyle(TempoTheme.secondary)
-                            .multilineTextAlignment(.center)
+                        VStack(spacing: 6) {
+                            Text("Hesap oluşturarak bu belgeleri kabul edersin.")
+                                .font(.caption2)
+                                .foregroundStyle(TempoTheme.secondary)
+                                .multilineTextAlignment(.center)
+                            HStack(spacing: 12) {
+                                Link(destination: URL(string: "https://apitempo.com/privacy")!) {
+                                    Text("Gizlilik Politikası".tempoLocalized)
+                                }
+                                Link(destination: URL(string: "https://apitempo.com/terms")!) {
+                                    Text("Kullanım Koşulları".tempoLocalized)
+                                }
+                            }
+                            .font(.caption.weight(.semibold))
+                            .tint(TempoTheme.green)
+                        }
                     }
                 }
                 .padding(.horizontal, 21)
@@ -1024,6 +1036,7 @@ struct AccountSettingsScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var displayName = ""
     @State private var username = ""
     @State private var selectedSports = Set<TempoSportChoice>()
@@ -1033,6 +1046,7 @@ struct AccountSettingsScreen: View {
     @State private var photoError = ""
     @State private var loaded = false
     @State private var confirmDelete = false
+    @State private var showStravaRevocationNotice = false
     @State private var isEditingProfile = false
     @State private var isEditingSports = false
     @State private var showAccountActions = false
@@ -1222,13 +1236,26 @@ struct AccountSettingsScreen: View {
                 Task {
                     if await account.deleteAccount() {
                         model.clearLocalStateAfterAccountDeletion()
-                        dismiss()
+                        if account.stravaRevocationFailed {
+                            showStravaRevocationNotice = true
+                        } else {
+                            dismiss()
+                        }
                     }
                 }
             }
             Button("Vazgeç", role: .cancel) {}
         } message: {
-            Text("Profilin ve spor tercihlerin silinir. Bu işlem geri alınamaz.")
+            Text("Profilin, sağlık özetlerin, arkadaşlıkların, yarışmaların ve cihazındaki antrenman kayıtların silinir. Bu işlem geri alınamaz.")
+        }
+        .alert("Strava iznini ayrıca kaldır", isPresented: $showStravaRevocationNotice) {
+            Button("Strava ayarlarını aç") {
+                openURL(URL(string: "https://www.strava.com/settings/apps")!)
+                dismiss()
+            }
+            Button("Kapat", role: .cancel) { dismiss() }
+        } message: {
+            Text("Tempo hesabın ve Tempo’da saklanan verilerin silindi. Strava yetkisi otomatik iptal edilemedi; Strava’nın bağlı uygulamalar ayarından Tempo erişimini kaldır.")
         }
     }
 

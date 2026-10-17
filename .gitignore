@@ -6,3 +6,8 @@ node_modules/
 !.env.example
 work/
 .tmp-testflight/
+/remote-main/
+.artifact-check/
+*.ipa
+*.mobileprovision
+*.p12

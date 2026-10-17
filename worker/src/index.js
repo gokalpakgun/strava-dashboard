@@ -1,12 +1,15 @@
 import { accountContext, handleAccountRequest, handlePasswordResetPage } from "./account.js";
 import { handleAccountHealth, handleSportsChat } from "./sports-chat.js";
 import { handleSocialRequest } from "./social.js";
+import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const SESSION_COOKIE = "tempo_session";
 const STATE_COOKIE = "tempo_oauth_state";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 const MOBILE_TOKEN_SECONDS = 60 * 60 * 24 * 100;
 const MOBILE_CALLBACK_SCHEME = "tempohealth";
+const stravaRefreshInFlight = new Map();
+const dashboardInFlight = new Map();
 
 export default {
   async fetch(request, env, ctx) {
@@ -45,7 +48,12 @@ export default {
         return json({ ok: true, service: "tempo-mobile" });
       }
       if (url.pathname === "/privacy" && request.method === "GET") {
-        return env.ASSETS.fetch(new Request(new URL("/privacy.html", url), request));
+        const page = preferredLegalLanguage(request) === "en" ? "/privacy-en.html" : "/privacy.html";
+        return withStaticSecurityHeaders(await env.ASSETS.fetch(new Request(new URL(page, url), request)));
+      }
+      if (url.pathname === "/terms" && request.method === "GET") {
+        const page = preferredLegalLanguage(request) === "en" ? "/terms-en.html" : "/terms.html";
+        return withStaticSecurityHeaders(await env.ASSETS.fetch(new Request(new URL(page, url), request)));
       }
       if (isStravaWebhookPath(url, env) && request.method === "GET") {
         return verifyStravaWebhook(url, env);
@@ -117,7 +125,7 @@ export default {
       if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
         return json({ error: "Not found" }, 404);
       }
-      return env.ASSETS.fetch(request);
+      return withStaticSecurityHeaders(await env.ASSETS.fetch(request));
     } catch (error) {
       console.error("Tempo Worker request failed:", error?.message || "unknown error");
       if (url.pathname.startsWith("/api/")) {
@@ -131,11 +139,35 @@ export default {
   },
 };
 
+function withStaticSecurityHeaders(response) {
+  const headers = new Headers(response.headers);
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
+  headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function preferredLegalLanguage(request) {
+  const supported = new Set(["en", "tr"]);
+  const candidates = (request.headers.get("Accept-Language") || "")
+    .split(",")
+    .map((part, index) => {
+      const [tag = "", quality = ""] = part.trim().split(";");
+      const language = tag.trim().toLowerCase().split("-")[0];
+      const match = quality.trim().match(/^q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/i);
+      return { language, quality: match ? Number(match[1]) : 1, index };
+    })
+    .filter(item => supported.has(item.language) && item.quality > 0)
+    .sort((left, right) => right.quality - left.quality || left.index - right.index);
+  return candidates[0]?.language || "tr";
+}
+
 async function startAuthorization(url, env) {
   requireBindings(env);
-  const state = randomToken();
   const sessionId = randomToken();
-  await env.TOKEN_STORE.put(`state:${state}`, sessionId, { expirationTtl: 600 });
+  const state = await sealOAuthState(env, { flow: "web", sessionId });
   const redirectUri = `${url.origin}/auth/callback`;
   const authorize = new URL("https://www.strava.com/oauth/authorize");
   authorize.search = new URLSearchParams({
@@ -151,6 +183,7 @@ async function startAuthorization(url, env) {
     headers: {
       Location: authorize.toString(),
       "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
       "Set-Cookie": cookie(STATE_COOKIE, state, 600, "/auth/callback"),
     },
   });
@@ -158,7 +191,7 @@ async function startAuthorization(url, env) {
 
 async function completeAuthorization(request, url, env) {
   requireBindings(env);
-  const state = url.searchParams.get("state");
+  const state = url.searchParams.get("state") || "";
   const code = url.searchParams.get("code");
   const stateCookie = readCookie(request, STATE_COOKIE);
   if (!state || !code || !stateCookie || state !== stateCookie) {
@@ -167,14 +200,14 @@ async function completeAuthorization(request, url, env) {
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
-  const sessionId = await env.TOKEN_STORE.get(`state:${state}`);
-  if (!sessionId) {
+  const oauthState = await openOAuthState(env, state);
+  const sessionId = oauthState?.flow === "web" ? oauthState.sessionId : "";
+  if (!/^[a-f0-9]{64}$/i.test(sessionId)) {
     return new Response("Bağlantı isteğinin süresi doldu. Lütfen yeniden deneyin.", {
       status: 400,
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
-  await env.TOKEN_STORE.delete(`state:${state}`);
 
   const tokens = await stravaToken({
     client_id: env.STRAVA_CLIENT_ID,
@@ -184,11 +217,14 @@ async function completeAuthorization(request, url, env) {
   });
   await env.TOKEN_STORE.put(`session:${sessionId}`, JSON.stringify({
     refresh_token: tokens.refresh_token,
+    access_token: tokens.access_token,
+    expires_at: Number(tokens.expires_at) || 0,
     athlete_id: tokens.athlete?.id ?? null,
   }), { expirationTtl: SESSION_SECONDS });
   if (tokens.athlete?.id) await rememberWebSession(env, tokens.athlete.id, sessionId);
 
   const headers = new Headers({ Location: `${url.origin}/?connected=1`, "Cache-Control": "no-store" });
+  headers.set("Referrer-Policy", "no-referrer");
   headers.append("Set-Cookie", cookie(SESSION_COOKIE, sessionId, SESSION_SECONDS, "/"));
   headers.append("Set-Cookie", cookie(STATE_COOKIE, "", 0, "/auth/callback"));
   return new Response(null, {
@@ -205,20 +241,10 @@ async function getActivities(request, env) {
   const saved = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
   if (!saved?.refresh_token) return json({ error: "Strava bağlantısı gerekli" }, 401);
 
-  const tokens = await stravaToken({
-    client_id: env.STRAVA_CLIENT_ID,
-    client_secret: env.STRAVA_CLIENT_SECRET,
-    grant_type: "refresh_token",
-    refresh_token: saved.refresh_token,
-  });
-  await env.TOKEN_STORE.put(`session:${sessionId}`, JSON.stringify({
-    refresh_token: tokens.refresh_token,
-    athlete_id: saved.athlete_id,
-  }), { expirationTtl: SESSION_SECONDS });
-  if (saved.athlete_id) await rememberWebSession(env, saved.athlete_id, sessionId);
+  const accessToken = await stravaAccessToken(env, `session:${sessionId}`, saved, SESSION_SECONDS);
 
   const response = await fetch("https://www.strava.com/api/v3/athlete/activities?per_page=100", {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {
     console.error("Strava activities request failed with status:", response.status);
@@ -267,10 +293,9 @@ async function getMobileContext(request, env) {
   if (!athleteId) return { response: json({ error: "Uygulama bağlantısının süresi doldu. Strava ile yeniden giriş yap." }, 401) };
   const saved = await env.TOKEN_STORE.get(`mobile-strava:${athleteId}`, "json");
   if (!saved?.refresh_token) return { response: json({ error: "Strava bağlantısını uygulamadan bir kez yenile." }, 401) };
-  await Promise.all([
-    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-  ]);
+  // Mobile sessions have a fixed 100-day lifetime. Do not refresh their KV
+  // keys on each API request: dashboard, Health and water loads can run in
+  // parallel and KV rejects repeated writes to the same key within a second.
   return { athleteId, tokenHash, saved };
 }
 
@@ -278,21 +303,21 @@ async function buildDashboard(env, { sessionKey, cacheKey, saved, sessionTtl }) 
   const cached = await env.TOKEN_STORE.get(cacheKey, "json");
   if (cached) return json(cached);
 
-  const tokens = await stravaToken({
-    client_id: env.STRAVA_CLIENT_ID,
-    client_secret: env.STRAVA_CLIENT_SECRET,
-    grant_type: "refresh_token",
-    refresh_token: saved.refresh_token,
-  });
-  await env.TOKEN_STORE.put(sessionKey, JSON.stringify({
-    refresh_token: tokens.refresh_token,
-    athlete_id: tokens.athlete?.id ?? saved.athlete_id,
-  }), { expirationTtl: sessionTtl });
-  if (sessionKey.startsWith("session:") && (tokens.athlete?.id ?? saved.athlete_id)) {
-    await rememberWebSession(env, tokens.athlete?.id ?? saved.athlete_id, sessionKey.slice("session:".length));
-  }
+  const inFlight = dashboardInFlight.get(cacheKey);
+  if (inFlight) return (await inFlight).clone();
 
-  const headers = { Authorization: `Bearer ${tokens.access_token}` };
+  const pending = buildDashboardUncached(env, { sessionKey, cacheKey, saved, sessionTtl });
+  dashboardInFlight.set(cacheKey, pending);
+  try {
+    return (await pending).clone();
+  } finally {
+    if (dashboardInFlight.get(cacheKey) === pending) dashboardInFlight.delete(cacheKey);
+  }
+}
+
+async function buildDashboardUncached(env, { sessionKey, cacheKey, saved, sessionTtl }) {
+  const accessToken = await stravaAccessToken(env, sessionKey, saved, sessionTtl);
+  const headers = { Authorization: `Bearer ${accessToken}` };
   const [athleteResponse, segmentsResponse] = await Promise.all([
     fetch("https://www.strava.com/api/v3/athlete", { headers }),
     fetch("https://www.strava.com/api/v3/segments/starred?per_page=100", { headers }),
@@ -660,8 +685,7 @@ async function startMobileAuthorization(url, env) {
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
-  const state = randomToken();
-  await env.TOKEN_STORE.put(`mobile-oauth-state:${state}`, JSON.stringify({ codeChallenge }), { expirationTtl: 600 });
+  const state = await sealOAuthState(env, { flow: "mobile", codeChallenge });
   const authorize = new URL("https://www.strava.com/oauth/authorize");
   authorize.search = new URLSearchParams({
     client_id: env.STRAVA_CLIENT_ID,
@@ -681,20 +705,19 @@ async function completeMobileAuthorization(url, env) {
   requireBindings(env);
   const state = url.searchParams.get("state") || "";
   const code = url.searchParams.get("code") || "";
-  if (!/^[a-f0-9]{64}$/i.test(state) || !code) {
+  if (!/^[A-Za-z0-9_-]{40,512}$/.test(state) || !code) {
     return new Response("Bağlantı isteği geçersiz veya süresi dolmuş. Tempo uygulamasından yeniden dene.", {
       status: 400,
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
-  const oauthState = await env.TOKEN_STORE.get(`mobile-oauth-state:${state}`, "json");
-  if (!oauthState?.codeChallenge) {
+  const oauthState = await openOAuthState(env, state);
+  if (oauthState?.flow !== "mobile" || !/^[A-Za-z0-9_-]{43}$/.test(oauthState.codeChallenge || "")) {
     return new Response("Bağlantı isteği geçersiz veya süresi dolmuş. Tempo uygulamasından yeniden dene.", {
       status: 400,
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
-  await env.TOKEN_STORE.delete(`mobile-oauth-state:${state}`);
   const tokens = await stravaToken({
     client_id: env.STRAVA_CLIENT_ID,
     client_secret: env.STRAVA_CLIENT_SECRET,
@@ -708,6 +731,8 @@ async function completeMobileAuthorization(url, env) {
     athleteId: String(athleteId),
     codeChallenge: oauthState.codeChallenge,
     refreshToken: tokens.refresh_token,
+    accessToken: tokens.access_token,
+    expiresAt: Number(tokens.expires_at) || 0,
   }), { expirationTtl: 300 });
   return new Response(null, {
     status: 302,
@@ -775,10 +800,10 @@ async function exchangeMobileTicket(request, env) {
   requireBindings(env);
   let input;
   try {
-    const body = await request.text();
-    if (body.length > 1024) return json({ error: "İstek çok büyük." }, 413);
+    const body = await readLimitedText(request, 1024);
     input = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "İstek çok büyük." }, 413);
     return json({ error: "Bağlantı kodu okunamadı." }, 400);
   }
   const ticket = typeof input?.ticket === "string" ? input.ticket : "";
@@ -820,6 +845,8 @@ async function exchangeMobileTicket(request, env) {
     env.TOKEN_STORE.put(`mobile-link-for:${athleteKey}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
     env.TOKEN_STORE.put(`mobile-strava:${athleteKey}`, JSON.stringify({
       refresh_token: ticketData.refreshToken,
+      access_token: ticketData.accessToken,
+      expires_at: ticketData.expiresAt,
       athlete_id: athleteKey,
     }), { expirationTtl: MOBILE_TOKEN_SECONDS }),
     env.TOKEN_STORE.put(ticketKey, JSON.stringify({ ...ticketData, token }), { expirationTtl: 300 }),
@@ -848,26 +875,15 @@ async function logoutMobile(request, env) {
   const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
   if (!athleteId) return json({ ok: true });
   const linkedHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`);
-  const accountId = await env.TOKEN_STORE.get(`strava-account:${athleteId}`);
   const saved = await env.TOKEN_STORE.get(`mobile-strava:${athleteId}`, "json");
-  if (linkedHash === tokenHash && saved?.refresh_token) {
-    const revoked = await revokeStravaRefreshToken(env, saved.refresh_token);
-    if (!revoked) return json({ error: "Strava bağlantısı güvenli biçimde kaldırılamadı. İnternet bağlantını kontrol edip yeniden dene." }, 502);
-  }
-  const deletes = [env.TOKEN_STORE.delete(`mobile-session:${tokenHash}`)];
+  let stravaRevoked = true;
   if (linkedHash === tokenHash) {
-    deletes.push(
-      env.TOKEN_STORE.delete(`mobile-link-for:${athleteId}`),
-      env.TOKEN_STORE.delete(`strava-account:${athleteId}`),
-      ...(accountId ? [env.TOKEN_STORE.delete(`account-strava:${accountId}`)] : []),
-      env.TOKEN_STORE.delete(`mobile-strava:${athleteId}`),
-      env.TOKEN_STORE.delete(`mobile-dashboard:v3:${athleteId}`),
-      env.TOKEN_STORE.delete(`health-water-athlete:${athleteId}`),
-      env.TOKEN_STORE.delete(`mobile-health:${athleteId}`),
-    );
+    if (saved?.refresh_token) stravaRevoked = await revokeStravaRefreshToken(env, saved.refresh_token);
+    await clearStravaAthleteData(env, athleteId);
+  } else {
+    await env.TOKEN_STORE.delete(`mobile-session:${tokenHash}`);
   }
-  await Promise.all(deletes);
-  return json({ ok: true });
+  return json({ ok: true, stravaRevoked });
 }
 
 async function revokeStravaRefreshToken(env, refreshToken) {
@@ -897,10 +913,6 @@ async function getMobileWater(request, env) {
   const athleteId = await env.TOKEN_STORE.get(`mobile-session:${tokenHash}`);
   if (!athleteId) return json({ error: "Uygulama bağlantısının süresi doldu. Strava ile yeniden giriş yap." }, 401);
   const totals = await env.TOKEN_STORE.get(`health-water-athlete:${athleteId}`, "json") || {};
-  await Promise.all([
-    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-  ]);
   return json({ totals });
 }
 
@@ -919,10 +931,10 @@ async function syncMobileHealth(request, env) {
 
   let input;
   try {
-    const body = await request.text();
-    if (body.length > 65536) return json({ error: "Sağlık verisi isteği çok büyük." }, 413);
+    const body = await readLimitedText(request, 65_536);
     input = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "Sağlık verisi isteği çok büyük." }, 413);
     return json({ error: "Sağlık verileri okunamadı." }, 400);
   }
   if (!input?.days || typeof input.days !== "object" || Array.isArray(input.days) || Object.keys(input.days).length > 92) {
@@ -1010,10 +1022,10 @@ async function addMobileWater(request, env) {
 
   let input;
   try {
-    const body = await request.text();
-    if (body.length > 1024) return json({ error: "İstek çok büyük." }, 413);
+    const body = await readLimitedText(request, 1024);
     input = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "İstek çok büyük." }, 413);
     return json({ error: "Su miktarı okunamadı." }, 400);
   }
 
@@ -1038,8 +1050,6 @@ async function addMobileWater(request, env) {
   totals[day] = totalMl;
   await Promise.all([
     env.TOKEN_STORE.put(totalsKey, JSON.stringify(totals), { expirationTtl: 60 * 60 * 24 * 100 }),
-    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
   ]);
   return json({ ok: true, totalMl });
 }
@@ -1054,10 +1064,10 @@ async function syncMobileWater(request, env) {
 
   let input;
   try {
-    const body = await request.text();
-    if (body.length > 16384) return json({ error: "İstek çok büyük." }, 413);
+    const body = await readLimitedText(request, 16_384);
     input = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "İstek çok büyük." }, 413);
     return json({ error: "Su toplamları okunamadı." }, 400);
   }
   const incoming = input?.totals;
@@ -1085,13 +1095,9 @@ async function syncMobileWater(request, env) {
   const totals = Object.keys(clean).length ? await env.TOKEN_STORE.get(totalsKey, "json") || {} : {};
   Object.assign(totals, clean);
   for (const savedDay of Object.keys(totals)) if (savedDay < minDay) delete totals[savedDay];
-  const writes = [
-    env.TOKEN_STORE.put(`mobile-session:${tokenHash}`, athleteId, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-    env.TOKEN_STORE.put(`mobile-link-for:${athleteId}`, tokenHash, { expirationTtl: MOBILE_TOKEN_SECONDS }),
-  ];
-  writes.push(Object.keys(clean).length
+  const writes = [Object.keys(clean).length
     ? env.TOKEN_STORE.put(totalsKey, JSON.stringify(totals), { expirationTtl: 60 * 60 * 24 * 100 })
-    : env.TOKEN_STORE.delete(totalsKey));
+    : env.TOKEN_STORE.delete(totalsKey)];
   await Promise.all(writes);
   return json({ ok: true, syncedDays: Object.keys(clean).length });
 }
@@ -1183,10 +1189,10 @@ async function syncWaterTotal(request, env) {
 
   let input;
   try {
-    const body = await request.text();
-    if (body.length > 2048) return json({ error: "İstek çok büyük." }, 413);
+    const body = await readLimitedText(request, 2048);
     input = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "İstek çok büyük." }, 413);
     return json({ error: "Günlük su toplamı okunamadı." }, 400);
   }
 
@@ -1247,22 +1253,26 @@ function readBearerToken(request) {
 async function logout(request, env) {
   requireBindings(env);
   const sessionId = readCookie(request, SESSION_COOKIE);
+  let stravaRevoked = true;
   if (sessionId) {
     const saved = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
-    const waterHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
-    await Promise.all([
-      env.TOKEN_STORE.delete(`session:${sessionId}`),
-      env.TOKEN_STORE.delete(`dashboard:v2:${sessionId}`),
-      env.TOKEN_STORE.delete(`health-water-link:${waterHash || ""}`),
-      env.TOKEN_STORE.delete(`health-water-link-for:${sessionId}`),
-      env.TOKEN_STORE.delete(`health-water:${sessionId}`),
-    ]);
-    if (saved?.athlete_id) await forgetWebSession(env, saved.athlete_id, sessionId);
+    if (saved?.athlete_id) {
+      if (saved.refresh_token) stravaRevoked = await revokeStravaRefreshToken(env, saved.refresh_token);
+      await clearStravaAthleteData(env, saved.athlete_id);
+    } else {
+      const waterHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
+      await Promise.all([
+        env.TOKEN_STORE.delete(`session:${sessionId}`),
+        env.TOKEN_STORE.delete(`dashboard:v2:${sessionId}`),
+        env.TOKEN_STORE.delete(`health-water-link:${waterHash || ""}`),
+        env.TOKEN_STORE.delete(`health-water-link-for:${sessionId}`),
+        env.TOKEN_STORE.delete(`health-water:${sessionId}`),
+      ]);
+    }
   }
-  return new Response(null, {
-    status: 204,
-    headers: { "Cache-Control": "no-store", "Set-Cookie": cookie(SESSION_COOKIE, "", 0, "/") },
-  });
+  const response = json({ ok: true, stravaRevoked });
+  response.headers.append("Set-Cookie", cookie(SESSION_COOKIE, "", 0, "/"));
+  return response;
 }
 
 function isStravaWebhookPath(url, env) {
@@ -1287,10 +1297,10 @@ async function receiveStravaWebhook(request, env, ctx) {
   }
   let event;
   try {
-    const body = await request.text();
-    if (body.length > 8192) return json({ error: "Webhook isteği çok büyük." }, 413);
+    const body = await readLimitedText(request, 8192);
     event = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "Webhook isteği çok büyük." }, 413);
     return json({ error: "Webhook isteği geçersiz." }, 400);
   }
   const ownerId = String(event?.owner_id ?? "");
@@ -1397,11 +1407,67 @@ async function stravaToken(fields) {
     body: new URLSearchParams(fields),
   });
   if (!response.ok) {
-    const details = (await response.text()).slice(0, 1000);
-    console.error("Strava token request failed:", response.status, details);
+    console.error("Strava token request failed with status:", response.status);
     throw new Error(`Strava token request failed (${response.status})`);
   }
   return response.json();
+}
+
+async function stravaAccessToken(env, sessionKey, saved, sessionTtl) {
+  const now = Math.floor(Date.now() / 1000);
+  if (saved?.access_token && Number(saved.expires_at) > now + 60) return saved.access_token;
+
+  const pending = stravaRefreshInFlight.get(sessionKey);
+  if (pending) return pending;
+
+  const refresh = (async () => {
+    let current = await env.TOKEN_STORE.get(sessionKey, "json") || saved;
+    const currentExpiry = Number(current?.expires_at) || 0;
+    if (current?.access_token && currentExpiry > Math.floor(Date.now() / 1000) + 60) {
+      return current.access_token;
+    }
+    if (!current?.refresh_token) throw new Error("Strava refresh token is missing");
+
+    let tokens;
+    try {
+      tokens = await stravaToken({
+        client_id: env.STRAVA_CLIENT_ID,
+        client_secret: env.STRAVA_CLIENT_SECRET,
+        grant_type: "refresh_token",
+        refresh_token: current.refresh_token,
+      });
+    } catch (error) {
+      // Another Worker instance may have rotated the token at the same time.
+      await new Promise(resolve => setTimeout(resolve, 120));
+      current = await env.TOKEN_STORE.get(sessionKey, "json") || current;
+      const racedExpiry = Number(current?.expires_at) || 0;
+      if (current?.access_token && racedExpiry > Math.floor(Date.now() / 1000) + 60) {
+        return current.access_token;
+      }
+      if (!current?.refresh_token || current.refresh_token === saved?.refresh_token) throw error;
+      tokens = await stravaToken({
+        client_id: env.STRAVA_CLIENT_ID,
+        client_secret: env.STRAVA_CLIENT_SECRET,
+        grant_type: "refresh_token",
+        refresh_token: current.refresh_token,
+      });
+    }
+
+    const updated = {
+      ...current,
+      refresh_token: tokens.refresh_token || current.refresh_token,
+      access_token: tokens.access_token,
+      expires_at: Number(tokens.expires_at) || 0,
+    };
+    await env.TOKEN_STORE.put(sessionKey, JSON.stringify(updated), { expirationTtl: sessionTtl });
+    return updated.access_token;
+  })();
+  stravaRefreshInFlight.set(sessionKey, refresh);
+  try {
+    return await refresh;
+  } finally {
+    if (stravaRefreshInFlight.get(sessionKey) === refresh) stravaRefreshInFlight.delete(sessionKey);
+  }
 }
 
 function requireBindings(env) {
@@ -1424,6 +1490,45 @@ function json(value, status = 200) {
 function randomToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sealOAuthState(env, value) {
+  const label = "Tempo Strava OAuth state v1";
+  const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${label}:${env.STRAVA_CLIENT_SECRET}`));
+  const key = await crypto.subtle.importKey("raw", keyDigest, "AES-GCM", false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const payload = new TextEncoder().encode(JSON.stringify({ ...value, expiresAt: Math.floor(Date.now() / 1000) + 600 }));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: new TextEncoder().encode(label) }, key, payload));
+  const envelope = new Uint8Array(iv.length + ciphertext.length);
+  envelope.set(iv);
+  envelope.set(ciphertext, iv.length);
+  let binary = "";
+  for (const byte of envelope) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function openOAuthState(env, value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{40,512}$/.test(value)) return null;
+  try {
+    const label = "Tempo Strava OAuth state v1";
+    const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${label}:${env.STRAVA_CLIENT_SECRET}`));
+    const key = await crypto.subtle.importKey("raw", keyDigest, "AES-GCM", false, ["decrypt"]);
+    const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
+    const binary = atob(base64);
+    if (binary.length < 28) return null;
+    const envelope = Uint8Array.from(binary, character => character.charCodeAt(0));
+    const plaintext = await crypto.subtle.decrypt({
+      name: "AES-GCM",
+      iv: envelope.slice(0, 12),
+      additionalData: new TextEncoder().encode(label),
+    }, key, envelope.slice(12));
+    const payload = JSON.parse(new TextDecoder().decode(plaintext));
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isInteger(payload?.expiresAt) || payload.expiresAt <= now || payload.expiresAt > now + 600) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 function readCookie(request, name) {

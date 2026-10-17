@@ -1,4 +1,5 @@
 import { accountContext } from "./account.js";
+import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const MAX_FRIENDS = 100;
 const MAX_PENDING = 50;
@@ -25,12 +26,17 @@ export async function handleSocialRequest(request, env, url) {
 export async function deleteSocialAccount(env, userId) {
   const state = await readState(env, userId);
   const related = new Set([...state.incoming, ...state.outgoing]);
-  await Promise.all(state.friends.map(async friendId => {
-    const friendState = await readState(env, friendId);
-    friendState.friends = friendState.friends.filter(id => id !== userId);
-    friendState.incoming = friendState.incoming.filter(id => !related.has(id));
-    friendState.outgoing = friendState.outgoing.filter(id => !related.has(id));
-    await saveState(env, friendId, friendState);
+  const requests = await Promise.all([...related].map(id => loadRequest(env, id)));
+  const affectedUsers = new Set([
+    ...state.friends,
+    ...requests.flatMap(record => record ? [record.from, record.to] : []),
+  ]);
+  await Promise.all([...affectedUsers].filter(id => id && id !== userId).map(async otherId => {
+    const otherState = await readState(env, otherId);
+    otherState.friends = otherState.friends.filter(id => id !== userId);
+    otherState.incoming = otherState.incoming.filter(id => !related.has(id));
+    otherState.outgoing = otherState.outgoing.filter(id => !related.has(id));
+    await saveState(env, otherId, otherState);
   }));
   await Promise.all([...related].map(id => env.TOKEN_STORE.delete("social-request:" + id)));
   await Promise.all(state.challenges.map(async id => {
@@ -131,12 +137,9 @@ async function respondToFriendRequest(request, env, user) {
     if (mine.friends.length >= MAX_FRIENDS || theirs.friends.length >= MAX_FRIENDS) return json({ error: "Arkadaş listesi sınırına ulaşıldı." }, 409);
     if (!mine.friends.includes(record.from)) mine.friends.unshift(record.from);
     if (!theirs.friends.includes(user.id)) theirs.friends.unshift(user.id);
-    record.status = "accepted";
-  } else {
-    record.status = "declined";
   }
-  record.updatedAt = new Date().toISOString();
-  await Promise.all([env.TOKEN_STORE.put(key, JSON.stringify(record), { expirationTtl: 60 * 60 * 24 * 90 }), saveState(env, user.id, mine), saveState(env, record.from, theirs)]);
+  // Once both indexes have been updated, the request record is no longer needed.
+  await Promise.all([env.TOKEN_STORE.delete(key), saveState(env, user.id, mine), saveState(env, record.from, theirs)]);
   return json({ ok: true });
 }
 
@@ -285,12 +288,14 @@ function normalizeUsername(value) {
 
 async function readBody(request, maximum) {
   try {
-    const text = await request.text();
-    if (text.length > maximum) return { error: json({ error: "İstek çok büyük." }, 413) };
+    const text = await readLimitedText(request, maximum);
     const value = JSON.parse(text);
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid");
     return { value };
-  } catch { return { error: json({ error: "İstek bilgileri okunamadı." }, 400) }; }
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return { error: json({ error: "İstek çok büyük." }, 413) };
+    return { error: json({ error: "İstek bilgileri okunamadı." }, 400) };
+  }
 }
 
 function json(value, status = 200) {

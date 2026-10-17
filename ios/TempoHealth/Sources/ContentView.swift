@@ -36,7 +36,8 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .task(id: account.isAuthenticated) {
             guard account.isAuthenticated else { return }
-            await model.restoreConnectionIfNeeded(accountToken: account.authorizationToken)
+            model.setTempoAccount(account.profile?.id)
+            await model.restoreConnectionIfNeeded(accountToken: account.authorizationToken, accountId: account.profile?.id)
         }
         .task(id: account.profile?.id) {
             model.setTempoAccount(account.profile?.id)
@@ -223,6 +224,20 @@ private struct WelcomeScreen: View {
                     .padding(.top, 14)
 
                     ConnectedAppsCard()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Strava’ya devam ederek Tempo’nun Strava OAuth/API üzerinden profil bilgilerini (konum ve kilo dâhil), aktivitelerini, ekipmanını, favori segmentlerini, aktivite fotoğraflarını ve GPS rotalarını almasına izin verirsin. İzin verdiğin özel aktiviteler de dâhil olabilir. Veriler yalnızca sana ait Tempo panelinde gösterilir; Koç’a veya arkadaşlarına aktarılmaz. Bağlantıyı Tempo’dan veya Strava ayarlarından kesebilir, Tempo hesabını silerek Tempo’daki verilerini silebilirsin. Silme tamamlanınca uygulama onay gösterir.".tempoLocalized)
+                            .font(.caption2)
+                            .foregroundStyle(TempoTheme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 14) {
+                            Link("Gizlilik Politikası".tempoLocalized, destination: URL(string: "https://apitempo.com/privacy")!)
+                            Link("Kullanım Koşulları".tempoLocalized, destination: URL(string: "https://apitempo.com/terms")!)
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .tint(TempoTheme.green)
+                    }
+                    .padding(.horizontal, 2)
 
                     Button(action: model.connectStrava) {
                         HStack(spacing: 12) {
@@ -1666,6 +1681,8 @@ private struct SocialScreen: View {
                     Label("Birlikte, kendi ritminizde", systemImage: "person.2.fill").font(.headline).foregroundStyle(TempoTheme.green)
                     Text("Arkadaşını kullanıcı adıyla ekle; adım veya egzersiz dakikası için haftalık yarış başlat. Skor için Apple Sağlık gerekir. Sağlık özeti paylaşımı her yarışta ayrı ayrı ve varsayılan olarak kapalıdır. Strava gerekmez.")
                         .font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Skorlar bağımsız doğrulanmaz; yarışmalar arkadaşlar arasında eğlence amaçlıdır.")
+                        .font(.caption2).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             if !model.healthSyncEnabled {
@@ -1948,8 +1965,17 @@ private struct MoreScreen: View {
                     .buttonStyle(TempoSecondaryButtonStyle())
                     .disabled(model.isBusy)
                 }
-                Link("Gizlilik bilgisi", destination: URL(string: "https://apitempo.com/privacy")!)
-                    .font(.footnote).foregroundStyle(TempoTheme.secondary).frame(maxWidth: .infinity)
+                HStack(spacing: 18) {
+                    Link(destination: URL(string: "https://apitempo.com/privacy")!) {
+                        Text("Gizlilik Politikası".tempoLocalized)
+                    }
+                    Link(destination: URL(string: "https://apitempo.com/terms")!) {
+                        Text("Kullanım Koşulları".tempoLocalized)
+                    }
+                }
+                .font(.footnote)
+                .tint(TempoTheme.secondary)
+                .frame(maxWidth: .infinity)
             }
             .refreshable { await model.reloadAll() }
             .toolbar(.hidden, for: .navigationBar)

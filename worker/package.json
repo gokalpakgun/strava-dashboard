@@ -1,7 +1,9 @@
 {
   "name": "tempo-strava-api",
   "private": true,
+  "type": "module",
   "scripts": {
+    "test": "node --test",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {

@@ -1,4 +1,5 @@
 import { accountContext } from "./account.js";
+import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const HEALTH_TTL_SECONDS = 60 * 60 * 24 * 100;
 const HEALTH_LIMITS = {
@@ -24,10 +25,10 @@ export async function handleAccountHealth(request, env) {
 
   let input;
   try {
-    const body = await request.text();
-    if (body.length > 65_536) return json({ error: "Sağlık verisi isteği çok büyük." }, 413);
+    const body = await readLimitedText(request, 65_536);
     input = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "Sağlık verisi isteği çok büyük." }, 413);
     return json({ error: "Sağlık verileri okunamadı." }, 400);
   }
   if (!input?.days || typeof input.days !== "object" || Array.isArray(input.days) || Object.keys(input.days).length > 92) {
@@ -76,10 +77,10 @@ export async function handleSportsChat(request, env) {
 
   let input;
   try {
-    const body = await request.text();
-    if (body.length > 16_000) return json({ error: "Sohbet çok uzun. Yeni bir sohbet başlat." }, 413);
+    const body = await readLimitedText(request, 16_000);
     input = JSON.parse(body);
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return json({ error: "Sohbet çok uzun. Yeni bir sohbet başlat." }, 413);
     return json({ error: "Sohbet mesajı okunamadı." }, 400);
   }
   if (!Array.isArray(input?.messages) || input.messages.length < 1 || input.messages.length > 12) {

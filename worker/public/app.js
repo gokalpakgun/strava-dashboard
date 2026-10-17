@@ -129,14 +129,19 @@ function renderDashboard(activities) {
   document.querySelectorAll('.stat-note').forEach((note) => { note.textContent = 'Son 7 günde'; });
   const goals = document.querySelectorAll('.goal-row');
   const distancePercent = Math.min(100, Math.round(distance / 48 * 100));
-  goals[0].querySelector('.goal-ring span').innerHTML = `${distancePercent}<small>%</small>`;
+  setGoalRingPercent(goals[0], distancePercent);
   goals[0].querySelector('.goal-info span').textContent = `${distance.toFixed(1)} / 48 km`;
   goals[0].querySelector('.goal-track i').style.width = `${distancePercent}%`;
   const runPercent = Math.min(100, Math.round(runs / 4 * 100));
-  goals[1].querySelector('.goal-ring span').innerHTML = `${runPercent}<small>%</small>`;
+  setGoalRingPercent(goals[1], runPercent);
   goals[1].querySelector('.goal-info span').textContent = `${runs} / 4 antrenman`;
   goals[1].querySelector('.goal-track i').style.width = `${runPercent}%`;
-  document.querySelector('.goal-tip').innerHTML = `<span>✦</span> Haftalık hedefin için <b>${Math.max(0, 48 - distance).toFixed(1)} km</b> kaldı.`;
+  const goalTip = document.querySelector('.goal-tip');
+  const goalTipIcon = document.createElement('span');
+  goalTipIcon.textContent = '✦';
+  const remainingDistance = document.createElement('b');
+  remainingDistance.textContent = `${Math.max(0, 48 - distance).toFixed(1)} km`;
+  goalTip.replaceChildren(goalTipIcon, document.createTextNode(' Haftalık hedefin için '), remainingDistance, document.createTextNode(' kaldı.'));
   drawChart(activities, weekStart);
   renderActivities(activities);
   document.querySelector('#connection-title').textContent = 'Strava bağlantısı aktif';
@@ -147,6 +152,13 @@ function renderDashboard(activities) {
   document.querySelector('#connect-button').removeAttribute('href');
   document.querySelector('#connect-button').classList.add('connected');
   document.querySelector('#disconnect-link').hidden = false;
+}
+
+function setGoalRingPercent(row, percent) {
+  const value = row.querySelector('.goal-ring span');
+  const unit = document.createElement('small');
+  unit.textContent = '%';
+  value.replaceChildren(document.createTextNode(String(percent)), unit);
 }
 
 function renderAthlete(athlete) {
@@ -535,8 +547,22 @@ updateHealthWaterControls(false);
 
 document.querySelector('#disconnect-link')?.addEventListener('click', async (event) => {
   event.preventDefault();
-  await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
-  window.location.reload();
+  const link = event.currentTarget;
+  link.setAttribute('aria-busy', 'true');
+  try {
+    const response = await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Bağlantı kaldırılamadı. Yeniden deneyin.');
+    if (result.stravaRevoked === false) {
+      showNotice('Tempo verileri silindi; Strava iznini Strava ayarlarından ayrıca kaldır.');
+      window.setTimeout(() => window.location.reload(), 2200);
+    } else {
+      window.location.reload();
+    }
+  } catch (error) {
+    link.removeAttribute('aria-busy');
+    showNotice(error.message || 'Bağlantı kaldırılamadı. Yeniden deneyin.');
+  }
 });
 
 document.querySelectorAll('.nav-item').forEach((link) => {

@@ -18,6 +18,7 @@
 		A10000000000000000000010 /* SportsExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* SportsExperience.swift */; };
 		A10000000000000000000011 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* Localizable.strings */; };
 		A10000000000000000000012 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000005 /* InfoPlist.strings */; };
+		A10000000000000000000013 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +39,7 @@
 		A20000000000000000000015 /* Turkish */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Turkish; path = tr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A20000000000000000000016 /* English */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = English; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A20000000000000000000017 /* Turkish */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Turkish; path = tr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20000000000000000000018 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@
 				A20000000000000000000011 /* TempoAccountStore.swift */,
 				A20000000000000000000012 /* AccountViews.swift */,
 				A20000000000000000000013 /* SportsExperience.swift */,
+				A20000000000000000000018 /* PrivacyInfo.xcprivacy */,
 				A40000000000000000000004 /* Localizable.strings */,
 				A40000000000000000000005 /* InfoPlist.strings */,
 				A20000000000000000000008 /* Assets.xcassets */,
@@ -116,7 +119,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A90000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000005 /* Assets.xcassets in Resources */, A10000000000000000000011 /* Localizable.strings in Resources */, A10000000000000000000012 /* InfoPlist.strings in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000005 /* Assets.xcassets in Resources */, A10000000000000000000011 /* Localizable.strings in Resources */, A10000000000000000000012 /* InfoPlist.strings in Resources */, A10000000000000000000013 /* PrivacyInfo.xcprivacy in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
