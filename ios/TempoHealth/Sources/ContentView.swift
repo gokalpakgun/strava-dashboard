@@ -399,9 +399,9 @@ private struct HomeScreen: View {
                         .buttonStyle(.plain)
                     }
                     weeklyMetrics
-                    challengeCard
-                    dailyMotivation
+                    quickActions
                     RecentActivitiesPanel(activities: dashboard.activities)
+                    dailyMotivation
                 } else {
                     LoadingDashboardCard()
                 }
@@ -423,49 +423,52 @@ private struct HomeScreen: View {
                 .blur(radius: 28)
                 .offset(x: 62, y: -78)
 
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("MERHABA, \((athlete.firstname ?? "SPORCU").uppercased())")
-                            .font(.caption.bold())
-                            .tracking(1.7)
-                            .foregroundStyle(TempoTheme.green)
-                        Text("Haftanın ritmi")
-                            .font(.system(size: 29, weight: .bold, design: .rounded))
-                        Text(progress >= 1 ? "Hedef tamamlandı. Güçlü bir hafta." : "Hedefine sakin ve istikrarlı ilerliyorsun.")
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.62))
-                    }
-                    Spacer(minLength: 12)
-                    ZStack {
-                        Circle()
-                            .stroke(.white.opacity(0.08), lineWidth: 8)
-                        Circle()
-                            .trim(from: 0, to: CGFloat(progress))
-                            .stroke(
-                                LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .top, endPoint: .bottom),
-                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                            )
-                            .rotationEffect(.degrees(-90))
-                        VStack(spacing: 1) {
-                            Text("%\(Int(progress * 100))")
-                                .font(.headline.monospacedDigit().bold())
-                            Text("HEDEF")
-                                .font(.system(size: 7, weight: .bold))
-                                .tracking(0.8)
-                                .foregroundStyle(TempoTheme.secondary)
-                        }
-                    }
-                    .frame(width: 82, height: 82)
+            VStack(alignment: .leading, spacing: 19) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("MERHABA, \((athlete.firstname ?? "SPORCU").uppercased())")
+                        .font(.caption.bold())
+                        .tracking(1.7)
+                        .foregroundStyle(TempoTheme.green)
+                    Text("Bu haftaki hareketin".tempoLocalized)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text((progress >= 1 ? "Haftalık hedefini tamamladın." : "Kendi ritminde ilerlemeye devam et.").tempoLocalized)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.66))
                 }
 
-                HStack(spacing: 8) {
-                    HomeHeroPill(icon: "figure.run", value: "\(weekActivities.count)", label: "aktivite")
-                    HomeHeroPill(icon: "point.topleft.down.to.point.bottomright.curvepath", value: TempoFormat.distance(weekDistance), label: "mesafe")
-                    HomeHeroPill(icon: "clock.fill", value: TempoFormat.duration(weekSeconds), label: "süre")
+                HStack(alignment: .lastTextBaseline, spacing: 7) {
+                    Text(TempoFormat.distance(weekDistance))
+                        .font(.system(size: 42, weight: .bold, design: .rounded).monospacedDigit())
+                        .contentTransition(.numericText())
+                    Text("/ \(Int(weeklyGoalKm)) km")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.65))
+                    Spacer(minLength: 8)
+                    Text("%\(Int(progress * 100))")
+                        .font(.headline.bold().monospacedDigit())
+                        .foregroundStyle(TempoTheme.green)
                 }
+
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.10))
+                        Capsule()
+                            .fill(LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: max(8, geometry.size.width * progress))
+                    }
+                }
+                .frame(height: 8)
+
+                HStack(spacing: 6) {
+                    Image(systemName: progress >= 1 ? "checkmark.circle.fill" : "sparkle")
+                        .foregroundStyle(TempoTheme.green)
+                    Text(progress >= 1 ? "Harika bir hafta!".tempoLocalized : "Hedefe %@ kaldı".tempoFormatted(TempoFormat.distance(max(weeklyGoalKm - weekDistance, 0))))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Spacer()
+                }
+                .font(.caption.weight(.semibold))
             }
-            .padding(21)
+            .padding(20)
         }
         .background(
             LinearGradient(
@@ -487,30 +490,19 @@ private struct HomeScreen: View {
 
     private var weeklyMetrics: some View {
         HStack(spacing: 10) {
-            MetricCard(value: TempoFormat.distance(weekDistance), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.orange)
+            MetricCard(value: "\(weekActivities.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
             MetricCard(value: TempoFormat.duration(weekSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
             MetricCard(value: "\(Int(weekElevation)) m", label: "Tırmanış", icon: "mountain.2.fill", color: TempoTheme.purple)
         }
     }
 
-    private var challengeCard: some View {
-        let progress = min(weekDistance / max(weeklyGoalKm, 1), 1)
-        return TempoCard {
-            VStack(alignment: .leading, spacing: 16) {
-                SectionHeading(title: "Haftalık hedef", caption: "MEYDAN OKUMA", padding: false)
-                HStack(spacing: 18) {
-                    ZStack {
-                        Circle().stroke(.white.opacity(0.08), lineWidth: 9)
-                        Circle().trim(from: 0, to: CGFloat(progress)).stroke(TempoTheme.orange, style: StrokeStyle(lineWidth: 9, lineCap: .round)).rotationEffect(.degrees(-90))
-                        Text("%\(Int(progress * 100))").font(.headline.bold())
-                    }
-                    .frame(width: 82, height: 82)
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("\(TempoFormat.distance(weekDistance)) / \(Int(weeklyGoalKm)) km").font(.headline)
-                        Text(progress >= 1 ? "Haftalık hedef tamamlandı." : "Hedefe \(TempoFormat.distance(max(weeklyGoalKm - weekDistance, 0))) kaldı.")
-                            .font(.subheadline).foregroundStyle(TempoTheme.secondary)
-                    }
-                }
+    private var quickActions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeading(title: "Hızlı erişim", caption: "KEŞFET", padding: false)
+            HStack(spacing: 10) {
+                HomeQuickAction(title: "Rotalar", icon: "map.fill", color: TempoTheme.green, destination: AnyView(RoutesScreen()))
+                HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
+                HomeQuickAction(title: "Tempo Koç", icon: "sparkles", color: TempoTheme.purple, destination: AnyView(CoachScreen()))
             }
         }
     }
@@ -520,27 +512,33 @@ private struct HomeScreen: View {
     }
 }
 
-private struct HomeHeroPill: View {
+private struct HomeQuickAction: View {
+    let title: String
     let icon: String
-    let value: String
-    let label: String
+    let color: Color
+    let destination: AnyView
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(TempoTheme.green)
-            Text(value)
-                .font(.subheadline.bold())
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label.tempoLocalized)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(TempoTheme.secondary)
+        NavigationLink(destination: destination) {
+            VStack(alignment: .leading, spacing: 11) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 34, height: 34)
+                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text(title.tempoLocalized)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+            .padding(12)
+            .background(TempoTheme.card.opacity(0.82), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(.white.opacity(0.065)))
+            .contentShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
         }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .buttonStyle(.plain)
     }
 }
 
@@ -707,29 +705,29 @@ private struct RecentActivitiesPanel: View {
                         HStack {
                             Image(systemName: latest.sport.symbol)
                                 .font(.title2)
-                                .foregroundStyle(.black)
+                                .foregroundStyle(TempoTheme.green)
                                 .frame(width: 48, height: 48)
-                                .background(.white.opacity(0.72), in: Circle())
+                                .background(.white.opacity(0.10), in: Circle())
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("SON AKTİVİTE")
                                     .font(.caption2.bold())
                                     .tracking(1.4)
-                                    .foregroundStyle(.black.opacity(0.52))
+                                    .foregroundStyle(TempoTheme.green)
                                 Text(latest.date.map { TempoFormat.shortDate.string(from: $0) } ?? latest.sport.title)
                                     .font(.caption)
-                                    .foregroundStyle(.black.opacity(0.68))
+                                    .foregroundStyle(.white.opacity(0.62))
                             }
                             Spacer()
                             Image(systemName: "arrow.up.right")
                                 .font(.caption.bold())
-                                .foregroundStyle(.black)
+                                .foregroundStyle(.white.opacity(0.82))
                                 .frame(width: 34, height: 34)
-                                .background(.white.opacity(0.45), in: Circle())
+                                .background(.white.opacity(0.09), in: Circle())
                         }
 
                         Text(latest.name ?? latest.sport.title)
                             .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(.white)
                             .lineLimit(2)
 
                         HStack(spacing: 18) {
@@ -740,16 +738,20 @@ private struct RecentActivitiesPanel: View {
                             }
                         }
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.black.opacity(0.7))
+                        .foregroundStyle(.white.opacity(0.74))
                     }
                     .padding(19)
                     .background(
                         LinearGradient(
-                            colors: [TempoTheme.green, TempoTheme.blue],
+                            colors: [Color(red: 0.10, green: 0.20, blue: 0.15), Color(red: 0.075, green: 0.12, blue: 0.16)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         in: RoundedRectangle(cornerRadius: 25, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 25, style: .continuous)
+                            .stroke(LinearGradient(colors: [TempoTheme.green.opacity(0.24), .white.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
                 }
                 .buttonStyle(.plain)
