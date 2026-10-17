@@ -34,7 +34,7 @@ struct SportsHubScreen: View {
                             }
                         }
 
-                        Text("HIZLI ARAÇLAR").font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green).padding(.top, 4)
+                        Text("HIZLI ARAÇLAR".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary).padding(.top, 4)
                         NavigationLink(destination: CoachScreen()) {
                             ToolCard(title: "Tempo Koç", subtitle: "Tüm spor verilerine göre kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue)
                         }
@@ -67,7 +67,7 @@ struct SportsHubScreen: View {
             .frame(width: 54, height: 54)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("SANA ÖZEL").font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+                Text("SANA ÖZEL".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                 Text("Sporlarım").font(.system(size: 27, weight: .bold, design: .rounded))
                 Text("Antrenmanların ve araçların tek yerde.")
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
@@ -260,10 +260,9 @@ private struct SportMotionArtwork: View {
 
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("ÇEVRİMDIŞI SPOR ALANI")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.45)
-                        .foregroundStyle(sport.accentColor)
+                    Text("ÇEVRİMDIŞI SPOR ALANI".tempoSentenceCased)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(TempoTheme.secondary)
                     Text(sport.title)
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                     Text(sport.offlineGuide.headline)
@@ -312,7 +311,7 @@ private struct SportOverviewSection: View {
                 VStack(alignment: .leading, spacing: 15) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("SON 7 GÜN").font(.caption.bold()).tracking(1.3).foregroundStyle(sport.accentColor)
+                            Text("SON 7 GÜN".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                             Text("Hareket ritmin").font(.title3.bold())
                         }
                         Spacer()
@@ -325,7 +324,7 @@ private struct SportOverviewSection: View {
                 .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.055)))
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("SON AKTİVİTELER").font(.caption.bold()).tracking(1.3).foregroundStyle(sport.accentColor)
+                    Text("SON AKTİVİTELER".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                     ForEach(Array(activities.prefix(4))) { activity in
                         HStack(spacing: 12) {
                             Image(systemName: sport.symbol)
@@ -626,10 +625,8 @@ private extension TempoSportChoice {
         switch self {
         case .run, .basketball: return TempoTheme.orange
         case .cycling, .swimming, .badminton: return TempoTheme.blue
-        case .fitness, .football, .walking: return TempoTheme.green
-        case .hiking, .padel: return TempoTheme.purple
-        case .tennis, .volleyball: return Color(red: 0.84, green: 0.92, blue: 0.28)
-        case .yoga: return .pink
+        case .fitness, .football, .walking, .tennis, .volleyball: return TempoTheme.green
+        case .hiking, .padel, .yoga: return TempoTheme.purple
         }
     }
 
@@ -825,7 +822,7 @@ struct NearbyFacilitiesScreen: View {
             VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 5) {
-                            Text("YAKININDA").font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+                            Text("YAKININDA".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                             Text("Spor alanları").font(.system(size: 31, weight: .bold, design: .rounded))
                         }
                         Spacer()

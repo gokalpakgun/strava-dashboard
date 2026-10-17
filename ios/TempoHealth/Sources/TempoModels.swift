@@ -8,6 +8,12 @@ extension String {
         Bundle.main.localizedString(forKey: self, value: self, table: nil)
     }
 
+    var tempoSentenceCased: String {
+        let localized = tempoLocalized.lowercased(with: .autoupdatingCurrent)
+        guard let first = localized.first else { return localized }
+        return String(first).uppercased(with: .autoupdatingCurrent) + String(localized.dropFirst())
+    }
+
     func tempoFormatted(_ arguments: CVarArg...) -> String {
         String(format: tempoLocalized, locale: .autoupdatingCurrent, arguments: arguments)
     }
@@ -92,7 +98,7 @@ struct TempoActivity: Codable, Identifiable, Hashable {
     var sport: TempoSport { TempoSport(rawValue: type ?? "") }
 }
 
-enum TempoSport: Equatable {
+enum TempoSport: Hashable {
     case run, ride, walk, hike, swim, tennis, basketball, football, volleyball, padel, badminton, yoga, workout, other
 
     init(rawValue: String) {

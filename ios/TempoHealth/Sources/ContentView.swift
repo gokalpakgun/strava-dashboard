@@ -3,14 +3,14 @@ import MapKit
 import SwiftUI
 
 enum TempoTheme {
-    static let background = Color(red: 0.025, green: 0.035, blue: 0.052)
-    static let card = Color(red: 0.055, green: 0.073, blue: 0.095)
-    static let raised = Color(red: 0.082, green: 0.105, blue: 0.132)
-    static let green = Color(red: 0.37, green: 0.94, blue: 0.56)
-    static let orange = Color(red: 1.0, green: 0.39, blue: 0.20)
-    static let blue = Color(red: 0.32, green: 0.65, blue: 1.0)
-    static let purple = Color(red: 0.71, green: 0.52, blue: 1.0)
-    static let secondary = Color.white.opacity(0.55)
+    static let background = Color(red: 0.045, green: 0.055, blue: 0.058)
+    static let card = Color(red: 0.075, green: 0.089, blue: 0.091)
+    static let raised = Color(red: 0.108, green: 0.124, blue: 0.124)
+    static let green = Color(red: 0.43, green: 0.77, blue: 0.57)
+    static let orange = Color(red: 0.91, green: 0.53, blue: 0.37)
+    static let blue = Color(red: 0.46, green: 0.68, blue: 0.72)
+    static let purple = Color(red: 0.66, green: 0.59, blue: 0.75)
+    static let secondary = Color.white.opacity(0.62)
     static let scrollBottomClearance: CGFloat = 132
 }
 
@@ -201,14 +201,14 @@ private struct WelcomeScreen: View {
                 VStack(spacing: 18) {
                     HStack(spacing: 8) {
                         Circle().fill(TempoTheme.orange).frame(width: 7, height: 7)
-                        Text("STRAVA BAĞLANTISI")
-                            .font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.secondary)
+                        Text("STRAVA BAĞLANTISI".tempoSentenceCased)
+                            .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Spacer()
                     }
                     .padding(.top, 12)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("HAREKETİNİ KEŞFET").font(.caption.bold()).tracking(1.7).foregroundStyle(TempoTheme.orange)
+                        Text("HAREKETİNİ KEŞFET".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.orange)
                         Text("Strava’yı bağla,\nritmini yakala.")
                             .font(.system(size: 36, weight: .bold, design: .rounded))
                             .tracking(-1.1)
@@ -513,9 +513,8 @@ private struct DailyMotivationCard: View {
                 .background(TempoTheme.green.opacity(0.10), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("GÜNÜN RİTMİ")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(1.25)
+                Text("GÜNÜN RİTMİ".tempoSentenceCased)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(TempoTheme.green)
                 Text(message)
                     .font(.caption.weight(.medium))
@@ -544,15 +543,25 @@ private struct DailyMotivationCard: View {
 private struct ActivitiesScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @State private var search = ""
-    @State private var selectedSport = "Tümü"
-    private let filters = ["Tümü", "Koşu", "Bisiklet", "Yürüyüş", "Tenis", "Basketbol", "Futbol", "Yüzme", "Diğer"]
+    @State private var selectedFilter = ActivityTimelineFilter.all
+
+    private var filterOptions: [ActivityTimelineFilter] {
+        let featuredSports: [TempoSport] = [.run, .ride, .walk, .tennis, .basketball, .football, .swim]
+        let presentSports = Set(allActivities.map(\.sport))
+        let additionalSports = presentSports.subtracting(Set(featuredSports))
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        return [.all]
+            + featuredSports.map(ActivityTimelineFilter.sport)
+            + additionalSports.map(ActivityTimelineFilter.sport)
+            + [.other]
+    }
 
     private var filtered: [TempoActivity] {
         (model.dashboard?.activities ?? []).filter { activity in
-            let matchesSearch = search.isEmpty || (activity.name ?? "").localizedCaseInsensitiveContains(search)
-            let sport = activity.sport.title
-            let matchesSport = selectedSport == "Tümü" || sport == selectedSport || (selectedSport == "Diğer" && !["Koşu", "Bisiklet", "Yürüyüş"].contains(sport))
-            return matchesSearch && matchesSport
+            let matchesSearch = search.isEmpty
+                || (activity.name ?? "").localizedCaseInsensitiveContains(search)
+                || activity.sport.title.localizedCaseInsensitiveContains(search)
+            return matchesSearch && selectedFilter.matches(activity)
         }
     }
 
@@ -568,23 +577,23 @@ private struct ActivitiesScreen: View {
                 SearchField(text: $search, placeholder: "Aktivite ara")
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(filters, id: \.self) { filter in
+                        ForEach(filterOptions) { filter in
                             Button {
-                                withAnimation(.snappy(duration: 0.2)) { selectedSport = filter }
+                                withAnimation(.snappy(duration: 0.2)) { selectedFilter = filter }
                             } label: {
-                                Text(filter.tempoLocalized)
+                                Text(filter.title.tempoLocalized)
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(selectedSport == filter ? .black : .white.opacity(0.78))
+                                    .foregroundStyle(selectedFilter.id == filter.id ? .black : .white.opacity(0.78))
                                     .padding(.horizontal, 14).padding(.vertical, 10)
-                                    .background(selectedSport == filter ? TempoTheme.green : .white.opacity(0.045), in: Capsule())
-                                    .overlay(Capsule().stroke(selectedSport == filter ? .clear : .white.opacity(0.08), lineWidth: 1))
+                                    .background(selectedFilter.id == filter.id ? TempoTheme.green : .white.opacity(0.045), in: Capsule())
+                                    .overlay(Capsule().stroke(selectedFilter.id == filter.id ? .clear : .white.opacity(0.08), lineWidth: 1))
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
                 HStack {
-                    Text("SON HAREKETLER").font(.caption2.bold()).tracking(1.4).foregroundStyle(TempoTheme.green)
+                    Text("SON HAREKETLER".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                     Spacer()
                     Text("%d aktivite".tempoFormatted(filtered.count)).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
                 }
@@ -604,7 +613,7 @@ private struct ActivitiesScreen: View {
     private var activitySnapshot: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("HAREKET ÖZETİ").font(.caption2.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
+                Text("HAREKET ÖZETİ".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                 Text("%d antrenman".tempoFormatted(allActivities.count))
                     .font(.title3.bold())
                 Text("Strava geçmişinden derlendi")
@@ -688,10 +697,9 @@ private struct RecentActivitiesPanel: View {
                                 .frame(width: 48, height: 48)
                                 .background(.white.opacity(0.10), in: Circle())
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("SON AKTİVİTE")
-                                    .font(.caption2.bold())
-                                    .tracking(1.4)
-                                    .foregroundStyle(TempoTheme.green)
+                                Text("SON AKTİVİTE".tempoSentenceCased)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(TempoTheme.secondary)
                                 Text(latest.date.map { TempoFormat.shortDate.string(from: $0) } ?? latest.sport.title)
                                     .font(.caption)
                                     .foregroundStyle(.white.opacity(0.62))
@@ -806,12 +814,13 @@ private struct RecentActivitiesPanel: View {
 private struct ActivityTimelineFilter: Identifiable {
     let id: String
     let title: String
+    let sport: TempoSport?
 
-    static let all = ActivityTimelineFilter(id: "all", title: "Tümü")
-    static let other = ActivityTimelineFilter(id: "other", title: "Diğer")
+    static let all = ActivityTimelineFilter(id: "all", title: "Tümü", sport: nil)
+    static let other = ActivityTimelineFilter(id: "other", title: "Diğer", sport: nil)
 
-    static func sport(_ title: String) -> ActivityTimelineFilter {
-        ActivityTimelineFilter(id: "sport:\(title)", title: title)
+    static func sport(_ sport: TempoSport) -> ActivityTimelineFilter {
+        ActivityTimelineFilter(id: "sport:\(sport)", title: sport.title, sport: sport)
     }
 
     func matches(_ activity: TempoActivity) -> Bool {
@@ -821,7 +830,8 @@ private struct ActivityTimelineFilter: Identifiable {
         case Self.other.id:
             return activity.sport != .run && activity.sport != .ride && activity.sport != .walk
         default:
-            return activity.sport.title == title
+            guard let sport else { return false }
+            return activity.sport == sport
         }
     }
 }
@@ -840,13 +850,13 @@ private struct ActivityTimelineScreen: View {
 
     private var filterOptions: [ActivityTimelineFilter] {
         let activities = model.dashboard?.activities ?? []
-        let coreTitles = Set(["Koşu".tempoLocalized, "Bisiklet".tempoLocalized, "Yürüyüş".tempoLocalized])
-        let otherSports = Set(activities.map { $0.sport.title })
-            .subtracting(coreTitles)
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        let coreSports: [TempoSport] = [.run, .ride, .walk]
+        let otherSports = Set(activities.map(\.sport))
+            .subtracting(Set(coreSports))
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
             .map(ActivityTimelineFilter.sport)
         return [.all]
-            + ["Koşu".tempoLocalized, "Bisiklet".tempoLocalized, "Yürüyüş".tempoLocalized].map(ActivityTimelineFilter.sport)
+            + coreSports.map(ActivityTimelineFilter.sport)
             + otherSports
             + [.other]
     }
@@ -908,10 +918,9 @@ private struct ActivityTimelineScreen: View {
             ScrollView {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("AKTİVİTE ARŞİVİ")
-                            .font(.caption.bold())
-                            .tracking(1.5)
-                            .foregroundStyle(TempoTheme.green)
+                        Text("AKTİVİTE ARŞİVİ".tempoSentenceCased)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(TempoTheme.secondary)
                         Text("Ritmini dönemlere göre incele.")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
 
@@ -999,7 +1008,7 @@ struct RoutesScreen: View {
                 TempoCard {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("HARİTADA GÖSTER").font(.caption2.bold()).tracking(1.4).foregroundStyle(TempoTheme.green)
+                            Text("HARİTADA GÖSTER".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                             Text(selected?.name ?? "Tüm rotalar").font(.headline).lineLimit(1)
                         }
                         Spacer()
@@ -1099,7 +1108,7 @@ struct CoachScreen: View {
 
                 TempoCard {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("DEĞERLENDİRME DÖNEMİ").font(.caption.bold()).tracking(1.2).foregroundStyle(TempoTheme.secondary)
+                        Text("DEĞERLENDİRME DÖNEMİ".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Picker("Dönem", selection: $period) {
                             ForEach(periods.indices, id: \.self) { index in Text(periods[index].1).tag(periods[index].0) }
                         }
@@ -1182,7 +1191,7 @@ private struct MoreScreen: View {
                 }
                 TempoCard {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("BAĞLANTI DURUMU").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
+                        Text("BAĞLANTI DURUMU".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Text(model.status.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
                     }
                 }
@@ -1842,9 +1851,8 @@ private struct TempoBalanceHomeCard: View {
             .frame(width: 66, height: 66)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("TEMPO DENGESİ")
-                    .font(.caption2.bold())
-                    .tracking(1.25)
+                Text("TEMPO DENGESİ".tempoSentenceCased)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(TempoTheme.green)
                 Text(balance.state.tempoLocalized).font(.headline)
                 Text(balance.recommendation.tempoLocalized)
@@ -1898,9 +1906,8 @@ private struct TempoBalanceDetailCard: View {
                     .frame(width: 112, height: 112)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("TEMPO DENGESİ")
-                            .font(.caption.bold())
-                            .tracking(1.35)
+                        Text("TEMPO DENGESİ".tempoSentenceCased)
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(TempoTheme.green)
                         Text(balance.state.tempoLocalized)
                             .font(.title2.bold())
@@ -2158,7 +2165,7 @@ private struct PageTitle: View {
     let subtitle: String
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(subtitle.tempoLocalized.uppercased()).font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+            Text(subtitle.tempoLocalized).font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.secondary)
             Text(title.tempoLocalized).font(.system(size: 31, weight: .bold, design: .rounded))
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
     }
@@ -2199,9 +2206,9 @@ private struct StravaConnectionCard: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 7) {
-                        Text("STRAVA HESABI").font(.caption2.bold()).tracking(1.2).foregroundStyle(TempoTheme.orange)
-                        Text("BAĞLI")
-                            .font(.system(size: 9, weight: .bold))
+                        Text("STRAVA HESABI".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.orange)
+                        Text("BAĞLI".tempoSentenceCased)
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(TempoTheme.green)
                             .padding(.horizontal, 7).padding(.vertical, 3)
                             .background(TempoTheme.green.opacity(0.12), in: Capsule())
@@ -2244,14 +2251,14 @@ private struct TempoCard<Content: View>: View {
                     .fill(.ultraThinMaterial)
                     .overlay {
                         RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .fill(LinearGradient(colors: [TempoTheme.card.opacity(0.88), TempoTheme.card.opacity(0.97)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .fill(TempoTheme.card.opacity(0.92))
                     }
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(LinearGradient(colors: [.white.opacity(0.13), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                    .stroke(.white.opacity(0.075), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.13), radius: 16, y: 8)
+            .shadow(color: .black.opacity(0.10), radius: 12, y: 5)
     }
 }
 
@@ -2274,8 +2281,8 @@ private struct SectionHeading: View {
     let title: String; let caption: String; var padding = true
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(caption.tempoLocalized).font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
-            Text(title.tempoLocalized).font(.title3.bold())
+            Text(caption.tempoLocalized).font(.caption2.weight(.semibold)).tracking(0.6).foregroundStyle(TempoTheme.secondary)
+            Text(title.tempoLocalized).font(.title3.weight(.semibold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, padding ? 7 : 0)

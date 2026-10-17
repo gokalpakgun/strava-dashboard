@@ -38,22 +38,22 @@ struct TempoAmbientBackground: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.035, green: 0.065, blue: 0.095),
+                        Color(red: 0.075, green: 0.088, blue: 0.083),
                         TempoTheme.background,
-                        Color(red: 0.018, green: 0.026, blue: 0.040)
+                        Color(red: 0.035, green: 0.043, blue: 0.044)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Circle()
-                    .fill(TempoTheme.green.opacity(0.17))
+                    .fill(TempoTheme.green.opacity(0.075))
                     .frame(width: proxy.size.width * 0.92)
-                    .blur(radius: 95)
+                    .blur(radius: 125)
                     .offset(x: proxy.size.width * 0.48, y: -proxy.size.height * 0.40)
                 Circle()
-                    .fill(TempoTheme.blue.opacity(0.12))
+                    .fill(TempoTheme.blue.opacity(0.045))
                     .frame(width: proxy.size.width * 0.78)
-                    .blur(radius: 90)
+                    .blur(radius: 120)
                     .offset(x: -proxy.size.width * 0.48, y: proxy.size.height * 0.38)
             }
         }
@@ -71,9 +71,8 @@ struct AccountWelcomeView: View {
                     VStack(spacing: 20) {
                         HStack(spacing: 8) {
                             Circle().fill(TempoTheme.green).frame(width: 7, height: 7)
-                            Text("HAREKET · SAĞLIK · GELİŞİM")
-                                .font(.caption2.bold())
-                                .tracking(1.5)
+                            Text("HAREKET · SAĞLIK · GELİŞİM".tempoSentenceCased)
+                                .font(.caption.weight(.medium))
                                 .foregroundStyle(TempoTheme.secondary)
                         }
                         .padding(.top, 20)
@@ -244,8 +243,8 @@ private struct AccountFormView: View {
                 VStack(spacing: 25) {
                     HStack(spacing: 8) {
                         Circle().fill(TempoTheme.green).frame(width: 7, height: 7)
-                        Text((mode == .signUp ? "YENİ HESAP" : "HESABINA DÖN").tempoLocalized)
-                            .font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+                        Text((mode == .signUp ? "YENİ HESAP" : "HESABINA DÖN").tempoSentenceCased)
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Spacer()
                     }
                     .padding(.top, 18)
@@ -708,10 +707,10 @@ struct AccountProfileCard: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("SEVİYE \(achievement.level) · \(achievement.title.uppercased())")
-                                .font(.caption.bold()).tracking(1.1).foregroundStyle(TempoTheme.green)
+                            Text("Seviye \(achievement.level) · \(achievement.title)")
+                                .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                             Spacer()
-                            Text(achievement.nextLevelXp > 0 ? "\(achievement.currentLevelXp) / \(achievement.nextLevelXp) XP" : "MAKSİMUM")
+                            Text(achievement.nextLevelXp > 0 ? "\(achievement.currentLevelXp) / \(achievement.nextLevelXp) XP" : "MAKSİMUM".tempoSentenceCased)
                                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
                         }
                         ProgressView(value: achievement.safeProgress)
@@ -800,7 +799,7 @@ struct AchievementsScreen: View {
             ScrollView {
                 VStack(spacing: 18) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("TEMPO BAŞARILARI").font(.caption.bold()).tracking(1.6).foregroundStyle(TempoTheme.green)
+                        Text("TEMPO BAŞARILARI".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Text("Seviye ve rozetlerin").font(.system(size: 31, weight: .bold, design: .rounded))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -808,7 +807,7 @@ struct AchievementsScreen: View {
                     levelCard
 
                     HStack {
-                        Text("ROZETLER").font(.caption.bold()).tracking(1.4).foregroundStyle(TempoTheme.green)
+                        Text("ROZETLER".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Spacer()
                         Text("%d / %d açıldı".tempoFormatted(achievement.unlockedBadgeCount, achievement.totalBadgeCount))
                             .font(.caption).foregroundStyle(TempoTheme.secondary)
@@ -870,7 +869,7 @@ struct AchievementsScreen: View {
                     )
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 2) {
-                    Text("SEVİYE").font(.caption2.bold()).tracking(1.3).foregroundStyle(TempoTheme.secondary)
+                    Text("SEVİYE".tempoSentenceCased).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
                     Text("\(achievement.level)").font(.system(size: 52, weight: .bold, design: .rounded))
                     Text(achievement.title).font(.caption.bold()).foregroundStyle(TempoTheme.green)
                 }
@@ -1016,7 +1015,7 @@ struct AccountSettingsScreen: View {
                         }
 
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("PROFİL BİLGİLERİ").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
+                            Text("PROFİL BİLGİLERİ".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                             AccountTextField(title: "Görünen ad", icon: "person.fill", text: $displayName, contentType: .name)
                             AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
                             if let email = account.profile?.email {
@@ -1031,7 +1030,7 @@ struct AccountSettingsScreen: View {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("SPORLARIM").font(.caption.bold()).tracking(1.3).foregroundStyle(TempoTheme.green)
+                                Text("SPORLARIM".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                                 Text("%d spor seçili".tempoFormatted(selectedSports.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
                             }
                             Spacer()
