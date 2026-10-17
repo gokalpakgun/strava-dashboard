@@ -863,9 +863,11 @@ private struct ManualWorkoutForm: View {
                 Section("Antrenman") {
                     Picker("Spor", selection: $sportId) {
                         ForEach(TempoSportChoice.allCases) { choice in
-                            Label(choice.title, systemImage: choice.symbol).tag(choice.rawValue)
+                            ManualWorkoutSportPickerOption(choice: choice)
+                                .tag(choice.rawValue)
                         }
-                        Label("Diğer", systemImage: "figure.mixed.cardio").tag("other")
+                        Label("Diğer", systemImage: "figure.mixed.cardio")
+                            .tag("other")
                     }
                     TextField("Antrenman adı (isteğe bağlı)", text: $title)
                     DatePicker("Başlangıç zamanı", selection: $startedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
@@ -944,6 +946,17 @@ private struct ManualWorkoutForm: View {
             errorTitle = "Antrenman kaydedilemedi"
             errorMessage = error.localizedDescription.tempoLocalized
             showingError = true
+        }
+    }
+}
+
+private struct ManualWorkoutSportPickerOption: View {
+    let choice: TempoSportChoice
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: choice.symbol)
+            Text(choice.title)
         }
     }
 }
