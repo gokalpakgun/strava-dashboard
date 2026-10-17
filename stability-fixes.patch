@@ -1,0 +1,668 @@
+diff --git a/.gitignore b/.gitignore
+index 363f33a..b60538e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -5,3 +5,4 @@ node_modules/
+ .env.*
+ !.env.example
+ work/
++.tmp-testflight/
+diff --git a/ios/TempoHealth/Sources/AccountViews.swift b/ios/TempoHealth/Sources/AccountViews.swift
+index 4263758..4a0f427 100644
+--- a/ios/TempoHealth/Sources/AccountViews.swift
++++ b/ios/TempoHealth/Sources/AccountViews.swift
+@@ -846,7 +846,7 @@ struct AchievementsScreen: View {
+                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+                         .frame(maxWidth: .infinity, alignment: .leading)
+                 }
+-                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 34)
++                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, TempoTheme.scrollBottomClearance)
+             }
+         }
+         .navigationTitle("Başarılar")
+@@ -1115,7 +1115,7 @@ struct AccountSettingsScreen: View {
+                 }
+                 .padding(.horizontal, 18)
+                 .padding(.top, 18)
+-                .padding(.bottom, 132)
++                .padding(.bottom, TempoTheme.scrollBottomClearance)
+             }
+             .scrollDismissesKeyboard(.interactively)
+         }
+diff --git a/ios/TempoHealth/Sources/ContentView.swift b/ios/TempoHealth/Sources/ContentView.swift
+index b52f45d..40ffc87 100644
+--- a/ios/TempoHealth/Sources/ContentView.swift
++++ b/ios/TempoHealth/Sources/ContentView.swift
+@@ -11,6 +11,7 @@ enum TempoTheme {
+     static let blue = Color(red: 0.32, green: 0.65, blue: 1.0)
+     static let purple = Color(red: 0.71, green: 0.52, blue: 1.0)
+     static let secondary = Color.white.opacity(0.55)
++    static let scrollBottomClearance: CGFloat = 132
+ }
+ 
+ struct ContentView: View {
+@@ -987,7 +988,7 @@ private struct ActivityTimelineScreen: View {
+                 }
+                 .padding(.horizontal, 16)
+                 .padding(.top, 12)
+-                .padding(.bottom, 36)
++                .padding(.bottom, TempoTheme.scrollBottomClearance)
+             }
+         }
+         .navigationTitle("Aktivite Geçmişi")
+@@ -1895,8 +1896,9 @@ private struct TempoPage<Content: View>: View {
+                 VStack(spacing: 16) { content }
+                     .padding(.horizontal, 16)
+                     .padding(.top, 12)
+-                    .padding(.bottom, 92)
++                    .padding(.bottom, TempoTheme.scrollBottomClearance)
+             }
++            .scrollDismissesKeyboard(.interactively)
+         }
+     }
+ }
+@@ -2167,4 +2169,3 @@ private func eddingtonNumber(_ activities: [TempoActivity]) -> Int {
+ private extension Calendar {
+     func isDateInCurrentWeek(_ date: Date) -> Bool { isDate(date, equalTo: Date(), toGranularity: .weekOfYear) }
+ }
+-
+diff --git a/ios/TempoHealth/Sources/SportsExperience.swift b/ios/TempoHealth/Sources/SportsExperience.swift
+index 882b015..c6c78b6 100644
+--- a/ios/TempoHealth/Sources/SportsExperience.swift
++++ b/ios/TempoHealth/Sources/SportsExperience.swift
+@@ -53,7 +53,7 @@ struct SportsHubScreen: View {
+                         }
+                         .buttonStyle(.plain)
+                     }
+-                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 34)
++                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, TempoTheme.scrollBottomClearance)
+                 }
+             }
+             .toolbar(.hidden, for: .navigationBar)
+@@ -168,7 +168,7 @@ private struct SportDetailScreen: View {
+                 }
+                 .padding(.horizontal, 16)
+                 .padding(.top, 10)
+-                .padding(.bottom, 42)
++                .padding(.bottom, TempoTheme.scrollBottomClearance)
+             }
+         }
+         .navigationTitle(sport.title)
+@@ -488,7 +488,7 @@ private struct OfflineSessionScreen: View {
+                     Label("Bu program cihazında kayıtlıdır ve internet bağlantısı olmadan açılır.", systemImage: "iphone.and.arrow.forward")
+                         .font(.caption).foregroundStyle(TempoTheme.secondary)
+                 }
+-                .padding(16).padding(.bottom, 32)
++                .padding(16).padding(.bottom, TempoTheme.scrollBottomClearance)
+             }
+         }
+         .navigationTitle("Program")
+@@ -910,14 +910,15 @@ struct NearbyFacilitiesScreen: View {
+         .tempoGlassBackButton()
+         .onAppear {
+             if selectedSport == nil { selectedSport = availableSports.first }
+-            searchModel.requestLocation()
+-        }
+-        .onChange(of: searchModel.region?.center.latitude) { _, _ in
+-            if let region = searchModel.region { camera = .region(region) }
+             if let selectedSport {
+                 Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) }
++            } else {
++                searchModel.requestLocation()
+             }
+         }
++        .onChange(of: searchModel.region?.center.latitude) { _, _ in
++            if let region = searchModel.region { camera = .region(region) }
++        }
+         .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in
+             if let region = searchModel.region { camera = .region(region) }
+         }
+@@ -969,6 +970,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
+     private var pendingSport: TempoSportChoice?
+     private var pendingRadiusKm = 25
+     private var searchGeneration = 0
++    private var resultCache: [String: CachedFacilitySearch] = [:]
+ 
+     override init() {
+         super.init()
+@@ -1011,14 +1013,28 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
+             longitudinalMeters: CLLocationDistance(radiusMeters * 2)
+         )
+ 
+-        let applePlaces = await searchAppleMaps(for: sport, location: location, radiusMeters: radiusMeters)
++        let cacheKey = Self.cacheKey(for: sport, radiusKm: radiusKm, location: location)
++        if let cached = resultCache[cacheKey], Date().timeIntervalSince(cached.createdAt) < 10 * 60 {
++            places = cached.places
++            isSearching = false
++            message = cached.places.isEmpty
++                ? "\(sport.title) için \(radiusKm) km çevrede kayıtlı bir alan bulunamadı."
++                : "\(cached.places.count) alan bulundu · kayıtlı sonuçlar anında gösterildi."
++            return
++        }
++
++        async let appleSearch = searchAppleMaps(for: sport, location: location, radiusMeters: radiusMeters)
++        async let openStreetMapSearch = searchOpenStreetMap(for: sport, location: location, radiusMeters: radiusMeters)
++
++        let applePlaces = await appleSearch
+         guard generation == searchGeneration else { return }
+         places = Self.deduplicated(applePlaces)
+         message = places.isEmpty ? "Açık harita kayıtları da taranıyor…" : "Apple Haritalar’dan \(places.count) alan bulundu; açık veriler taranıyor."
+ 
+-        let openPlaces = await searchOpenStreetMap(for: sport, location: location, radiusMeters: radiusMeters)
++        let openPlaces = await openStreetMapSearch
+         guard generation == searchGeneration else { return }
+         places = Self.deduplicated(applePlaces + openPlaces)
++        resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), places: places)
+         isSearching = false
+         message = places.isEmpty
+             ? "\(sport.title) için \(radiusKm) km çevrede kayıtlı bir alan bulunamadı."
+@@ -1031,23 +1047,23 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
+             latitudinalMeters: CLLocationDistance(radiusMeters * 2),
+             longitudinalMeters: CLLocationDistance(radiusMeters * 2)
+         )
+-        var results: [NearbyPlace] = []
+-
+-        for query in sport.facilitySearchQueries {
+-            let request = MKLocalSearch.Request()
+-            request.naturalLanguageQuery = query
+-            request.region = searchRegion
+-            request.resultTypes = .pointOfInterest
+-            do {
+-                let response = try await MKLocalSearch(request: request).start()
+-                results.append(contentsOf: response.mapItems.prefix(35).map { NearbyPlace($0, origin: location) })
+-                results = Self.deduplicated(results)
+-                if results.count >= 70 { break }
+-            } catch {
+-                continue
++        return await withTaskGroup(of: [NearbyPlace].self, returning: [NearbyPlace].self) { group in
++            for query in sport.facilitySearchQueries {
++                group.addTask {
++                    let request = MKLocalSearch.Request()
++                    request.naturalLanguageQuery = query
++                    request.region = searchRegion
++                    request.resultTypes = .pointOfInterest
++                    guard let response = try? await MKLocalSearch(request: request).start() else { return [] }
++                    return response.mapItems.prefix(35).map { NearbyPlace($0, origin: location) }
++                }
+             }
++            var results: [NearbyPlace] = []
++            for await batch in group {
++                results.append(contentsOf: batch)
++            }
++            return Self.deduplicated(results)
+         }
+-        return results
+     }
+ 
+     private func searchOpenStreetMap(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> [NearbyPlace] {
+@@ -1059,23 +1075,32 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
+             .joined()
+         let query = "[out:json][timeout:18];(\(selectors));out center tags;"
+ 
+-        var components = URLComponents(string: "https://overpass-api.de/api/interpreter")
+-        components?.queryItems = [URLQueryItem(name: "data", value: query)]
+-        guard let url = components?.url else { return [] }
+-
+-        var request = URLRequest(url: url)
+-        request.timeoutInterval = 22
+-        request.setValue("Tempo/1.0 (https://apitempo.com)", forHTTPHeaderField: "User-Agent")
+-        do {
+-            let (data, response) = try await URLSession.shared.data(for: request)
+-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return [] }
+-            let decoded = try JSONDecoder().decode(OpenStreetMapResponse.self, from: data)
+-            return decoded.elements.prefix(160).compactMap {
+-                NearbyPlace(openStreetMapElement: $0, sportTitle: sport.title, origin: location)
++        let endpoints = [
++            "https://overpass.kumi.systems/api/interpreter",
++            "https://overpass-api.de/api/interpreter",
++        ]
++        for endpoint in endpoints {
++            guard let url = URL(string: endpoint) else { continue }
++            var components = URLComponents()
++            components.queryItems = [URLQueryItem(name: "data", value: query)]
++            var request = URLRequest(url: url)
++            request.httpMethod = "POST"
++            request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
++            request.timeoutInterval = 12
++            request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
++            request.setValue("Tempo/1.0 (https://apitempo.com)", forHTTPHeaderField: "User-Agent")
++            do {
++                let (data, response) = try await URLSession.shared.data(for: request)
++                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { continue }
++                let decoded = try JSONDecoder().decode(OpenStreetMapResponse.self, from: data)
++                return decoded.elements.prefix(160).compactMap {
++                    NearbyPlace(openStreetMapElement: $0, sportTitle: sport.title, origin: location)
++                }
++            } catch {
++                continue
+             }
+-        } catch {
+-            return []
+         }
++        return []
+     }
+ 
+     private static func deduplicated(_ input: [NearbyPlace]) -> [NearbyPlace] {
+@@ -1094,6 +1119,12 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
+         return result
+     }
+ 
++    private static func cacheKey(for sport: TempoSportChoice, radiusKm: Int, location: CLLocation) -> String {
++        let latitude = (location.coordinate.latitude * 100).rounded() / 100
++        let longitude = (location.coordinate.longitude * 100).rounded() / 100
++        return "\(sport.rawValue):\(radiusKm):\(latitude):\(longitude)"
++    }
++
+     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+         if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
+             needsPermission = false
+@@ -1121,6 +1152,11 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
+     }
+ }
+ 
++private struct CachedFacilitySearch {
++    let createdAt: Date
++    let places: [NearbyPlace]
++}
++
+ struct OpenStreetMapResponse: Decodable {
+     let elements: [OpenStreetMapElement]
+ }
+@@ -1139,8 +1175,8 @@ struct OpenStreetMapElement: Decodable {
+     let tags: [String: String]?
+ }
+ 
+-struct NearbyPlace: Identifiable {
+-    enum Source: Equatable {
++struct NearbyPlace: Identifiable, @unchecked Sendable {
++    enum Source: Equatable, Sendable {
+         case appleMaps
+         case openStreetMap
+     }
+@@ -1151,7 +1187,6 @@ struct NearbyPlace: Identifiable {
+     let coordinate: CLLocationCoordinate2D
+     let source: Source
+     let distanceMeters: CLLocationDistance
+-    private let mapItem: MKMapItem?
+ 
+     var sourceTitle: String {
+         source == .openStreetMap ? "OpenStreetMap" : "Apple Haritalar".tempoLocalized
+@@ -1168,7 +1203,6 @@ struct NearbyPlace: Identifiable {
+     }
+ 
+     init(_ mapItem: MKMapItem, origin: CLLocation) {
+-        self.mapItem = mapItem
+         name = mapItem.name ?? "Spor alanı".tempoLocalized
+         coordinate = mapItem.placemark.coordinate
+         address = mapItem.placemark.title ?? "Adres bilgisi yok".tempoLocalized
+@@ -1191,16 +1225,11 @@ struct NearbyPlace: Identifiable {
+         address = parts.isEmpty ? "Açık harita kaydı".tempoLocalized : parts.joined(separator: " · ")
+ 
+         source = .openStreetMap
+-        mapItem = nil
+         distanceMeters = origin.distance(from: CLLocation(latitude: latitude, longitude: longitude))
+         id = "osm:\(element.type):\(element.id)"
+     }
+ 
+     func openDirections() {
+-        if let mapItem {
+-            mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+-            return
+-        }
+         let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+         item.name = name
+         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+diff --git a/ios/TempoHealth/Sources/TempoAccountStore.swift b/ios/TempoHealth/Sources/TempoAccountStore.swift
+index 5f7ea4c..753ef71 100644
+--- a/ios/TempoHealth/Sources/TempoAccountStore.swift
++++ b/ios/TempoHealth/Sources/TempoAccountStore.swift
+@@ -159,7 +159,8 @@ final class TempoAccountStore: ObservableObject {
+ 
+     init() {
+         sessionToken = AccountTokenStore.read()
+-        isRestoring = sessionToken != nil
++        profile = sessionToken == nil ? nil : AccountProfileCache.read()
++        isRestoring = sessionToken != nil && profile == nil
+         if sessionToken != nil {
+             Task { await restoreSession() }
+         }
+@@ -167,7 +168,9 @@ final class TempoAccountStore: ObservableObject {
+ 
+     @discardableResult
+     func signUp(email: String, username: String, password: String) async -> Bool {
+-        await authenticate(path: "/api/account/signup", payload: AccountCredentials(email: email, username: username, password: password))
++        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
++        let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
++        return await authenticate(path: "/api/account/signup", payload: AccountCredentials(email: cleanEmail, username: cleanUsername, password: password))
+     }
+ 
+     @discardableResult
+@@ -222,6 +225,7 @@ final class TempoAccountStore: ObservableObject {
+             let envelope = try await request(path: "/api/account/profile", method: "PATCH", body: payload, authenticated: true)
+             guard let user = envelope.user else { throw AccountError.server("Profil kaydedilemedi.") }
+             profile = user
++            AccountProfileCache.save(user)
+             return true
+         } catch {
+             errorMessage = error.localizedDescription
+@@ -258,8 +262,13 @@ final class TempoAccountStore: ObservableObject {
+             let envelope = try await request(path: "/api/account/me", method: "GET", body: Optional<EmptyPayload>.none, authenticated: true)
+             guard let user = envelope.user else { throw AccountError.server("Hesap bilgisi alınamadı.") }
+             profile = user
++            AccountProfileCache.save(user)
+         } catch {
+-            clearLocalSession()
++            // A temporary connection problem must not sign the user out. The
++            // request method clears the session only when the server returns 401.
++            if profile == nil, sessionToken != nil {
++                errorMessage = "Hesabına şu anda ulaşılamadı. Bağlantı yeniden kurulunca otomatik olarak denenecek."
++            }
+         }
+     }
+ 
+@@ -278,6 +287,7 @@ final class TempoAccountStore: ObservableObject {
+             }
+             sessionToken = token
+             profile = user
++            AccountProfileCache.save(user)
+             return true
+         } catch {
+             errorMessage = error.localizedDescription
+@@ -295,6 +305,7 @@ final class TempoAccountStore: ObservableObject {
+         request.httpMethod = method
+         request.timeoutInterval = 18
+         request.setValue("application/json", forHTTPHeaderField: "Accept")
++        request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Tempo-Request-ID")
+         if let body {
+             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+             request.httpBody = try JSONEncoder().encode(body)
+@@ -303,24 +314,73 @@ final class TempoAccountStore: ObservableObject {
+             guard let sessionToken else { throw AccountError.server("Tempo oturumunun süresi doldu.") }
+             request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
+         }
+-        let (data, response) = try await Self.apiSession.data(for: request)
+-        guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sunucudan yanıt alınamadı.") }
+-        let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil)
+-        guard (200..<300).contains(http.statusCode) else {
+-            if http.statusCode == 401 && authenticated { clearLocalSession() }
+-            throw AccountError.server(envelope.error ?? "İşlem tamamlanamadı.")
++        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000]
++        var lastError: Error = AccountError.server("Sunucudan yanıt alınamadı.")
++
++        for attempt in retryDelays.indices {
++            if retryDelays[attempt] > 0 {
++                try? await Task.sleep(nanoseconds: retryDelays[attempt])
++            }
++            do {
++                let (data, response) = try await Self.apiSession.data(for: request)
++                guard let http = response as? HTTPURLResponse else {
++                    throw AccountError.server("Sunucudan yanıt alınamadı.")
++                }
++                let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil)
++                guard (200..<300).contains(http.statusCode) else {
++                    if http.statusCode == 401 && authenticated { clearLocalSession() }
++                    let message = envelope.error ?? envelope.message ?? "İşlem tamamlanamadı."
++                    let retryable = http.statusCode == 408 || http.statusCode >= 500
++                    if retryable, attempt < retryDelays.count - 1 {
++                        lastError = AccountError.server(message)
++                        continue
++                    }
++                    throw AccountError.server(message)
++                }
++                return envelope
++            } catch {
++                lastError = error
++                if error is AccountError { throw error }
++                if attempt < retryDelays.count - 1 { continue }
++            }
+         }
+-        return envelope
++        if let urlError = lastError as? URLError {
++            switch urlError.code {
++            case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost, .cannotFindHost:
++                throw AccountError.server("Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.")
++            default: break
++            }
++        }
++        throw lastError
+     }
+ 
+     private func clearLocalSession() {
+         AccountTokenStore.delete()
++        AccountProfileCache.delete()
+         sessionToken = nil
+         profile = nil
+         isRestoring = false
+     }
+ }
+ 
++private enum AccountProfileCache {
++    private static let key = "tempoAccountProfileCacheV1"
++
++    static func read() -> TempoUserProfile? {
++        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
++        return try? JSONDecoder().decode(TempoUserProfile.self, from: data)
++    }
++
++    static func save(_ profile: TempoUserProfile) {
++        guard let data = try? JSONEncoder().encode(profile) else { return }
++        UserDefaults.standard.set(data, forKey: key)
++    }
++
++    static func delete() {
++        UserDefaults.standard.removeObject(forKey: key)
++    }
++}
++
+ private struct AccountCredentials: Encodable {
+     let email: String
+     let username: String?
+@@ -400,4 +460,3 @@ private enum AccountTokenStore {
+         SecItemDelete(query as CFDictionary)
+     }
+ }
+-
+diff --git a/ios/TempoHealth/Sources/TempoAppModel.swift b/ios/TempoHealth/Sources/TempoAppModel.swift
+index efd717b..5be7e37 100644
+--- a/ios/TempoHealth/Sources/TempoAppModel.swift
++++ b/ios/TempoHealth/Sources/TempoAppModel.swift
+@@ -58,7 +58,6 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+         if storedToken != nil {
+             dashboard = Self.loadCachedDashboard()
+             status = dashboard == nil ? "Strava bağlı. Verilerin hazırlanıyor." : "Kayıtlı Strava verilerin gösteriliyor; güncelleniyor."
+-            Task { await reloadAll() }
+         }
+         if healthSyncEnabled {
+             startHealthObservers()
+@@ -111,7 +110,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+ 
+             if http.statusCode == 404 {
+                 isRestoringConnection = false
+-                if !hadLocalToken {
++                if hadLocalToken {
++                    Task { await reloadAll() }
++                } else {
+                     status = "Strava hesabını bir kez bağla; sonraki açılışlarda bağlantın korunacak."
+                 }
+                 return
+@@ -119,13 +120,17 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+ 
+             if http.statusCode == 401 {
+                 isRestoringConnection = false
++                if hadLocalToken { Task { await reloadAll() } }
+                 return
+             }
+ 
+             throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
+         } catch {
+             isRestoringConnection = false
+-            if !hadLocalToken {
++            hasAttemptedAccountRestore = false
++            if hadLocalToken {
++                Task { await reloadAll() }
++            } else {
+                 status = "Kayıtlı Strava bağlantısı şu anda doğrulanamadı. Yeniden deneyebilirsin."
+             }
+         }
+@@ -138,6 +143,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+         let verifier = Self.randomVerifier()
+         let challenge = Self.codeChallenge(for: verifier)
+         pendingVerifier = verifier
++        OAuthVerifierStore.save(verifier)
+         guard var components = URLComponents(url: URL(string: "/mobile/auth/start", relativeTo: baseURL)!, resolvingAgainstBaseURL: true) else { return }
+         components.queryItems = [URLQueryItem(name: "code_challenge", value: challenge)]
+         guard let url = components.url else { return }
+@@ -156,6 +162,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+                 if self.isCompletingAuthorization { return }
+ 
+                 self.pendingVerifier = nil
++                OAuthVerifierStore.delete()
+                 self.isBusy = false
+                 self.status = error == nil
+                     ? "Strava bağlantı yanıtı alınamadı. Yeniden dene."
+@@ -168,6 +175,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+         if !session.start() {
+             webAuthSession = nil
+             pendingVerifier = nil
++            OAuthVerifierStore.delete()
+             isBusy = false
+             status = "Strava giriş ekranı açılamadı. Biraz sonra yeniden dene."
+         }
+@@ -182,7 +190,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+         guard !isCompletingAuthorization else { return }
+         guard let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+             .queryItems?.first(where: { $0.name == "ticket" })?.value,
+-              let verifier = pendingVerifier else {
++              let verifier = pendingVerifier ?? OAuthVerifierStore.read() else {
+             if accessToken == nil {
+                 isBusy = false
+                 status = "Strava bağlantı bilgisi alınamadı. Yeniden dene."
+@@ -193,17 +201,22 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
+         isCompletingAuthorization = true
+         pendingVerifier = nil
+         isBusy = true
+-        webAuthSession?.cancel()
+         webAuthSession = nil
+ 
+         Task {
+             await exchangeTicket(ticket, verifier: verifier)
++            OAuthVerifierStore.delete()
+             isCompletingAuthorization = false
+         }
+     }
+ 
+     func syncWhenActive() {
+-        guard accessToken != nil else { return }
++        guard accessToken != nil else {
++            if let accountAccessToken, !hasAttemptedAccountRestore {
++                Task { await restoreConnectionIfNeeded(accountToken: accountAccessToken) }
++            }
++            return
++        }
+         Task {
+             if healthSyncEnabled { await syncAppleHealth() }
+             else { await refreshWater() }
+@@ -853,6 +866,30 @@ private enum SecureTokenStore {
+     }
+ }
+ 
++private enum OAuthVerifierStore {
++    private static let verifierKey = "tempoPendingOAuthVerifierV1"
++    private static let createdAtKey = "tempoPendingOAuthVerifierCreatedAtV1"
++
++    static func save(_ verifier: String) {
++        UserDefaults.standard.set(verifier, forKey: verifierKey)
++        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: createdAtKey)
++    }
++
++    static func read() -> String? {
++        let createdAt = UserDefaults.standard.double(forKey: createdAtKey)
++        guard createdAt > 0, Date().timeIntervalSince1970 - createdAt < 15 * 60 else {
++            delete()
++            return nil
++        }
++        return UserDefaults.standard.string(forKey: verifierKey)
++    }
++
++    static func delete() {
++        UserDefaults.standard.removeObject(forKey: verifierKey)
++        UserDefaults.standard.removeObject(forKey: createdAtKey)
++    }
++}
++
+ private extension Data {
+     func base64URLEncodedString() -> String {
+         base64EncodedString()
+@@ -861,4 +898,3 @@ private extension Data {
+             .replacingOccurrences(of: "=", with: "")
+     }
+ }
+-
+diff --git a/worker/src/account.js b/worker/src/account.js
+index ad2468c..e6b7bed 100644
+--- a/worker/src/account.js
++++ b/worker/src/account.js
+@@ -42,13 +42,22 @@ async function signUp(request, env) {
+   const parsed = await readBody(request, 8192);
+   if (parsed.response) return parsed.response;
+ 
++  const requestId = String(request.headers.get("X-Tempo-Request-ID") || "").trim().toLowerCase();
++  const idempotencyKey = /^[a-f0-9-]{20,64}$/.test(requestId)
++    ? "account-signup-request:" + await sha256Hex(requestId)
++    : "";
++  if (idempotencyKey) {
++    const completed = await env.TOKEN_STORE.get(idempotencyKey, "json");
++    if (completed?.token && completed?.user) return responseJSON(completed, 201);
++  }
++
+   const email = normalizeEmail(parsed.value.email);
+   const username = normalizeUsername(parsed.value.username);
+   const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
+   const validation = validateCredentials(email, username, password);
+   if (validation) return responseJSON({ error: validation }, 400);
+ 
+-  const limited = await rateLimit(request, env, "signup", 6);
++  const limited = await rateLimit(request, env, "signup", 10);
+   if (limited) return limited;
+ 
+   const emailKey = "account-email:" + await sha256Hex(email);
+@@ -85,7 +94,11 @@ async function signUp(request, env) {
+     env.TOKEN_STORE.put(usernameKey, id),
+   ]);
+   const session = await createSession(env, id);
+-  return responseJSON({ token: session.token, user: publicUser(user) }, 201);
++  const result = { token: session.token, user: publicUser(user) };
++  if (idempotencyKey) {
++    await env.TOKEN_STORE.put(idempotencyKey, JSON.stringify(result), { expirationTtl: 600 });
++  }
++  return responseJSON(result, 201);
+ }
+ 
+ async function signIn(request, env) {
+@@ -102,7 +115,7 @@ async function signIn(request, env) {
+     return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
+   }
+ 
+-  const limited = await rateLimit(request, env, "login", 10);
++  const limited = await rateLimit(request, env, "login", 15);
+   if (limited) return limited;
+ 
+   const userId = identifierIsEmail
+diff --git a/worker/src/index.js b/worker/src/index.js
+index 545e7f5..f887978 100644
+--- a/worker/src/index.js
++++ b/worker/src/index.js
+@@ -10,7 +10,7 @@ export default {
+   async fetch(request, env) {
+     const url = new URL(request.url);
+     try {
+-      if (url.pathname.startsWith("/api/account/")) {
++      if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {
+         const accountResponse = await handleAccountRequest(request, env, url);
+         if (accountResponse) return accountResponse;
+       }
+@@ -1607,4 +1607,3 @@ function readCookie(request, name) {
+ function cookie(name, value, maxAge, path) {
+   return `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=${path}; Secure; HttpOnly; SameSite=Lax`;
+ }
+-
