@@ -158,10 +158,12 @@ final class TempoAccountStore: ObservableObject {
     var authorizationToken: String? { sessionToken }
 
     init() {
-        sessionToken = AccountTokenStore.read()
-        profile = sessionToken == nil ? nil : AccountProfileCache.read()
-        isRestoring = sessionToken != nil && profile == nil
-        if sessionToken != nil {
+        let storedToken = AccountTokenStore.read()
+        let cachedProfile = storedToken == nil ? nil : AccountProfileCache.read()
+        sessionToken = storedToken
+        profile = cachedProfile
+        isRestoring = storedToken != nil && cachedProfile == nil
+        if storedToken != nil {
             Task { await restoreSession() }
         }
     }
