@@ -38,9 +38,9 @@ struct TempoAmbientBackground: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.035, green: 0.075, blue: 0.105),
+                        Color(red: 0.035, green: 0.065, blue: 0.095),
                         TempoTheme.background,
-                        Color(red: 0.025, green: 0.035, blue: 0.045)
+                        Color(red: 0.018, green: 0.026, blue: 0.040)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -69,21 +69,22 @@ struct AccountWelcomeView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
-                        VStack(spacing: 8) {
-                            TempoBrandMark(size: 82)
-                            Text("TEMPO")
-                                .font(.subheadline.bold())
-                                .tracking(3.4)
-                                .foregroundStyle(TempoTheme.green)
+                        HStack(spacing: 8) {
+                            Circle().fill(TempoTheme.green).frame(width: 7, height: 7)
+                            Text("HAREKET · SAĞLIK · GELİŞİM")
+                                .font(.caption2.bold())
+                                .tracking(1.5)
+                                .foregroundStyle(TempoTheme.secondary)
                         }
+                        .padding(.top, 20)
 
                         VStack(spacing: 10) {
-                            Text("Hareketinle güçlen.\nRitmini yakala.")
-                                .font(.system(size: 35, weight: .bold, design: .rounded))
-                                .tracking(-1.1)
+                            Text("Kendi ritmini\nbul.")
+                                .font(.system(size: 39, weight: .bold, design: .rounded))
+                                .tracking(-1.2)
                                 .multilineTextAlignment(.center)
                                 .minimumScaleFactor(0.84)
-                            Text("Sporlarını, sağlığını ve günlük gelişimini tek bir kişisel alanda takip et.")
+                            Text("Sporlarını, sağlığını ve gelişimini sade bir kişisel alanda takip et.")
                                 .font(.subheadline)
                                 .foregroundStyle(TempoTheme.secondary)
                                 .multilineTextAlignment(.center)
@@ -129,7 +130,7 @@ struct AccountWelcomeView: View {
                             .multilineTextAlignment(.center)
                     }
                     .padding(.horizontal, 21)
-                    .padding(.top, 30)
+                    .padding(.top, 12)
                     .padding(.bottom, 30)
                 }
             }
@@ -241,13 +242,13 @@ private struct AccountFormView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 25) {
-                    VStack(spacing: 9) {
-                        TempoBrandMark(size: 62)
-                        Text("Tempo")
-                            .font(.headline.bold())
-                            .foregroundStyle(.white.opacity(0.9))
+                    HStack(spacing: 8) {
+                        Circle().fill(TempoTheme.green).frame(width: 7, height: 7)
+                        Text((mode == .signUp ? "YENİ HESAP" : "HESABINA DÖN").tempoLocalized)
+                            .font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+                        Spacer()
                     }
-                    .padding(.top, 7)
+                    .padding(.top, 18)
 
                     VStack(spacing: 8) {
                         Text(mode.title.tempoLocalized)
@@ -736,8 +737,12 @@ struct AccountProfileCard: View {
                 }
                 .foregroundStyle(.white)
                 .padding(18)
-                .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.055)))
+                .background {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(LinearGradient(colors: [TempoTheme.green.opacity(0.10), TempoTheme.card, TempoTheme.blue.opacity(0.055)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.085), lineWidth: 1))
+                .shadow(color: .black.opacity(0.16), radius: 18, y: 9)
             }
             .buttonStyle(.plain)
         }
@@ -987,8 +992,8 @@ struct AccountSettingsScreen: View {
                         .background(isEditingProfile ? TempoTheme.green : TempoTheme.green.opacity(0.11), in: Capsule())
                     }
                     .padding(16)
-                    .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.055)))
+                    .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
 
                     if isEditingProfile {
                         PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {

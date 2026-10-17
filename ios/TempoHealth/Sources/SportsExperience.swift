@@ -18,12 +18,7 @@ struct SportsHubScreen: View {
                 TempoTheme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("SANA ÖZEL").font(.caption.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
-                            Text("Sporlarım").font(.system(size: 31, weight: .bold, design: .rounded))
-                            Text("Seçtiğin sporlara göre aktivite geçmişin ve hızlı araçların.")
-                                .font(.subheadline).foregroundStyle(TempoTheme.secondary)
-                        }
+                        sportsHeader
 
                         if selectedSports.isEmpty {
                             Text("Profilinden ilgilendiğin sporları seçerek bu alanı kişiselleştirebilirsin.")
@@ -59,6 +54,36 @@ struct SportsHubScreen: View {
             .toolbar(.hidden, for: .navigationBar)
         }
     }
+
+    private var sportsHeader: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                    .fill(LinearGradient(colors: [TempoTheme.green.opacity(0.22), TempoTheme.blue.opacity(0.16)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                Image(systemName: "figure.run")
+                    .font(.system(size: 23, weight: .semibold))
+                    .foregroundStyle(TempoTheme.green)
+            }
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SANA ÖZEL").font(.caption2.bold()).tracking(1.5).foregroundStyle(TempoTheme.green)
+                Text("Sporlarım").font(.system(size: 27, weight: .bold, design: .rounded))
+                Text("Antrenmanların ve araçların tek yerde.")
+                    .font(.caption).foregroundStyle(TempoTheme.secondary)
+            }
+            Spacer(minLength: 0)
+            Text("\(selectedSports.count)")
+                .font(.subheadline.bold().monospacedDigit())
+                .foregroundStyle(TempoTheme.green)
+                .frame(width: 34, height: 34)
+                .background(TempoTheme.green.opacity(0.10), in: Circle())
+        }
+        .padding(15)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 23, style: .continuous))
+        .background(TempoTheme.card.opacity(0.78), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 23, style: .continuous).stroke(.white.opacity(0.09), lineWidth: 1))
+    }
 }
 
 private struct SportSummaryCard: View {
@@ -88,7 +113,11 @@ private struct SportSummaryCard: View {
             }
         }
         .padding(18)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(
+            LinearGradient(colors: [TempoTheme.green.opacity(0.09), TempoTheme.card, TempoTheme.blue.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
     }
 }
 
@@ -763,7 +792,8 @@ private struct ToolCard: View {
             Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
         }
         .padding(17)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
     }
 }
 
