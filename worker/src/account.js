@@ -1,3 +1,5 @@
+import { deleteSocialAccount } from "./social.js";
+
 const ACCOUNT_SESSION_SECONDS = 60 * 60 * 24 * 30;
 // Cloudflare Workers production rejects PBKDF2 counts above 100,000.
 const PASSWORD_ITERATIONS = 100000;
@@ -369,13 +371,57 @@ async function signOut(request, env) {
 async function deleteAccount(request, env) {
   const context = await accountContext(request, env);
   if (context.response) return context.response;
+  const athleteId = await env.TOKEN_STORE.get("account-strava:" + context.user.id);
+  const strava = athleteId ? await env.TOKEN_STORE.get("mobile-strava:" + athleteId, "json") : null;
+  if (strava?.refresh_token) {
+    const revoked = await revokeStravaRefreshToken(env, strava.refresh_token);
+    if (!revoked) return responseJSON({ error: "Strava bağlantısı güvenli biçimde kaldırılamadı. İnternet bağlantını kontrol edip yeniden dene." }, 502);
+  }
+  await deleteSocialAccount(env, context.user.id);
+  const linkedHash = athleteId ? await env.TOKEN_STORE.get("mobile-link-for:" + athleteId) : null;
+  const relatedKeys = [
+    "account-health:" + context.user.id,
+    "account-water:" + context.user.id,
+    "account-strava:" + context.user.id,
+    "account-user:" + context.user.id,
+    "account-email:" + await sha256Hex(context.user.email),
+    "account-username:" + context.user.username,
+    "account-session:" + context.sessionHash,
+  ];
+  if (athleteId) {
+    relatedKeys.push(
+      "strava-account:" + athleteId,
+      "mobile-strava:" + athleteId,
+      "mobile-dashboard:" + athleteId,
+      "mobile-health:" + athleteId,
+      "health-water-athlete:" + athleteId,
+      "mobile-link-for:" + athleteId,
+    );
+    if (linkedHash) relatedKeys.push("mobile-session:" + linkedHash);
+  }
   await Promise.all([
-    env.TOKEN_STORE.delete("account-user:" + context.user.id),
-    env.TOKEN_STORE.delete("account-email:" + await sha256Hex(context.user.email)),
-    env.TOKEN_STORE.delete("account-username:" + context.user.username),
-    env.TOKEN_STORE.delete("account-session:" + context.sessionHash),
+    ...relatedKeys.map(key => env.TOKEN_STORE.delete(key)),
   ]);
   return new Response(null, { status: 204, headers: securityHeaders() });
+}
+
+async function revokeStravaRefreshToken(env, refreshToken) {
+  if (!env.STRAVA_CLIENT_ID || !env.STRAVA_CLIENT_SECRET || !refreshToken) return false;
+  try {
+    const response = await fetch("https://www.strava.com/oauth/revoke", {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + btoa(env.STRAVA_CLIENT_ID + ":" + env.STRAVA_CLIENT_SECRET),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ token: refreshToken, token_type_hint: "refresh_token" }),
+    });
+    if (!response.ok) console.error("Strava token revocation failed with status:", response.status);
+    return response.ok;
+  } catch (error) {
+    console.error("Strava token revocation request failed:", error?.message || "unknown error");
+    return false;
+  }
 }
 
 export async function accountContext(request, env) {

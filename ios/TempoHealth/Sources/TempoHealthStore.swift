@@ -1,8 +1,10 @@
 import Foundation
 import HealthKit
+import CoreMotion
 
 final class TempoHealthStore {
     private let store = HKHealthStore()
+    private let pedometer = CMPedometer()
     private var observerQueries: [HKObserverQuery] = []
 
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
@@ -10,6 +12,7 @@ final class TempoHealthStore {
     private var waterType: HKQuantityType { HKQuantityType(.dietaryWater) }
     private var sleepType: HKCategoryType { HKCategoryType(.sleepAnalysis) }
     private var stepType: HKQuantityType { HKQuantityType(.stepCount) }
+    private var heartRateType: HKQuantityType { HKQuantityType(.heartRate) }
     private var energyType: HKQuantityType { HKQuantityType(.activeEnergyBurned) }
     private var exerciseTimeType: HKQuantityType { HKQuantityType(.appleExerciseTime) }
     private var restingHeartRateType: HKQuantityType { HKQuantityType(.restingHeartRate) }
@@ -33,6 +36,68 @@ final class TempoHealthStore {
     func requestAuthorization() async throws {
         guard isAvailable else { throw HealthStoreError.unavailable }
         try await store.requestAuthorization(toShare: [waterType], read: readTypes)
+    }
+
+    func workoutHealthSignal(start: Date, durationMinutes: Int) async throws -> TempoWorkoutHealthSignal {
+        guard isAvailable else { throw HealthStoreError.unavailable }
+        let end = start.addingTimeInterval(Double(durationMinutes) * 60)
+        let baselineStart = start.addingTimeInterval(-20 * 60)
+        try await store.requestAuthorization(toShare: [], read: [heartRateType, stepType, respiratoryRateType, energyType, exerciseTimeType, HKObjectType.workoutType()])
+
+        async let workoutHeartRates = heartRateSamples(from: start, to: end)
+        async let baselineHeartRates = heartRateSamples(from: baselineStart, to: start)
+        async let workoutRespiratoryRates = quantitySamples(type: respiratoryRateType, unit: .count().unitDivided(by: .minute()), from: start, to: end)
+        async let baselineRespiratoryRates = quantitySamples(type: respiratoryRateType, unit: .count().unitDivided(by: .minute()), from: baselineStart, to: start)
+        async let workoutSteps = stepCount(from: start, to: end)
+        async let baselineSteps = stepCount(from: baselineStart, to: start)
+        async let workoutEnergy = quantitySum(type: energyType, unit: .kilocalorie(), from: start, to: end)
+        async let workoutExerciseMinutes = quantitySum(type: exerciseTimeType, unit: .minute(), from: start, to: end)
+        async let matchingWorkoutMinutes = matchingHealthWorkoutMinutes(start: start, end: end)
+        let values = try await (
+            workoutHeartRates, baselineHeartRates, workoutRespiratoryRates, baselineRespiratoryRates,
+            workoutSteps, baselineSteps, workoutEnergy, workoutExerciseMinutes, matchingWorkoutMinutes
+        )
+
+        let heartRates = values.0
+        let baselineRates = values.1
+        let average = heartRates.isEmpty ? nil : heartRates.reduce(0, +) / Double(heartRates.count)
+        let baseline = baselineRates.isEmpty ? nil : baselineRates.reduce(0, +) / Double(baselineRates.count)
+        let respiratoryRates = values.2
+        let baselineRespiratory = values.3
+        let averageRespiratory = respiratoryRates.isEmpty ? nil : respiratoryRates.reduce(0, +) / Double(respiratoryRates.count)
+        let averageBaselineRespiratory = baselineRespiratory.isEmpty ? nil : baselineRespiratory.reduce(0, +) / Double(baselineRespiratory.count)
+        let duringSteps = values.4
+        let beforeSteps = values.5
+        let phoneStepsDuring = try? await phoneStepCount(from: start, to: end)
+        let phoneStepsBefore = try? await phoneStepCount(from: baselineStart, to: start)
+        let hasPhoneStepBaseline = phoneStepsDuring != nil && phoneStepsBefore != nil
+        let movementSteps = hasPhoneStepBaseline ? phoneStepsDuring : duringSteps
+        let baselineMovementSteps = hasPhoneStepBaseline ? phoneStepsBefore : beforeSteps
+        let normalizedBeforeSteps = baselineMovementSteps.map { Double($0) * Double(durationMinutes) / 20 }
+        let movementIncrease: Bool
+        if let movementSteps, let normalizedBeforeSteps {
+            movementIncrease = movementSteps >= 50 && Double(movementSteps) >= normalizedBeforeSteps * 1.5 + 30
+        } else {
+            movementIncrease = false
+        }
+
+        return TempoWorkoutHealthSignal(
+            heartRateSampleCount: heartRates.count,
+            averageHeartRateBpm: average.map { Self.round($0, digits: 0) },
+            peakHeartRateBpm: heartRates.max().map { Self.round($0, digits: 0) },
+            baselineHeartRateBpm: baseline.map { Self.round($0, digits: 0) },
+            stepsDuringWorkout: duringSteps,
+            stepsBeforeWorkout: beforeSteps,
+            phoneStepsDuringWorkout: phoneStepsDuring,
+            phoneStepsBeforeWorkout: phoneStepsBefore,
+            movementIncreaseDetected: movementIncrease,
+            averageRespiratoryRatePerMinute: averageRespiratory.map { Self.round($0, digits: 1) },
+            baselineRespiratoryRatePerMinute: averageBaselineRespiratory.map { Self.round($0, digits: 1) },
+            activeEnergyKcal: values.6.map { Self.round($0, digits: 1) },
+            exerciseMinutes: values.7.map { Self.round($0, digits: 1) },
+            matchedHealthWorkoutMinutes: values.8,
+            checkedAt: Date()
+        )
     }
 
     func saveWater(amountMl: Double) async throws {
@@ -151,6 +216,76 @@ final class TempoHealthStore {
                     output[Self.dayString(statistics.startDate)] = Self.round(value * multiplier, digits: 1)
                 }
                 continuation.resume(returning: output)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func heartRateSamples(from start: Date, to end: Date) async throws -> [Double] {
+        try await quantitySamples(type: heartRateType, unit: .count().unitDivided(by: .minute()), from: start, to: end)
+    }
+
+    private func quantitySamples(type: HKQuantityType, unit: HKUnit, from start: Date, to end: Date) async throws -> [Double] {
+        try await withCheckedThrowingContinuation { continuation in
+            let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+                if let error { continuation.resume(throwing: error); return }
+                let values = ((samples as? [HKQuantitySample]) ?? []).compactMap { sample -> Double? in
+                    let value = sample.quantity.doubleValue(for: unit)
+                    return value.isFinite && value > 0 ? value : nil
+                }
+                continuation.resume(returning: values)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func stepCount(from start: Date, to end: Date) async throws -> Int? {
+        guard let value = try await quantitySum(type: stepType, unit: .count(), from: start, to: end) else { return nil }
+        return Int(value.rounded())
+    }
+
+    private func phoneStepCount(from start: Date, to end: Date) async throws -> Int? {
+        guard CMPedometer.isStepCountingAvailable(), end <= Date(), start >= Date().addingTimeInterval(-7 * 24 * 60 * 60) else { return nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            pedometer.queryPedometerData(from: start, to: end) { data, error in
+                if let error { continuation.resume(throwing: error); return }
+                continuation.resume(returning: data?.numberOfSteps.intValue)
+            }
+        }
+    }
+
+    private func quantitySum(type: HKQuantityType, unit: HKUnit, from start: Date, to end: Date) async throws -> Double? {
+        try await withCheckedThrowingContinuation { continuation in
+            let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, statistics, error in
+                if let error { continuation.resume(throwing: error); return }
+                guard let value = statistics?.sumQuantity()?.doubleValue(for: unit), value.isFinite, value >= 0 else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: value)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func matchingHealthWorkoutMinutes(start: Date, end: Date) async throws -> Int? {
+        try await withCheckedThrowingContinuation { continuation in
+            let nearbyStart = start.addingTimeInterval(-5 * 60)
+            let nearbyEnd = end.addingTimeInterval(5 * 60)
+            let predicate = HKQuery.predicateForSamples(withStart: nearbyStart, end: nearbyEnd, options: .strictStartDate)
+            let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+                if let error { continuation.resume(throwing: error); return }
+                let expectedDuration = end.timeIntervalSince(start)
+                let candidates = ((samples as? [HKWorkout]) ?? []).filter { workout in
+                    let startDifference = abs(workout.startDate.timeIntervalSince(start))
+                    let durationDifference = abs(workout.duration - expectedDuration)
+                    let allowedDurationDifference = min(20 * 60, max(10 * 60, expectedDuration * 0.3))
+                    return startDifference <= 5 * 60 && durationDifference <= allowedDurationDifference
+                }
+                let closest = candidates.min { abs($0.startDate.timeIntervalSince(start)) < abs($1.startDate.timeIntervalSince(start)) }
+                continuation.resume(returning: closest.map { Int(($0.duration / 60).rounded()) })
             }
             store.execute(query)
         }

@@ -17,8 +17,8 @@
   <main>
     <p><a href="/">Tempo’ya dön</a></p>
     <h1>Gizlilik Politikası</h1>
-    <p class="updated">Son güncelleme: 8 Ekim 2026</p>
-    <p>Tempo, Strava profilini, aktivitelerini ve rotalarını; kullanıcı izin verirse Apple Sağlık ölçülerini kişisel spor uygulamasında göstermek için çalışır. Veriler reklam, pazarlama veya satış amacıyla kullanılmaz.</p>
+    <p class="updated">Son güncelleme: 18 Ekim 2026</p>
+    <p>Tempo, Apple Sağlık destekli hareket ve toparlanma özetlerini kişisel spor uygulamasında gösterir. Strava bağlantısı isteğe bağlıdır; Strava kullanmadan da Tempo hesabı, Apple Sağlık ekranları, Tempo Koç ve sosyal özellikler kullanılabilir. Veriler reklam, pazarlama veya satış amacıyla kullanılmaz.</p>
 
     <h2>Tempo hesabı ve profil</h2>
     <p>Hesap oluştururken e-posta adresi, kullanıcı adı, görünen ad, seçilen sporlar ve isteğe bağlı profil fotoğrafı saklanır. Parola düz metin olarak tutulmaz; rastgele tuz ve PBKDF2 kullanılarak oluşturulan özet saklanır. Hesap oturum anahtarı iPhone Keychain’de korunur.</p>
@@ -27,17 +27,21 @@
     <p>Konum izni, kullanıcının yakınındaki spor alanlarını Apple MapKit üzerinden aramak için kullanılır. Tempo bu konumu kendi sunucusunda saklamaz. Kullanıcı konum iznini iPhone Ayarlar uygulamasından değiştirebilir.</p>
 
     <h2>Apple Sağlık verileri</h2>
-    <p>Apple Sağlık bağlantısı isteğe bağlıdır. Kullanıcı izin verdiğinde Tempo son 90 gündeki su, uyku süresi, adım, aktif enerji, dinlenik nabız, kalp atış hızı değişkenliği (HRV) ve kilo ölçülerini okur. Uygulamadaki hızlı ekleme düğmeleriyle eklenen su miktarı Apple Sağlık’a yazılır. Tempo, izin verilmeyen veri türlerini okuyamaz.</p>
-    <p>Günlük özetler kullanıcıya ait Strava hesabıyla ilişkilendirilerek HTTPS üzerinden apitempo.com altyapısına (Cloudflare Workers ve KV) gönderilir ve en fazla 100 gün saklanır. Ham HealthKit örnekleri, kaynak cihaz bilgileri ve dakika dakika ölçümler sunucuya gönderilmez.</p>
+    <p>Apple Sağlık bağlantısı isteğe bağlıdır ve Strava’dan bağımsız çalışır. Kullanıcı izin verdiğinde Tempo son 90 gündeki izinli su, uyku, adım, aktif enerji, egzersiz dakikası, nabız, HRV ve diğer desteklenen ölçümlerden günlük özetleri okur. Tempo, izin verilmeyen veri türlerini okuyamaz.</p>
+    <p>Günlük özetler Tempo hesabıyla ilişkilendirilerek HTTPS üzerinden apitempo.com altyapısına (Cloudflare Workers ve KV) gönderilir ve en fazla 100 gün saklanır. Ham HealthKit örnekleri, kaynak cihaz bilgileri ve dakika dakika ölçümler sunucuya gönderilmez. Apple Sağlık bağlantısı kapatıldığında sunucudaki sağlık özeti silinir.</p>
+    <p>Manuel antrenman kayıtları, seçilen fotoğraflar ve o antrenmanın zaman aralığı için alınan nabız, solunum, adım ve egzersiz karşılaştırmaları yalnızca cihazda, Tempo hesabına özel saklanır; sunucuya veya yarışmalara aktarılmaz. Sağlık ve hareket ölçümleri antrenmanın gerçekten yapıldığını kanıtlamaz; sadece kaydın yanında gösterilen destekleyici sinyallerdir. Fotoğraf isteğe bağlıdır ve tek başına kayıt koşulunu karşılamaz.</p>
 
     <h2>Strava ve hesap bilgileri</h2>
     <p>Kullanıcı Strava hesabını bağladığında Tempo, Strava OAuth akışını kullanır. Strava yenileme anahtarı Cloudflare KV’de saklanır. iPhone uygulaması rastgele oluşturulan Tempo erişim anahtarını iOS Keychain’de tutar; sunucuda bu anahtarın yalnızca SHA-256 özeti saklanır. Uygulama Strava’dan profil, aktivite, ekipman, favori segment, aktivite fotoğrafı ve GPS rota verilerini alabilir.</p>
 
-    <h2>Yapay zekâ koçu</h2>
-    <p>Kullanıcı “Koça sor” düğmesine bastığında seçilen dönemin anonimleştirilmiş aktivite özeti ve Apple Sağlık bağlıysa günlük ölçülerden oluşturulan dönem özeti Cloudflare Workers AI hizmetine gönderilir. İsim, aktivite adı, tam saat, konum, rota ve ham Sağlık örnekleri bu özete eklenmez. Yanıt yalnızca spor ve sağlıklı yaşam verilerini değerlendirmek için kullanılır; tıbbi teşhis amacı taşımaz.</p>
+    <h2>Tempo Koç</h2>
+    <p>Tempo Koç, Tempo hesabıyla kullanılabilen spor ve sağlıklı yaşam sohbetidir; Strava bağlantısı veya ay seçimi gerekmez. Gönderilen sohbet mesajları yanıt üretmek için Cloudflare Workers AI hizmetine iletilir. Sohbet geçmişi Tempo sunucusunda saklanmaz. Apple Sağlık özeti yalnızca kullanıcı ilgili sohbette paylaşım seçeneğini açıkça açtığında, o istekte kişisel bağlam olarak eklenir. Strava verisi Koç’a aktarılmaz. Koç tıbbi teşhis veya tedavi sunmaz.</p>
+
+    <h2>Sosyal özellikler ve yarışmalar</h2>
+    <p>Kullanıcı adıyla gönderilen arkadaşlık isteği kabul edildiğinde arkadaşlar birbirlerinin kullanıcı adını ve görünen adını görür. E-posta, parola ve sağlık geçmişi arkadaş listesine açılmaz. Haftalık yarışmalar adım veya egzersiz dakikası toplamıyla sınırlıdır. Her katılımcı, her yarışmada günlük toplamlarının yarışma skorunda görünmesini ayrıca ve isteğe bağlı olarak açar; paylaşım varsayılan olarak kapalıdır ve yarışma içinden kapatılabilir. Diğer sağlık ölçümleri, günlük kayıtlar ve ham örnekler arkadaşlarla paylaşılmaz. Skorlar yarışma süresince hesaplanır.</p>
 
     <h2>Saklama ve silme</h2>
-    <p>Kullanıcı Tempo hesabını uygulamadaki hesap ayarlarından kalıcı olarak silebilir; profil, spor tercihleri ve geçerli hesap oturumu silinir. Kullanıcı Apple Sağlık eşitlemesini kapattığında sunucudaki Sağlık özetleri silinir. Strava bağlantısını kaldırdığında mobil oturum, saklanan Strava yenileme anahtarı, mobil pano önbelleği ve sunucudaki Sağlık özetleri silinir. Apple Sağlık izinleri iPhone Ayarlar uygulamasından, Strava yetkisi ise Strava ayarlarından ayrıca değiştirilebilir.</p>
+    <p>Kullanıcı Tempo hesabını uygulamadaki hesap ayarlarından kalıcı olarak silebilir; profil, arkadaşlık ilişkileri, yarışma kayıtları, Sağlık özetleri ve geçerli hesap oturumu silinir. Bağlıysa Strava OAuth yetkisi de iptal edilip saklanan Strava yenileme anahtarı silinir. Apple Sağlık izinleri iPhone Ayarlar uygulamasından, Strava yetkisi ise Strava ayarlarından ayrıca değiştirilebilir.</p>
 
     <h2>Üçüncü taraf hizmetler ve güvenlik</h2>
     <p>Strava hesap ve aktivite verilerinin kaynağıdır. Cloudflare, Tempo’nun sunucu, KV veri saklama ve isteğe bağlı yapay zekâ altyapısını sağlar. İletim HTTPS kullanır; mobil erişim anahtarı iOS Keychain’de saklanır.</p>

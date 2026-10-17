@@ -3,14 +3,6 @@ const notice = document.querySelector('#demo-notice');
 let noticeTimer;
 let hasLiveStravaData = false;
 
-function updateCoachButton() {
-  const submit = document.querySelector('#coach-submit');
-  if (submit) submit.disabled = !hasLiveStravaData || !document.querySelector('#coach-consent')?.checked || submit.dataset.busy === 'true';
-}
-
-
-
-
 function showNotice(message) {
   notice.textContent = message;
   notice.classList.add('visible');
@@ -121,10 +113,6 @@ function drawChart(activities, weekStart) {
 
 function renderDashboard(activities) {
   hasLiveStravaData = true;
-  updateCoachButton();
-  document.querySelector('#coach-status').textContent = 'Hazır. Her değerlendirme isteğinde veriler yeniden gönderilir; onay kutusunu işaretleyerek izin ver.';
-
-
 
   const now = new Date();
   const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
@@ -560,52 +548,6 @@ document.querySelectorAll('.nav-item').forEach((link) => {
   });
 });
 
-
-document.querySelector('#coach-consent')?.addEventListener('change', updateCoachButton);
-document.querySelector('#coach-form')?.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (!hasLiveStravaData || !document.querySelector('#coach-consent').checked) return;
-
-  const submit = document.querySelector('#coach-submit');
-  const status = document.querySelector('#coach-status');
-  const answer = document.querySelector('#coach-answer');
-  submit.dataset.busy = 'true';
-  submit.textContent = 'İnceleniyor…';
-  updateCoachButton();
-  status.textContent = 'Ayrıntılı antrenman ölçümlerin Cloudflare AI tarafından değerlendiriliyor…';
-  answer.hidden = true;
-
-  try {
-    const response = await fetch('/api/coach', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        consent: true,
-        period: document.querySelector('#coach-period').value,
-        question: document.querySelector('#coach-question').value,
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Koç yanıtı alınamadı.');
-
-    answer.replaceChildren();
-    const heading = document.createElement('h3');
-    heading.textContent = `${result.period || 'Seçilen dönem'} değerlendirmesi`;
-    const body = document.createElement('p');
-    body.textContent = result.answer;
-    answer.append(heading, body);
-    answer.hidden = false;
-    const detailCount = Number(result.detailedActivityCount) || 0; const periodCount = Number(result.periodActivityCount) || 0; status.textContent = detailCount ? `Değerlendirme hazır. ${detailCount} / ${periodCount} aktivitenin ayrıntılı ölçüleri kullanıldı. Yanıt uygulamada saklanmaz.` : 'Bu dönemde erişilebilir ayrıntı yok; yalnızca özet veriler kullanıldı.';
-  } catch (error) {
-    status.textContent = error.message || 'Koç yanıtı alınamadı. Biraz sonra tekrar dene.';
-  } finally {
-    document.querySelector('#coach-consent').checked = false;
-    submit.dataset.busy = 'false';
-    submit.innerHTML = 'Değerlendir <span>✦</span>';
-    updateCoachButton();
-  }
-});
 
 const menuToggle = document.querySelector('.menu-toggle');
 

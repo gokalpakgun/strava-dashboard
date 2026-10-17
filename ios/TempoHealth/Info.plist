@@ -28,11 +28,13 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Tempo, yakınındaki tenis kortu, basketbol sahası ve diğer spor alanlarını göstermek için konumunu kullanır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Tempo, seçtiğin fotoğrafı profil resmin olarak kullanabilmek için fotoğraf arşivine erişir.</string>
+	<string>Tempo, profil fotoğrafı veya antrenman kanıtı olarak seçtiğin fotoğrafları kullanır.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Tempo; su tüketimi, uyku, adım, aktif enerji, dinlenik nabız, HRV ve kilo verilerini spor gelişimini göstermek ve kişisel koç değerlendirmesini iyileştirmek için okur.</string>
+	<string>Tempo, seçtiğin Sağlık verilerini spor gelişimini göstermek ve antrenman zamanındaki nabız, adım veya kayıtlı antrenmanı destekleyici sinyal olarak okumak için kullanır.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Tempo, uygulamada eklediğin su miktarını Apple Sağlık hesabına kaydeder.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Tempo, Apple Watch olmadan iPhone’un adım sayısını antrenman saat aralığında kontrol ederek manuel antrenman kaydına destek olmak için hareket verisini kullanır.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

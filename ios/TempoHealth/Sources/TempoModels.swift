@@ -58,6 +58,15 @@ struct TempoGear: Codable, Identifiable {
     let distance: Double?
     let primary: Bool?
     let type: String?
+
+    var localizedType: String {
+        switch type {
+        case .some("Bisiklet"), .some("Bike"): return "Bisiklet".tempoLocalized
+        case .some("Ayakkabı"), .some("Shoe"): return "Ayakkabı".tempoLocalized
+        case .some(let value): return value
+        case .none: return "Ekipman".tempoLocalized
+        }
+    }
 }
 
 struct TempoSegment: Codable, Identifiable {
@@ -96,6 +105,83 @@ struct TempoActivity: Codable, Identifiable, Hashable {
     var speedKmh: Double { max(0, averageSpeed ?? 0) * 3.6 }
     var route: [CLLocationCoordinate2D] { PolylineDecoder.decode(polyline ?? "") }
     var sport: TempoSport { TempoSport(rawValue: type ?? "") }
+}
+
+struct TempoWorkoutHealthSignal: Codable, Equatable {
+    let heartRateSampleCount: Int
+    let averageHeartRateBpm: Double?
+    let peakHeartRateBpm: Double?
+    let baselineHeartRateBpm: Double?
+    let stepsDuringWorkout: Int?
+    let stepsBeforeWorkout: Int?
+    let phoneStepsDuringWorkout: Int?
+    let phoneStepsBeforeWorkout: Int?
+    let movementIncreaseDetected: Bool
+    let averageRespiratoryRatePerMinute: Double?
+    let baselineRespiratoryRatePerMinute: Double?
+    let activeEnergyKcal: Double?
+    let exerciseMinutes: Double?
+    let matchedHealthWorkoutMinutes: Int?
+    let checkedAt: Date
+
+    var heartRateRiseBpm: Double? {
+        guard let averageHeartRateBpm, let baselineHeartRateBpm else { return nil }
+        return averageHeartRateBpm - baselineHeartRateBpm
+    }
+
+    func stepDifferenceAdjustedForWorkout(durationMinutes: Int) -> Int? {
+        let currentSteps: Int
+        let priorSteps: Int
+        if let phoneStepsDuringWorkout, let phoneStepsBeforeWorkout {
+            currentSteps = phoneStepsDuringWorkout
+            priorSteps = phoneStepsBeforeWorkout
+        } else if let stepsDuringWorkout, let stepsBeforeWorkout {
+            currentSteps = stepsDuringWorkout
+            priorSteps = stepsBeforeWorkout
+        } else {
+            return nil
+        }
+        let expectedSteps = Double(priorSteps) * Double(max(durationMinutes, 1)) / 20
+        return currentSteps - Int(expectedSteps.rounded())
+    }
+
+    var supportingSignalScore: Double {
+        let measuredSteps = max(stepsDuringWorkout ?? 0, phoneStepsDuringWorkout ?? 0)
+        var score = 0.0
+        if matchedHealthWorkoutMinutes != nil { score += 3 }
+        if movementIncreaseDetected { score += 2 }
+        else if measuredSteps >= 120 { score += 1.5 }
+        if heartRateSampleCount >= 2 && ((heartRateRiseBpm ?? 0) >= 8 || (averageHeartRateBpm ?? 0) >= 105) {
+            score += 2
+        }
+        if (respiratoryRateRisePerMinute ?? 0) >= 2 { score += 1.5 }
+        if (activeEnergyKcal ?? 0) >= 20 { score += 1 }
+        if (exerciseMinutes ?? 0) >= 5 { score += 1 }
+        return score
+    }
+
+    var hasSupportingMeasurement: Bool {
+        supportingSignalScore >= 2
+    }
+
+    var respiratoryRateRisePerMinute: Double? {
+        guard let averageRespiratoryRatePerMinute, let baselineRespiratoryRatePerMinute else { return nil }
+        return averageRespiratoryRatePerMinute - baselineRespiratoryRatePerMinute
+    }
+}
+
+struct TempoManualWorkout: Codable, Identifiable, Equatable {
+    let id: UUID
+    let sportId: String
+    let sportTitle: String
+    let title: String
+    let startedAt: Date
+    let durationMinutes: Int
+    let notes: String
+    let photoFilename: String?
+    let healthSignal: TempoWorkoutHealthSignal?
+
+    var endedAt: Date { startedAt.addingTimeInterval(Double(durationMinutes) * 60) }
 }
 
 enum TempoSport: Hashable {
@@ -215,6 +301,69 @@ struct TempoCoachResponse: Decodable {
     let detailedActivityCount: Int?
     let periodActivityCount: Int?
     let error: String?
+}
+
+struct TempoCoachMessage: Identifiable, Equatable {
+    let id: UUID
+    let role: String
+    let content: String
+
+    init(role: String, content: String) {
+        self.id = UUID()
+        self.role = role
+        self.content = content
+    }
+}
+
+struct TempoSocialProfile: Decodable, Identifiable, Equatable {
+    let id: String
+    let username: String
+    let displayName: String
+    let avatarBase64: String?
+}
+
+struct TempoSocialRequest: Decodable, Identifiable {
+    let id: String
+    let createdAt: String
+    let user: TempoSocialProfile
+}
+
+struct TempoSocialParticipant: Decodable, Identifiable {
+    let userId: String
+    let status: String
+    let shareHealth: Bool
+    let user: TempoSocialProfile
+    let score: Int?
+    var id: String { userId }
+}
+
+struct TempoSocialChallenge: Decodable, Identifiable {
+    let id: String
+    let myUserId: String
+    let title: String
+    let metric: String
+    let startsAt: String
+    let endsAt: String
+    let myStatus: String
+    let myShareHealth: Bool
+    let participants: [TempoSocialParticipant]
+}
+
+struct TempoSocialSnapshot: Decodable {
+    let profile: TempoSocialProfile?
+    let friends: [TempoSocialProfile]
+    let incoming: [TempoSocialRequest]
+    let outgoing: [TempoSocialRequest]
+    let challenges: [TempoSocialChallenge]
+}
+
+enum TempoSocialMetric: String, CaseIterable, Identifiable {
+    case steps
+    case exerciseMinutes
+    var id: String { rawValue }
+    var title: String { self == .steps ? "Adımlar".tempoLocalized : "Egzersiz dakikası".tempoLocalized }
+    var symbol: String { self == .steps ? "figure.walk" : "figure.run" }
+    var unit: String { self == .steps ? "adım".tempoLocalized : "dk" }
 }
 
 struct TempoHealthMetrics: Codable, Equatable {

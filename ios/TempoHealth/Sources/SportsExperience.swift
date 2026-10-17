@@ -212,7 +212,7 @@ private struct SportDetailScreen: View {
                     TempoHaptics.selection()
                     withAnimation(.snappy(duration: 0.28)) { section = item }
                 } label: {
-                    Label(item.rawValue, systemImage: item.symbol)
+                    Label(item.rawValue.tempoLocalized, systemImage: item.symbol)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(section == item ? .black : .white.opacity(0.72))
                         .frame(maxWidth: .infinity)
@@ -265,7 +265,7 @@ private struct SportMotionArtwork: View {
                         .foregroundStyle(TempoTheme.secondary)
                     Text(sport.title)
                         .font(.system(size: 32, weight: .bold, design: .rounded))
-                    Text(sport.offlineGuide.headline)
+                    Text(sport.offlineGuide.headline.tempoLocalized)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.64))
                         .lineLimit(2)
@@ -312,7 +312,7 @@ private struct SportOverviewSection: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("SON 7 GÜN".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                            Text("Hareket ritmin").font(.title3.bold())
+                            Text("Hareket ritmin".tempoLocalized).font(.title3.bold())
                         }
                         Spacer()
                         Text(TempoFormat.distance(distance)).font(.subheadline.bold()).foregroundStyle(sport.accentColor)
@@ -333,7 +333,7 @@ private struct SportOverviewSection: View {
                                 .background(sport.accentColor.opacity(0.12), in: Circle())
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(activity.name ?? sport.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                Text(activity.date?.formatted(date: .abbreviated, time: .omitted) ?? "Tarih yok")
+                                Text((activity.date?.formatted(date: .abbreviated, time: .omitted) ?? "Tarih yok").tempoLocalized)
                                     .font(.caption2).foregroundStyle(TempoTheme.secondary)
                             }
                             Spacer()
@@ -413,8 +413,8 @@ private struct SportEmptyState: View {
                     .rotationEffect(.degrees(moves ? 360 : 0))
                 Image(systemName: sport.symbol).font(.system(size: 38)).foregroundStyle(sport.accentColor)
             }
-            Text("İlk \(sport.title.lowercased()) kaydını bekliyoruz").font(.headline)
-            Text("Strava’ya eklediğin aktivite burada grafik ve kişisel özet olarak görünecek.")
+            Text("İlk %@ kaydını bekliyoruz".tempoFormatted(sport.title.lowercased())).font(.headline)
+            Text("Strava’ya eklediğin aktivite burada grafik ve kişisel özet olarak görünecek.".tempoLocalized)
                 .font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).lineSpacing(3)
         }
         .padding(25).frame(maxWidth: .infinity)
@@ -434,7 +434,7 @@ private struct SportProgramSection: View {
             VStack(alignment: .leading, spacing: 7) {
                 Label("Çevrimdışı kullanılabilir", systemImage: "arrow.down.circle.fill")
                     .font(.caption.bold()).foregroundStyle(sport.accentColor)
-                Text(guide.summary).font(.subheadline).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+                Text(guide.summary.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
             }
             .padding(18).frame(maxWidth: .infinity, alignment: .leading)
             .background(sport.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -448,9 +448,9 @@ private struct SportProgramSection: View {
                         }
                         .frame(width: 50, height: 50)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(session.title).font(.headline).foregroundStyle(.white)
-                            Text(session.subtitle).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
-                            Text("\(session.minutes) dk · \(session.intensity)")
+                            Text(session.title.tempoLocalized).font(.headline).foregroundStyle(.white)
+                            Text(session.subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                            Text("%d dk · %@".tempoFormatted(session.minutes, session.intensity.tempoLocalized))
                                 .font(.caption2.bold()).foregroundStyle(sport.accentColor)
                         }
                         Spacer()
@@ -479,10 +479,10 @@ private struct OfflineSessionScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 9) {
-                        Label("\(session.minutes) dakika · \(session.intensity)", systemImage: sport.symbol)
+                        Label("%d dakika · %@".tempoFormatted(session.minutes, session.intensity.tempoLocalized), systemImage: sport.symbol)
                             .font(.caption.bold()).foregroundStyle(sport.accentColor)
-                        Text(session.title).font(.system(size: 31, weight: .bold, design: .rounded))
-                        Text(session.subtitle).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        Text(session.title.tempoLocalized).font(.system(size: 31, weight: .bold, design: .rounded))
+                        Text(session.subtitle.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
                     }
 
                     ForEach(Array(session.steps.enumerated()), id: \.offset) { index, step in
@@ -491,11 +491,11 @@ private struct OfflineSessionScreen: View {
                                 .font(.subheadline.bold()).foregroundStyle(.black)
                                 .frame(width: 34, height: 34).background(sport.accentColor, in: Circle())
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(step.title).font(.headline)
-                                Text(step.detail).font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+                                Text(step.title.tempoLocalized).font(.headline)
+                                Text(step.detail.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
                             }
                             Spacer()
-                            Text(step.duration).font(.caption2.bold()).foregroundStyle(sport.accentColor)
+                            Text(step.duration.tempoLocalized).font(.caption2.bold()).foregroundStyle(sport.accentColor)
                         }
                         .padding(17)
                         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
@@ -545,9 +545,9 @@ private struct SportPreparationSection: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(showsWarmup ? "Vücudunu harekete hazırla" : "Nabzını sakin biçimde düşür")
+                Text((showsWarmup ? "Vücudunu harekete hazırla" : "Nabzını sakin biçimde düşür").tempoLocalized)
                     .font(.title3.bold())
-                Text(showsWarmup ? "Antrenmandan hemen önce sırayla uygula." : "Antrenman bittiğinde acele etmeden uygula.")
+                Text((showsWarmup ? "Antrenmandan hemen önce sırayla uygula." : "Antrenman bittiğinde acele etmeden uygula.").tempoLocalized)
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -558,11 +558,11 @@ private struct SportPreparationSection: View {
                         .font(.title3).foregroundStyle(sport.accentColor)
                         .frame(width: 46, height: 46).background(sport.accentColor.opacity(0.12), in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(move.title).font(.subheadline.weight(.semibold))
-                        Text(move.detail).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                        Text(move.title.tempoLocalized).font(.subheadline.weight(.semibold))
+                        Text(move.detail.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
                     }
                     Spacer()
-                    Text(move.duration).font(.caption2.bold()).foregroundStyle(sport.accentColor)
+                    Text(move.duration.tempoLocalized).font(.caption2.bold()).foregroundStyle(sport.accentColor)
                 }
                 .padding(15)
                 .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -578,7 +578,7 @@ private struct SportPreparationSection: View {
 
     private func preparationButton(title: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
+            Label(title.tempoLocalized, systemImage: icon)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(selected ? .black : .white.opacity(0.75))
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -767,7 +767,7 @@ private struct SportGuideContent {
 
     private func stepDuration(for title: String, index: Int) -> String {
         if let first = title.split(separator: " ").first, first.allSatisfy(\.isNumber) { return String(first) }
-        return "Bölüm \(index + 1)"
+        return "Bölüm %d".tempoFormatted(index + 1)
     }
 }
 
@@ -919,7 +919,7 @@ struct NearbyFacilitiesScreen: View {
                     } else if let message = searchModel.message {
                         HStack(spacing: 10) {
                             Image(systemName: "location.circle.fill").foregroundStyle(TempoTheme.green)
-                            Text(message).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                            Text(message.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
                             Spacer()
                             if searchModel.needsPermission {
                                 Button("İzin ver") { searchModel.requestLocation() }
@@ -1045,8 +1045,8 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
             places = cached.places
             isSearching = false
             message = cached.places.isEmpty
-                ? "\(sport.title) için \(radiusKm) km çevrede kayıtlı bir alan bulunamadı."
-                : "\(cached.places.count) alan bulundu · kayıtlı sonuçlar anında gösterildi."
+                ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
+                : "%d alan bulundu · kayıtlı sonuçlar anında gösterildi.".tempoFormatted(cached.places.count)
             return
         }
 
@@ -1056,7 +1056,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
         let applePlaces = await appleSearch
         guard generation == searchGeneration else { return }
         places = Self.deduplicated(applePlaces)
-        message = places.isEmpty ? "Açık harita kayıtları da taranıyor…" : "Apple Haritalar’dan \(places.count) alan bulundu; açık veriler taranıyor."
+        message = places.isEmpty ? "Açık harita kayıtları da taranıyor…" : "Apple Haritalar’dan %d alan bulundu; açık veriler taranıyor.".tempoFormatted(places.count)
 
         let openPlaces = await openStreetMapSearch
         guard generation == searchGeneration else { return }
@@ -1064,8 +1064,8 @@ final class FacilitySearchModel: NSObject, ObservableObject, CLLocationManagerDe
         resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), places: places)
         isSearching = false
         message = places.isEmpty
-            ? "\(sport.title) için \(radiusKm) km çevrede kayıtlı bir alan bulunamadı."
-            : "\(places.count) alan bulundu · yakından uzağa sıralandı."
+            ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
+            : "%d alan bulundu · yakından uzağa sıralandı.".tempoFormatted(places.count)
     }
 
     private func searchAppleMaps(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> [NearbyPlace] {
@@ -1244,7 +1244,11 @@ struct NearbyPlace: Identifiable, @unchecked Sendable {
 
         let tags = element.tags ?? [:]
         coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        name = tags["name:tr"] ?? tags["name"] ?? tags["operator"] ?? "\(sportTitle) alanı"
+        let prefersEnglish = Bundle.main.preferredLocalizations.first?.hasPrefix("en") == true
+        name = (prefersEnglish ? tags["name:en"] : tags["name:tr"])
+            ?? tags["name"]
+            ?? tags["operator"]
+            ?? "%@ alanı".tempoFormatted(sportTitle)
 
         let street = [tags["addr:street"], tags["addr:housenumber"]].compactMap { $0 }.joined(separator: " ")
         let area = [tags["addr:district"], tags["addr:suburb"], tags["addr:city"]].compactMap { $0 }.joined(separator: ", ")

@@ -242,6 +242,31 @@ final class TempoAccountStore: ObservableObject {
         clearLocalSession()
     }
 
+    func loadSocial() async throws -> TempoSocialSnapshot {
+        let data = try await socialRequest(path: "/api/account/social", method: "GET", body: Optional<EmptyPayload>.none)
+        return try JSONDecoder().decode(TempoSocialSnapshot.self, from: data)
+    }
+
+    func sendFriendRequest(username: String) async throws {
+        _ = try await socialRequest(path: "/api/account/social/friends", method: "POST", body: SocialFriendRequest(username: username))
+    }
+
+    func respondToFriendRequest(id: String, accept: Bool) async throws {
+        _ = try await socialRequest(path: "/api/account/social/requests", method: "POST", body: SocialFriendResponse(requestId: id, action: accept ? "accept" : "decline"))
+    }
+
+    func createSocialChallenge(title: String, metric: TempoSocialMetric, friendIds: [String]) async throws {
+        _ = try await socialRequest(path: "/api/account/social/challenges", method: "POST", body: SocialChallengeCreate(title: title, metric: metric.rawValue, friendIds: friendIds))
+    }
+
+    func respondToSocialChallenge(id: String, action: String) async throws {
+        _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: action))
+    }
+
+    func setSocialChallengeHealthSharing(id: String, enabled: Bool) async throws {
+        _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: "share", share: enabled))
+    }
+
     func restoreSessionIfNeeded() {
         guard sessionToken != nil, profile == nil, !isRestoring, !isBusy else { return }
         isRestoring = true
@@ -278,6 +303,26 @@ final class TempoAccountStore: ObservableObject {
                 errorMessage = "Hesabına şu anda ulaşılamadı. Bağlantı yeniden kurulunca otomatik olarak denenecek."
             }
         }
+    }
+
+    private func socialRequest<Body: Encodable>(path: String, method: String, body: Body?) async throws -> Data {
+        guard let sessionToken, !sessionToken.isEmpty else { throw AccountError.server("Tempo hesabına yeniden giriş yapman gerekiyor.") }
+        var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
+        request.httpMethod = method
+        request.timeoutInterval = 20
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+        }
+        let (data, response) = try await Self.apiSession.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sosyal bölümden yanıt alınamadı.") }
+        guard (200..<300).contains(http.statusCode) else {
+            let envelope = try? JSONDecoder().decode(AccountEnvelope.self, from: data)
+            throw AccountError.server(envelope?.error ?? "Sosyal işlem tamamlanamadı.")
+        }
+        return data
     }
 
     private func authenticate<Payload: Encodable>(path: String, payload: Payload) async -> Bool {
@@ -413,6 +458,10 @@ private struct ProfileUpdate: Encodable {
 }
 
 private struct EmptyPayload: Encodable {}
+private struct SocialFriendRequest: Encodable { let username: String }
+private struct SocialFriendResponse: Encodable { let requestId: String; let action: String }
+private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String] }
+private struct SocialChallengeAction: Encodable { let action: String; var share: Bool? = nil }
 private struct AccountEnvelope: Decodable {
     let token: String?
     let user: TempoUserProfile?

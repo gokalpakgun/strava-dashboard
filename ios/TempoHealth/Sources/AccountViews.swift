@@ -303,7 +303,7 @@ private struct AccountFormView: View {
                         if !account.errorMessage.isEmpty {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: "exclamationmark.circle.fill")
-                                Text(account.errorMessage)
+                                Text(account.errorMessage.tempoLocalized)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .font(.footnote)
@@ -326,7 +326,7 @@ private struct AccountFormView: View {
                                 if account.isBusy {
                                     ProgressView().tint(.black)
                                 }
-                                Text(account.isBusy ? "Giriş hazırlanıyor…" : mode.actionTitle)
+                                Text((account.isBusy ? "Giriş hazırlanıyor…" : mode.actionTitle).tempoLocalized)
                                 Spacer()
                                 if !account.isBusy {
                                     Image(systemName: "arrow.right")
@@ -428,7 +428,7 @@ private struct PasswordResetSheet: View {
                         }
 
                         if !account.errorMessage.isEmpty {
-                            Label(account.errorMessage, systemImage: "exclamationmark.circle.fill")
+                            Label(account.errorMessage.tempoLocalized, systemImage: "exclamationmark.circle.fill")
                                 .font(.footnote)
                                 .foregroundStyle(TempoTheme.orange)
                         }
@@ -602,7 +602,7 @@ struct AccountOnboardingView: View {
                         }
                     }
                 } label: {
-                    Text(account.isBusy ? "Kaydediliyor…" : "Devam et").frame(maxWidth: .infinity)
+                    Text((account.isBusy ? "Kaydediliyor…" : "Devam et").tempoLocalized).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AccountPrimaryButtonStyle())
                 .disabled(account.isBusy || selectedSports.isEmpty)
@@ -612,25 +612,25 @@ struct AccountOnboardingView: View {
 
     private var connectionsStep: some View {
         VStack(alignment: .leading, spacing: 20) {
-            OnboardingTitle(title: "Verilerini bağla", subtitle: "Bağlantıları şimdi kurabilir veya daha sonra profilinden tamamlayabilirsin.")
+            OnboardingTitle(title: "Sağlık verilerini bağla", subtitle: "Apple Sağlık Tempo’nun ana sağlık kaynağıdır. Strava isteğe bağlıdır ve daha sonra bağlanabilir.")
 
             ConnectionCard(
-                title: "Strava",
-                subtitle: model.isConnected ? "Strava hesabın bağlı." : "Aktivitelerini, rotalarını ve spor istatistiklerini getir.",
-                icon: "figure.run",
-                color: TempoTheme.orange,
-                connected: model.isConnected,
-                busy: model.isBusy,
-                action: model.connectStrava
-            )
-            ConnectionCard(
-                title: "Apple Sağlık",
+                title: "Apple Sağlık · Önerilen",
                 subtitle: model.healthSyncEnabled ? "Apple Sağlık bağlı." : "Uyku, su, adım, kalori, nabız ve diğer sağlık ölçülerini eşitle.",
                 icon: "heart.fill",
                 color: .pink,
                 connected: model.healthSyncEnabled,
                 busy: model.isHealthSyncing,
                 action: model.connectAppleHealth
+            )
+            ConnectionCard(
+                title: "Strava · İsteğe bağlı",
+                subtitle: model.isConnected ? "Strava hesabın bağlı." : "Aktivitelerini, rotalarını ve spor istatistiklerini ekle.",
+                icon: "figure.run",
+                color: TempoTheme.orange,
+                connected: model.isConnected,
+                busy: model.isBusy,
+                action: model.connectStrava
             )
 
             Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
@@ -641,10 +641,12 @@ struct AccountOnboardingView: View {
                     .buttonStyle(AccountOutlineButtonStyle())
                 Button {
                     Task {
-                        await account.updateProfile(onboardingComplete: true)
+                        if await account.updateProfile(onboardingComplete: true) {
+                            model.skipStravaForNow()
+                        }
                     }
                 } label: {
-                    Text(account.isBusy ? "Hazırlanıyor…" : "Tempo’yu aç").frame(maxWidth: .infinity)
+                    Text((account.isBusy ? "Hazırlanıyor…" : "Tempo’yu aç").tempoLocalized).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AccountPrimaryButtonStyle())
                 .disabled(account.isBusy)
@@ -655,11 +657,11 @@ struct AccountOnboardingView: View {
     @ViewBuilder
     private var accountError: some View {
         if !photoError.isEmpty {
-            Label(photoError, systemImage: "photo.badge.exclamationmark")
+            Label(photoError.tempoLocalized, systemImage: "photo.badge.exclamationmark")
                 .font(.footnote).foregroundStyle(TempoTheme.orange)
         }
         if !account.errorMessage.isEmpty {
-            Label(account.errorMessage, systemImage: "exclamationmark.circle.fill")
+            Label(account.errorMessage.tempoLocalized, systemImage: "exclamationmark.circle.fill")
                 .font(.footnote).foregroundStyle(TempoTheme.orange)
         }
     }
@@ -707,7 +709,7 @@ struct AccountProfileCard: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("Seviye \(achievement.level) · \(achievement.title)")
+                            Text("Seviye %d · %@".tempoFormatted(achievement.level, achievement.title.tempoLocalized))
                                 .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                             Spacer()
                             Text(achievement.nextLevelXp > 0 ? "\(achievement.currentLevelXp) / \(achievement.nextLevelXp) XP" : "MAKSİMUM".tempoSentenceCased)
@@ -724,7 +726,7 @@ struct AccountProfileCard: View {
                             ForEach(Array(achievement.unlockedBadges.reversed().prefix(3))) { badge in
                                 HStack(spacing: 6) {
                                     Image(systemName: badge.symbol).foregroundStyle(badge.tempoColor)
-                                    Text(badge.title).lineLimit(1).minimumScaleFactor(0.7)
+                                    Text(badge.title.tempoLocalized).lineLimit(1).minimumScaleFactor(0.7)
                                 }
                                 .font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 9).padding(.vertical, 7)
@@ -820,7 +822,7 @@ struct AchievementsScreen: View {
                                 Button {
                                     withAnimation(.snappy) { selectedCategory = category.id }
                                 } label: {
-                                    Label(category.title, systemImage: category.symbol)
+                                    Label(category.title.tempoLocalized, systemImage: category.symbol)
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(selected ? .black : .white.opacity(0.82))
                                         .padding(.horizontal, 13).padding(.vertical, 9)
@@ -871,7 +873,7 @@ struct AchievementsScreen: View {
                 VStack(spacing: 2) {
                     Text("SEVİYE".tempoSentenceCased).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
                     Text("\(achievement.level)").font(.system(size: 52, weight: .bold, design: .rounded))
-                    Text(achievement.title).font(.caption.bold()).foregroundStyle(TempoTheme.green)
+                    Text(achievement.title.tempoLocalized).font(.caption.bold()).foregroundStyle(TempoTheme.green)
                 }
             }
             .frame(width: 178, height: 178)
@@ -880,7 +882,7 @@ struct AchievementsScreen: View {
                 HStack {
                     Text("%@ toplam XP".tempoFormatted(achievement.totalXp.formatted())).font(.subheadline.bold())
                     Spacer()
-                    Text(achievement.nextLevelXp > 0 ? "Sonraki seviyeye \(max(achievement.nextLevelXp - achievement.currentLevelXp, 0)) XP" : "En yüksek seviye")
+                    Text(achievement.nextLevelXp > 0 ? "Sonraki seviyeye %d XP".tempoFormatted(max(achievement.nextLevelXp - achievement.currentLevelXp, 0)) : "En yüksek seviye".tempoLocalized)
                         .font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
                 ProgressView(value: achievement.safeProgress).tint(TempoTheme.green)
@@ -913,11 +915,11 @@ private struct AchievementBadgeCard: View {
                 Image(systemName: badge.unlocked ? "checkmark.seal.fill" : "lock.fill")
                     .foregroundStyle(badge.unlocked ? TempoTheme.green : TempoTheme.secondary)
             }
-            Text(badge.title).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
-            Text(badge.description).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+            Text(badge.localizedTitle).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
+            Text(badge.localizedDescription).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
             VStack(alignment: .leading, spacing: 6) {
                 ProgressView(value: badge.safeProgress).tint(badge.unlocked ? badge.tempoColor : TempoTheme.secondary)
-                Text(badge.unlocked ? "Tamamlandı" : badge.progressText)
+                Text((badge.unlocked ? "Tamamlandı" : badge.progressText).tempoLocalized)
                     .font(.caption2).foregroundStyle(badge.unlocked ? badge.tempoColor : TempoTheme.secondary)
             }
         }
@@ -930,6 +932,77 @@ private struct AchievementBadgeCard: View {
 }
 
 private extension TempoBadge {
+    var localizedTitle: String {
+        guard Bundle.main.preferredLocalizations.first?.hasPrefix("en") == true else { return title }
+        let fixed: [String: String] = [
+            "first_activity": "First Step", "activity_10": "Find Your Rhythm", "activity_25": "Consistency",
+            "activity_50": "Active 50", "activity_100": "Century Club", "activity_250": "Tempo Master",
+            "active_10_hours": "10 Active Hours", "active_50_hours": "50 Active Hours", "active_100_hours": "100 Hours",
+            "active_250_hours": "Endurance", "elevation_1000": "First Summit", "elevation_5000": "Mountaineer",
+            "elevation_10000": "High Altitude", "elevation_25000": "Summit Seeker", "streak_3": "3-Day Streak",
+            "streak_7": "7-Day Streak", "streak_14": "Two-Week Streak", "streak_30": "Monthly Streak",
+            "multi_sport_3": "Well-Rounded", "multi_sport_5": "Sports Explorer", "multi_sport_8": "All-Rounder",
+            "century": "Century Ride", "early_bird": "Early Bird", "early_bird_20": "Chase the Sunrise"
+        ]
+        if let fixed = fixed[id] { return fixed }
+        guard let (sportKey, kind, targetText) = generatedBadgeParts else { return title.tempoLocalized }
+        let sport = localizedSportName(sportKey)
+        switch kind {
+        case "count": return targetText == "1" ? "First \(sport)" : "\(sport) · \(targetText) Activities"
+        case "hours": return "\(sport) · \(targetText) Hours"
+        case "streak": return "\(sport) · \(targetText)-Day Streak"
+        case "distance": return "\(sport) · \(targetText) km"
+        case "longest": return "\(sport) · \(targetText) km in One Session"
+        case "single": return "\(sport) · Long Session"
+        default: return title.tempoLocalized
+        }
+    }
+
+    var localizedDescription: String {
+        guard Bundle.main.preferredLocalizations.first?.hasPrefix("en") == true else { return description }
+        let fixed: [String: String] = [
+            "first_activity": "Complete your first Strava activity.", "activity_10": "Complete 10 activities.",
+            "activity_25": "Complete 25 activities.", "activity_50": "Complete 50 activities.",
+            "activity_100": "Complete 100 activities.", "activity_250": "Complete 250 activities.",
+            "active_10_hours": "Accumulate 10 hours of movement.", "active_50_hours": "Accumulate 50 hours of movement.",
+            "active_100_hours": "Accumulate 100 hours of movement.", "active_250_hours": "Accumulate 250 hours of movement.",
+            "elevation_1000": "Climb 1,000 m in total.", "elevation_5000": "Climb 5,000 m in total.",
+            "elevation_10000": "Climb 10,000 m in total.", "elevation_25000": "Climb 25,000 m in total.",
+            "streak_3": "Record activities on 3 consecutive days.", "streak_7": "Record activities on 7 consecutive days.",
+            "streak_14": "Record activities on 14 consecutive days.", "streak_30": "Record activities on 30 consecutive days.",
+            "multi_sport_3": "Try at least 3 different sports.", "multi_sport_5": "Try at least 5 different sports.",
+            "multi_sport_8": "Try at least 8 different sports.", "century": "Complete 100 km in one activity.",
+            "early_bird": "Start 5 activities before 8:00 AM.", "early_bird_20": "Start 20 activities before 8:00 AM."
+        ]
+        if let fixed = fixed[id] { return fixed }
+        guard let (sportKey, kind, targetText) = generatedBadgeParts else { return description.tempoLocalized }
+        let sport = localizedSportName(sportKey).lowercased()
+        switch kind {
+        case "count": return targetText == "1" ? "Complete your first \(sport) activity." : "Complete \(targetText) \(sport) activities."
+        case "hours": return "Accumulate \(targetText) hours of \(sport)."
+        case "streak": return "Log \(targetText) consecutive days of \(sport)."
+        case "distance": return "Cover \(targetText) km through \(sport)."
+        case "longest": return "Cover \(targetText) km in a single activity."
+        case "single": return "Complete a single \(sport) session lasting \(targetText) minutes."
+        default: return description.tempoLocalized
+        }
+    }
+
+    private var generatedBadgeParts: (String, String, String)? {
+        let sports = ["run", "ride", "walk", "hike", "swim", "fitness", "tennis", "basketball", "football", "volleyball", "padel", "badminton", "yoga"]
+        guard let sport = sports.first(where: { id.hasPrefix($0 + "_") }) else { return nil }
+        let remainder = String(id.dropFirst(sport.count + 1))
+        guard let separator = remainder.firstIndex(of: "_") else { return nil }
+        let kind = String(remainder[..<separator])
+        var target = String(remainder[remainder.index(after: separator)...])
+        if kind == "distance" || kind == "longest" { target = target.replacingOccurrences(of: "_", with: ".") }
+        return (sport, kind, target)
+    }
+
+    private func localizedSportName(_ key: String) -> String {
+        ["run": "Running", "ride": "Cycling", "walk": "Walking", "hike": "Hiking", "swim": "Swimming", "fitness": "Fitness", "tennis": "Tennis", "basketball": "Basketball", "football": "Football", "volleyball": "Volleyball", "padel": "Padel", "badminton": "Badminton", "yoga": "Yoga"][key] ?? key.capitalized
+    }
+
     var tempoColor: Color {
         switch tint {
         case "orange": return TempoTheme.orange
@@ -943,7 +1016,7 @@ private extension TempoBadge {
     var progressText: String {
         let currentText = current.formatted(.number.precision(.fractionLength(current.rounded() == current ? 0 : 1)))
         let targetText = target.formatted(.number.precision(.fractionLength(target.rounded() == target ? 0 : 1)))
-        return "\(currentText) / \(targetText) \(unit)"
+        return "%@ / %@ %@".tempoFormatted(currentText, targetText, unit.tempoLocalized)
     }
 }
 
@@ -1072,7 +1145,7 @@ struct AccountSettingsScreen: View {
                             .font(.footnote).foregroundStyle(TempoTheme.orange)
                     }
                     if !account.errorMessage.isEmpty {
-                        Text(account.errorMessage).font(.footnote).foregroundStyle(TempoTheme.orange)
+                        Text(account.errorMessage.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.orange)
                     }
 
                     if isEditingProfile || isEditingSports || avatarData != nil {
@@ -1086,7 +1159,7 @@ struct AccountSettingsScreen: View {
                                 }
                             }
                         } label: {
-                            Text(isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (account.isBusy ? "Kaydediliyor…" : "Değişiklikleri kaydet"))
+                            Text((isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (account.isBusy ? "Kaydediliyor…" : "Değişiklikleri kaydet")).tempoLocalized)
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(AccountPrimaryButtonStyle())
@@ -1096,8 +1169,10 @@ struct AccountSettingsScreen: View {
                     DisclosureGroup(isExpanded: $showAccountActions) {
                         VStack(spacing: 10) {
                             Button(role: .destructive) {
-                                model.disconnect()
-                                Task { await account.signOut() }
+                                Task {
+                                    await account.signOut()
+                                    model.clearLocalStateForTempoSignOut()
+                                }
                             } label: {
                                 Label("Tempo hesabından çık", systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity)
                             }
@@ -1144,9 +1219,11 @@ struct AccountSettingsScreen: View {
         }
         .confirmationDialog("Tempo hesabın kalıcı olarak silinsin mi?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Hesabı sil", role: .destructive) {
-                model.disconnect()
                 Task {
-                    if await account.deleteAccount() { dismiss() }
+                    if await account.deleteAccount() {
+                        model.clearLocalStateAfterAccountDeletion()
+                        dismiss()
+                    }
                 }
             }
             Button("Vazgeç", role: .cancel) {}
@@ -1266,7 +1343,7 @@ private struct AccountSecureField: View {
                 .frame(width: 22)
             Group {
                 if hidesPassword {
-                    SecureField(title, text: $text)
+                    SecureField(title.tempoLocalized, text: $text)
                 } else {
                     TextField(title.tempoLocalized, text: $text)
                 }
@@ -1280,7 +1357,7 @@ private struct AccountSecureField: View {
                     .frame(width: 28, height: 40)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(hidesPassword ? "Şifreyi göster" : "Şifreyi gizle")
+            .accessibilityLabel((hidesPassword ? "Şifreyi göster" : "Şifreyi gizle").tempoLocalized)
         }
         .padding(.horizontal, 16)
         .frame(height: 56)
@@ -1411,7 +1488,7 @@ struct TempoGlassBackButtonModifier: ViewModifier {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Geri")
+                    .accessibilityLabel("Geri".tempoLocalized)
                 }
             }
     }
