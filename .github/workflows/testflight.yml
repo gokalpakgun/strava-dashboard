@@ -61,6 +61,9 @@ jobs:
       - name: App Store arşivini oluştur
         run: |
           set -euo pipefail
+          BUILD_NUMBER=$((40 + GITHUB_RUN_NUMBER))
+          echo "TestFlight build number: $BUILD_NUMBER"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" ios/TempoHealth/Info.plist
           xcodebuild \
             -project ios/TempoHealth/TempoHealth.xcodeproj \
             -scheme TempoHealth \
