@@ -383,21 +383,16 @@ private struct ImportPill: View {
 
 private struct HomeScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    @AppStorage("tempoWeeklyGoalKm") private var weeklyGoalKm = 40.0
-    @State private var showsNearbyFacilities = false
 
     private var activities: [TempoActivity] { model.dashboard?.activities ?? [] }
     private var weekActivities: [TempoActivity] { activities.filter { $0.date.map(Calendar.current.isDateInCurrentWeek) ?? false } }
     private var weekDistance: Double { weekActivities.reduce(0) { $0 + $1.distanceKm } }
     private var weekSeconds: Double { weekActivities.reduce(0) { $0 + $1.movingSeconds } }
-    private var weekElevation: Double { weekActivities.reduce(0) { $0 + $1.elevationMeters } }
 
     var body: some View {
         NavigationStack {
             TempoPage {
-                HomeHeader {
-                    showsNearbyFacilities = true
-                }
+                HomeHeader()
                 if let dashboard = model.dashboard {
                     hero(dashboard.athlete)
                     if let balance = model.tempoBalance {
@@ -406,6 +401,7 @@ private struct HomeScreen: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    SectionHeading(title: "Bu hafta", caption: "HAFTALIK ÖZET", padding: false)
                     weeklyMetrics
                     quickActions
                     RecentActivitiesPanel(activities: dashboard.activities)
@@ -415,92 +411,29 @@ private struct HomeScreen: View {
                 }
             }
             .refreshable { await model.reloadAll() }
-            .navigationDestination(isPresented: $showsNearbyFacilities) {
-                NearbyFacilitiesScreen()
-            }
             .toolbar(.hidden, for: .navigationBar)
         }
     }
 
     private func hero(_ athlete: TempoAthlete) -> some View {
-        let progress = min(weekDistance / max(weeklyGoalKm, 1), 1)
-        return ZStack(alignment: .topTrailing) {
-            Circle()
-                .fill(TempoTheme.green.opacity(0.16))
-                .frame(width: 190, height: 190)
-                .blur(radius: 28)
-                .offset(x: 62, y: -78)
-
-            VStack(alignment: .leading, spacing: 19) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("MERHABA, \((athlete.firstname ?? "SPORCU").uppercased())")
-                        .font(.caption.bold())
-                        .tracking(1.7)
-                        .foregroundStyle(TempoTheme.green)
-                    Text("Bu haftaki hareketin".tempoLocalized)
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                    Text((progress >= 1 ? "Haftalık hedefini tamamladın." : "Kendi ritminde ilerlemeye devam et.").tempoLocalized)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.66))
-                }
-
-                HStack(alignment: .lastTextBaseline, spacing: 7) {
-                    Text(TempoFormat.distance(weekDistance))
-                        .font(.system(size: 42, weight: .bold, design: .rounded).monospacedDigit())
-                        .contentTransition(.numericText())
-                    Text("/ \(Int(weeklyGoalKm)) km")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.65))
-                    Spacer(minLength: 8)
-                    Text("%\(Int(progress * 100))")
-                        .font(.headline.bold().monospacedDigit())
-                        .foregroundStyle(TempoTheme.green)
-                }
-
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.10))
-                        Capsule()
-                            .fill(LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .leading, endPoint: .trailing))
-                            .frame(width: max(8, geometry.size.width * progress))
-                    }
-                }
-                .frame(height: 8)
-
-                HStack(spacing: 6) {
-                    Image(systemName: progress >= 1 ? "checkmark.circle.fill" : "sparkle")
-                        .foregroundStyle(TempoTheme.green)
-                    Text(progress >= 1 ? "Harika bir hafta!".tempoLocalized : "Hedefe %@ kaldı".tempoFormatted(TempoFormat.distance(max(weeklyGoalKm - weekDistance, 0))))
-                        .foregroundStyle(.white.opacity(0.72))
-                    Spacer()
-                }
-                .font(.caption.weight(.semibold))
-            }
-            .padding(20)
+        VStack(alignment: .leading, spacing: 5) {
+            Text("MERHABA, \((athlete.firstname ?? "SPORCU").uppercased())")
+                .font(.caption.bold())
+                .tracking(1.7)
+                .foregroundStyle(TempoTheme.green)
+            Text("Bugünkü durumun ve hareket özetin".tempoLocalized)
+                .font(.subheadline)
+                .foregroundStyle(TempoTheme.secondary)
         }
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.075, green: 0.12, blue: 0.105),
-                    Color(red: 0.045, green: 0.075, blue: 0.09)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 29, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 29, style: .continuous)
-                .stroke(LinearGradient(colors: [TempoTheme.green.opacity(0.3), .white.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        )
-        .shadow(color: .black.opacity(0.24), radius: 24, y: 13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 2)
     }
 
     private var weeklyMetrics: some View {
         HStack(spacing: 10) {
             MetricCard(value: "\(weekActivities.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
             MetricCard(value: TempoFormat.duration(weekSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
-            MetricCard(value: "\(Int(weekElevation)) m", label: "Tırmanış", icon: "mountain.2.fill", color: TempoTheme.purple)
+            MetricCard(value: TempoFormat.distance(weekDistance), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.purple)
         }
     }
 
@@ -2201,14 +2134,12 @@ private struct TempoPage<Content: View>: View {
 }
 
 private struct HomeHeader: View {
-    let onLocationTap: () -> Void
-
     private var dateText: String {
         Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide))
     }
 
     var body: some View {
-        HStack {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("TEMPO")
                     .font(.caption.bold())
@@ -2218,17 +2149,6 @@ private struct HomeHeader: View {
                     .font(.title3.bold())
             }
             Spacer()
-            Button(action: onLocationTap) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(TempoTheme.blue)
-                    .frame(width: 52, height: 52)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(TempoTheme.blue.opacity(0.24)))
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Yakındaki spor alanlarını aç")
         }
     }
 }
