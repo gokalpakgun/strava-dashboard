@@ -407,12 +407,10 @@ private struct HomeScreen: View {
                 }
             }
             .refreshable { await model.reloadAll() }
-            .toolbar(.hidden, for: .navigationBar)
-        }
-        .fullScreenCover(isPresented: $showsNearbyFacilities) {
-            NavigationStack {
+            .navigationDestination(isPresented: $showsNearbyFacilities) {
                 NearbyFacilitiesScreen()
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
@@ -824,28 +822,25 @@ private struct RecentActivitiesPanel: View {
     }
 }
 
-private enum ActivityTimelineFilter: String, CaseIterable, Identifiable {
-    case all, run, ride, walk, other
+private struct ActivityTimelineFilter: Identifiable {
+    let id: String
+    let title: String
 
-    var id: String { rawValue }
+    static let all = ActivityTimelineFilter(id: "all", title: "Tümü")
+    static let other = ActivityTimelineFilter(id: "other", title: "Diğer")
 
-    var title: String {
-        switch self {
-        case .all: return "Tümü"
-        case .run: return "Koşu"
-        case .ride: return "Bisiklet"
-        case .walk: return "Yürüyüş"
-        case .other: return "Diğer"
-        }
+    static func sport(_ title: String) -> ActivityTimelineFilter {
+        ActivityTimelineFilter(id: "sport:\(title)", title: title)
     }
 
     func matches(_ activity: TempoActivity) -> Bool {
-        switch self {
-        case .all: return true
-        case .run: return activity.sport == .run
-        case .ride: return activity.sport == .ride
-        case .walk: return activity.sport == .walk
-        case .other: return activity.sport != .run && activity.sport != .ride && activity.sport != .walk
+        switch id {
+        case Self.all.id:
+            return true
+        case Self.other.id:
+            return activity.sport != .run && activity.sport != .ride && activity.sport != .walk
+        default:
+            return activity.sport.title == title
         }
     }
 }
@@ -860,7 +855,20 @@ private struct ActivityTimelineGroup: Identifiable {
 
 private struct ActivityTimelineScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    @State private var filter: ActivityTimelineFilter = .all
+    @State private var filter = ActivityTimelineFilter.all
+
+    private var filterOptions: [ActivityTimelineFilter] {
+        let activities = model.dashboard?.activities ?? []
+        let coreTitles = Set(["Koşu".tempoLocalized, "Bisiklet".tempoLocalized, "Yürüyüş".tempoLocalized])
+        let otherSports = Set(activities.map { $0.sport.title })
+            .subtracting(coreTitles)
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            .map(ActivityTimelineFilter.sport)
+        return [.all]
+            + ["Koşu".tempoLocalized, "Bisiklet".tempoLocalized, "Yürüyüş".tempoLocalized].map(ActivityTimelineFilter.sport)
+            + otherSports
+            + [.other]
+    }
 
     private var filteredActivities: [TempoActivity] {
         (model.dashboard?.activities ?? [])
@@ -941,16 +949,16 @@ private struct ActivityTimelineScreen: View {
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(ActivityTimelineFilter.allCases) { option in
+                            ForEach(filterOptions) { option in
                                 Button {
                                     withAnimation(.easeOut(duration: 0.18)) { filter = option }
                                 } label: {
                                     Text(option.title.tempoLocalized)
                                         .font(.caption.bold())
-                                        .foregroundStyle(filter == option ? .black : .white)
+                                        .foregroundStyle(filter.id == option.id ? .black : .white)
                                         .padding(.horizontal, 15)
                                         .padding(.vertical, 10)
-                                        .background(filter == option ? TempoTheme.green : TempoTheme.card, in: Capsule())
+                                        .background(filter.id == option.id ? TempoTheme.green : TempoTheme.card, in: Capsule())
                                 }
                                 .buttonStyle(.plain)
                             }
