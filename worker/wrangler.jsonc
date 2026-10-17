@@ -13,7 +13,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/auth/*", "/mobile/auth/*", "/api/*", "/privacy", "/reset-password"]
+    "run_worker_first": ["/auth/*", "/mobile/auth/*", "/api/*", "/webhooks/*", "/privacy", "/reset-password"]
   },
   "ai": {
     "binding": "AI"

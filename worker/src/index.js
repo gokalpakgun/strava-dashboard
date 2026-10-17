@@ -9,7 +9,7 @@ const MOBILE_TOKEN_SECONDS = 60 * 60 * 24 * 100;
 const MOBILE_CALLBACK_SCHEME = "tempohealth";
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {
@@ -46,6 +46,12 @@ export default {
       }
       if (url.pathname === "/privacy" && request.method === "GET") {
         return env.ASSETS.fetch(new Request(new URL("/privacy.html", url), request));
+      }
+      if (isStravaWebhookPath(url, env) && request.method === "GET") {
+        return verifyStravaWebhook(url, env);
+      }
+      if (isStravaWebhookPath(url, env) && request.method === "POST") {
+        return receiveStravaWebhook(request, env, ctx);
       }
       if (url.pathname === "/api/mobile/auth/exchange" && request.method === "POST") {
         return exchangeMobileTicket(request, env);
@@ -180,6 +186,7 @@ async function completeAuthorization(request, url, env) {
     refresh_token: tokens.refresh_token,
     athlete_id: tokens.athlete?.id ?? null,
   }), { expirationTtl: SESSION_SECONDS });
+  if (tokens.athlete?.id) await rememberWebSession(env, tokens.athlete.id, sessionId);
 
   const headers = new Headers({ Location: `${url.origin}/?connected=1`, "Cache-Control": "no-store" });
   headers.append("Set-Cookie", cookie(SESSION_COOKIE, sessionId, SESSION_SECONDS, "/"));
@@ -208,6 +215,7 @@ async function getActivities(request, env) {
     refresh_token: tokens.refresh_token,
     athlete_id: saved.athlete_id,
   }), { expirationTtl: SESSION_SECONDS });
+  if (saved.athlete_id) await rememberWebSession(env, saved.athlete_id, sessionId);
 
   const response = await fetch("https://www.strava.com/api/v3/athlete/activities?per_page=100", {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
@@ -280,6 +288,9 @@ async function buildDashboard(env, { sessionKey, cacheKey, saved, sessionTtl }) 
     refresh_token: tokens.refresh_token,
     athlete_id: tokens.athlete?.id ?? saved.athlete_id,
   }), { expirationTtl: sessionTtl });
+  if (sessionKey.startsWith("session:") && (tokens.athlete?.id ?? saved.athlete_id)) {
+    await rememberWebSession(env, tokens.athlete?.id ?? saved.athlete_id, sessionKey.slice("session:".length));
+  }
 
   const headers = { Authorization: `Bearer ${tokens.access_token}` };
   const [athleteResponse, segmentsResponse] = await Promise.all([
@@ -812,7 +823,7 @@ async function exchangeMobileTicket(request, env) {
       athlete_id: athleteKey,
     }), { expirationTtl: MOBILE_TOKEN_SECONDS }),
     env.TOKEN_STORE.put(ticketKey, JSON.stringify({ ...ticketData, token }), { expirationTtl: 300 }),
-    env.TOKEN_STORE.delete(`mobile-dashboard:${athleteKey}`),
+    env.TOKEN_STORE.delete(`mobile-dashboard:v3:${athleteKey}`),
   ];
   if (!account.response) {
     writes.push(
@@ -850,7 +861,7 @@ async function logoutMobile(request, env) {
       env.TOKEN_STORE.delete(`strava-account:${athleteId}`),
       ...(accountId ? [env.TOKEN_STORE.delete(`account-strava:${accountId}`)] : []),
       env.TOKEN_STORE.delete(`mobile-strava:${athleteId}`),
-      env.TOKEN_STORE.delete(`mobile-dashboard:${athleteId}`),
+      env.TOKEN_STORE.delete(`mobile-dashboard:v3:${athleteId}`),
       env.TOKEN_STORE.delete(`health-water-athlete:${athleteId}`),
       env.TOKEN_STORE.delete(`mobile-health:${athleteId}`),
     );
@@ -1237,18 +1248,146 @@ async function logout(request, env) {
   requireBindings(env);
   const sessionId = readCookie(request, SESSION_COOKIE);
   if (sessionId) {
+    const saved = await env.TOKEN_STORE.get(`session:${sessionId}`, "json");
     const waterHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
     await Promise.all([
       env.TOKEN_STORE.delete(`session:${sessionId}`),
+      env.TOKEN_STORE.delete(`dashboard:v2:${sessionId}`),
       env.TOKEN_STORE.delete(`health-water-link:${waterHash || ""}`),
       env.TOKEN_STORE.delete(`health-water-link-for:${sessionId}`),
       env.TOKEN_STORE.delete(`health-water:${sessionId}`),
     ]);
+    if (saved?.athlete_id) await forgetWebSession(env, saved.athlete_id, sessionId);
   }
   return new Response(null, {
     status: 204,
     headers: { "Cache-Control": "no-store", "Set-Cookie": cookie(SESSION_COOKIE, "", 0, "/") },
   });
+}
+
+function isStravaWebhookPath(url, env) {
+  return Boolean(env.STRAVA_WEBHOOK_PATH_SECRET)
+    && url.pathname === `/webhooks/strava/${env.STRAVA_WEBHOOK_PATH_SECRET}`;
+}
+
+function verifyStravaWebhook(url, env) {
+  const mode = url.searchParams.get("hub.mode");
+  const token = url.searchParams.get("hub.verify_token");
+  const challenge = url.searchParams.get("hub.challenge");
+  if (!env.STRAVA_WEBHOOK_VERIFY_TOKEN || !env.TOKEN_STORE) return json({ error: "Strava webhook doğrulaması yapılandırılmadı." }, 503);
+  if (mode !== "subscribe" || token !== env.STRAVA_WEBHOOK_VERIFY_TOKEN || !challenge) {
+    return json({ error: "Strava webhook doğrulaması reddedildi." }, 403);
+  }
+  return json({ "hub.challenge": challenge });
+}
+
+async function receiveStravaWebhook(request, env, ctx) {
+  if (!env.STRAVA_WEBHOOK_VERIFY_TOKEN || !env.TOKEN_STORE) {
+    return json({ error: "Strava webhook doğrulaması yapılandırılmadı." }, 503);
+  }
+  let event;
+  try {
+    const body = await request.text();
+    if (body.length > 8192) return json({ error: "Webhook isteği çok büyük." }, 413);
+    event = JSON.parse(body);
+  } catch {
+    return json({ error: "Webhook isteği geçersiz." }, 400);
+  }
+  const ownerId = String(event?.owner_id ?? "");
+  const objectId = String(event?.object_id ?? "");
+  if (!/^\d{1,20}$/.test(ownerId) || !["activity", "athlete"].includes(event?.object_type)
+      || !["create", "update", "delete"].includes(event?.aspect_type)) {
+    return json({ error: "Webhook olayı geçersiz." }, 400);
+  }
+
+  let work;
+  if (event.object_type === "athlete" && event.aspect_type === "update"
+      && String(event?.updates?.authorized).toLowerCase() === "false") {
+    work = clearStravaAthleteData(env, objectId || ownerId);
+  } else if (event.object_type === "activity" && /^\d{1,20}$/.test(objectId)) {
+    work = invalidateStravaDashboards(env, ownerId);
+  }
+  if (work) {
+    if (ctx?.waitUntil) {
+      ctx.waitUntil(work.catch(error => console.error("Strava webhook cleanup failed:", error?.message || "unknown error")));
+    } else {
+      await work;
+    }
+  }
+  return json({ ok: true });
+}
+
+async function rememberWebSession(env, athleteId, sessionId) {
+  const key = `strava-web-sessions:${athleteId}`;
+  const current = await env.TOKEN_STORE.get(key, "json");
+  const sessions = Array.isArray(current) ? current.filter(value => typeof value === "string") : [];
+  if (!sessions.includes(sessionId)) sessions.push(sessionId);
+  await env.TOKEN_STORE.put(key, JSON.stringify(sessions), { expirationTtl: SESSION_SECONDS });
+}
+
+async function forgetWebSession(env, athleteId, sessionId) {
+  const key = `strava-web-sessions:${athleteId}`;
+  const current = await env.TOKEN_STORE.get(key, "json");
+  const sessions = Array.isArray(current) ? current.filter(value => value !== sessionId) : [];
+  if (sessions.length) await env.TOKEN_STORE.put(key, JSON.stringify(sessions), { expirationTtl: SESSION_SECONDS });
+  else await env.TOKEN_STORE.delete(key);
+}
+
+async function invalidateStravaDashboards(env, athleteId) {
+  const sessionIds = await env.TOKEN_STORE.get(`strava-web-sessions:${athleteId}`, "json");
+  const deletes = [env.TOKEN_STORE.delete(`mobile-dashboard:v3:${athleteId}`)];
+  if (Array.isArray(sessionIds)) {
+    deletes.push(...sessionIds.filter(value => typeof value === "string").map(sessionId =>
+      env.TOKEN_STORE.delete(`dashboard:v2:${sessionId}`)));
+  }
+  await Promise.all(deletes);
+}
+
+async function clearStravaAthleteData(env, athleteId) {
+  await invalidateStravaDashboards(env, athleteId);
+  const accountId = await env.TOKEN_STORE.get(`strava-account:${athleteId}`);
+  const mobileHash = await env.TOKEN_STORE.get(`mobile-link-for:${athleteId}`);
+  const indexedSessions = await env.TOKEN_STORE.get(`strava-web-sessions:${athleteId}`, "json");
+  const legacySessions = await findLegacyWebSessions(env, athleteId);
+  const sessionIds = [...new Set([
+    ...(Array.isArray(indexedSessions) ? indexedSessions.filter(value => typeof value === "string") : []),
+    ...legacySessions,
+  ])];
+  const keys = [
+    `strava-account:${athleteId}`,
+    `account-strava:${accountId || ""}`,
+    `mobile-strava:${athleteId}`,
+    `mobile-link-for:${athleteId}`,
+    `mobile-session:${mobileHash || ""}`,
+    `mobile-health:${athleteId}`,
+    `health-water-athlete:${athleteId}`,
+    `strava-web-sessions:${athleteId}`,
+  ];
+  if (Array.isArray(sessionIds)) {
+    for (const sessionId of sessionIds) {
+      if (typeof sessionId !== "string") continue;
+      keys.push(`session:${sessionId}`, `dashboard:v2:${sessionId}`);
+      const waterHash = await env.TOKEN_STORE.get(`health-water-link-for:${sessionId}`);
+      keys.push(`health-water-link-for:${sessionId}`, `health-water-link:${waterHash || ""}`, `health-water:${sessionId}`);
+    }
+  }
+  await Promise.all([...new Set(keys)].map(key => env.TOKEN_STORE.delete(key)));
+}
+
+async function findLegacyWebSessions(env, athleteId) {
+  const matches = [];
+  let cursor;
+  do {
+    const page = await env.TOKEN_STORE.list({ prefix: "session:", limit: 1000, ...(cursor ? { cursor } : {}) });
+    const sessions = await Promise.all(page.keys.map(async entry => {
+      const sessionId = entry.name.slice("session:".length);
+      const record = await env.TOKEN_STORE.get(entry.name, "json");
+      return String(record?.athlete_id ?? "") === String(athleteId) ? sessionId : null;
+    }));
+    matches.push(...sessions.filter(Boolean));
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return matches;
 }
 
 async function stravaToken(fields) {

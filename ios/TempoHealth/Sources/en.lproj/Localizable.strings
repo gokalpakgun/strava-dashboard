@@ -893,7 +893,6 @@
 "Yarışma skorları için Apple Sağlık’ı bağla" = "Connect Apple Health for challenge scores";
 "Arkadaş ekle" = "Add friend";
 "TEMPO KULLANICI ADI" = "TEMPO USERNAME";
-"Kullanıcı adı" = "Username";
 "Arkadaşlık istekleri" = "Friend requests";
 "GELEN" = "INCOMING";
 "Kabul et" = "Accept";
@@ -966,3 +965,8 @@
 "iPhone adım ölçümü için Hareket ve Fitness izni gerekebilir. iPhone sensöründeki adım geçmişi son 7 gün için sorgulanabilir." = "Motion & Fitness permission may be needed to read iPhone steps. The iPhone sensor’s step history can be queried for the last 7 days.";
 "Fotoğraf tek başına yeterli değil. Antrenman saatinde anlamlı bir hareket veya Sağlık sinyali bulunamadı." = "A photo alone isn’t enough. No meaningful movement or Health signal was found during the workout time.";
 "Antrenman bitiş zamanı gelecekte olamaz." = "Workout end time can’t be in the future.";
+"Adım" = "Step";
+"Aktivite Geçmişi" = "Activity History";
+"Mesafe" = "Distance";
+"Spor Alanları" = "Sports Facilities";
+"süre" = "duration";

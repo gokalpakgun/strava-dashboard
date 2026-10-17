@@ -61,9 +61,20 @@ jobs:
       - name: App Store arşivini oluştur
         run: |
           set -euo pipefail
-          BUILD_NUMBER=$((40 + GITHUB_RUN_NUMBER))
+          # Use the source build version plus the workflow run/attempt sequence.
+          # The attempt component makes a retry unique even if an earlier
+          # attempt uploaded successfully before the workflow later failed.
+          SOURCE_BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' ios/TempoHealth/Info.plist)
+          BUILD_SEQUENCE=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          BUILD_NUMBER="${SOURCE_BUILD_NUMBER}.${BUILD_SEQUENCE}"
+          if [[ ! "$BUILD_NUMBER" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+            echo "Generated invalid CFBundleVersion: $BUILD_NUMBER"
+            exit 1
+          fi
           echo "TestFlight build number: $BUILD_NUMBER"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" ios/TempoHealth/Info.plist
+          WRITTEN_BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' ios/TempoHealth/Info.plist)
+          test "$WRITTEN_BUILD_NUMBER" = "$BUILD_NUMBER"
           xcodebuild \
             -project ios/TempoHealth/TempoHealth.xcodeproj \
             -scheme TempoHealth \
@@ -76,6 +87,9 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
             archive
+          ARCHIVED_BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$RUNNER_TEMP/Tempo.xcarchive/Products/Applications/Tempo.app/Info.plist")
+          echo "Archived TestFlight build number: $ARCHIVED_BUILD_NUMBER"
+          test "$ARCHIVED_BUILD_NUMBER" = "$BUILD_NUMBER"
 
       - name: TestFlight IPA dosyasını dışa aktar
         run: |

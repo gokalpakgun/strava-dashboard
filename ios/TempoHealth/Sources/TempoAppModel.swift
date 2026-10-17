@@ -45,6 +45,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }()
     private static let dashboardCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("tempo-dashboard-v2.json")
+    // Strava permits only a short-lived cache. A one-day local window also
+    // gives deleted or edited activities time to disappear well before the
+    // policy's 48-hour deletion-reflection limit.
+    private static let dashboardCacheLifetime: TimeInterval = 24 * 60 * 60
     private static let healthCacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("tempo-health-days-v1.json")
     private static let healthLastSyncKey = "tempoHealthLastSyncV1"
@@ -930,7 +934,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     private static func loadCachedDashboard() -> TempoDashboard? {
-        guard let data = try? Data(contentsOf: dashboardCacheURL) else { return nil }
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: dashboardCacheURL.path),
+              let modifiedAt = attributes[.modificationDate] as? Date,
+              Date().timeIntervalSince(modifiedAt) >= 0,
+              Date().timeIntervalSince(modifiedAt) < dashboardCacheLifetime,
+              let data = try? Data(contentsOf: dashboardCacheURL) else {
+            clearCachedDashboard()
+            return nil
+        }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try? decoder.decode(TempoDashboard.self, from: data)

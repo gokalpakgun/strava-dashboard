@@ -379,6 +379,18 @@ async function deleteAccount(request, env) {
   }
   await deleteSocialAccount(env, context.user.id);
   const linkedHash = athleteId ? await env.TOKEN_STORE.get("mobile-link-for:" + athleteId) : null;
+  const webSessionIds = athleteId ? await webSessionsForAthlete(env, athleteId) : [];
+  const webSessionKeys = [];
+  for (const sessionId of webSessionIds) {
+    const waterHash = await env.TOKEN_STORE.get("health-water-link-for:" + sessionId);
+    webSessionKeys.push(
+      "session:" + sessionId,
+      "dashboard:v2:" + sessionId,
+      "health-water-link-for:" + sessionId,
+      "health-water-link:" + (waterHash || ""),
+      "health-water:" + sessionId,
+    );
+  }
   const relatedKeys = [
     "account-health:" + context.user.id,
     "account-water:" + context.user.id,
@@ -392,10 +404,12 @@ async function deleteAccount(request, env) {
     relatedKeys.push(
       "strava-account:" + athleteId,
       "mobile-strava:" + athleteId,
-      "mobile-dashboard:" + athleteId,
+      "mobile-dashboard:v3:" + athleteId,
       "mobile-health:" + athleteId,
       "health-water-athlete:" + athleteId,
       "mobile-link-for:" + athleteId,
+      "strava-web-sessions:" + athleteId,
+      ...webSessionKeys,
     );
     if (linkedHash) relatedKeys.push("mobile-session:" + linkedHash);
   }
@@ -403,6 +417,27 @@ async function deleteAccount(request, env) {
     ...relatedKeys.map(key => env.TOKEN_STORE.delete(key)),
   ]);
   return new Response(null, { status: 204, headers: securityHeaders() });
+}
+
+async function webSessionsForAthlete(env, athleteId) {
+  const indexed = await env.TOKEN_STORE.get("strava-web-sessions:" + athleteId, "json");
+
+  // Sessions created before the index was introduced still need to be removed
+  // when an account is deleted.
+  const matches = Array.isArray(indexed) ? indexed.filter(value => typeof value === "string") : [];
+  let cursor;
+  do {
+    const page = await env.TOKEN_STORE.list({ prefix: "session:", limit: 1000, ...(cursor ? { cursor } : {}) });
+    const pageMatches = await Promise.all(page.keys.map(async entry => {
+      const record = await env.TOKEN_STORE.get(entry.name, "json");
+      return String(record?.athlete_id ?? "") === String(athleteId)
+        ? entry.name.slice("session:".length)
+        : null;
+    }));
+    matches.push(...pageMatches.filter(Boolean));
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return [...new Set(matches)];
 }
 
 async function revokeStravaRefreshToken(env, refreshToken) {
