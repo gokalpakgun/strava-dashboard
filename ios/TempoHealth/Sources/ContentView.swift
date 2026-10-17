@@ -836,6 +836,22 @@ private struct WorkoutHealthSignalSummary: View {
     }
 }
 
+private struct ManualWorkoutToolbar: ToolbarContent {
+    let isSaving: Bool
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("İptal", action: onCancel)
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button(isSaving ? "Kaydediliyor…" : "Kaydet", action: onSave)
+                .disabled(isSaving)
+        }
+    }
+}
+
 private struct ManualWorkoutForm: View {
     @EnvironmentObject private var model: TempoAppModel
     @Environment(\.dismiss) private var dismiss
@@ -900,13 +916,7 @@ private struct ManualWorkoutForm: View {
             .navigationTitle("Antrenman ekle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("İptal") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Kaydediliyor…" : "Kaydet") { Task { await saveWorkout() } }
-                        .disabled(isSaving)
-                }
+                ManualWorkoutToolbar(isSaving: isSaving, onCancel: { dismiss() }, onSave: saveTapped)
             }
             .onChange(of: photoItem) { _, item in
                 Task { await loadPhoto(item) }
@@ -925,6 +935,10 @@ private struct ManualWorkoutForm: View {
         let bounded = image.preparingThumbnail(of: CGSize(width: 1400, height: 1400)) ?? image
         photoData = bounded.jpegData(compressionQuality: 0.78)
         photoImage = photoData.flatMap { UIImage(data: $0) }
+    }
+
+    private func saveTapped() {
+        Task { await saveWorkout() }
     }
 
     @MainActor
