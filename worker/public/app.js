@@ -403,7 +403,10 @@ function renderPhotos(photos) {
     image.loading = 'lazy';
     const title = document.createElement('span');
     title.textContent = photo.activity_name || 'Aktiviteyi görüntüle';
-    link.append(image, title);
+    const attribution = document.createElement('span');
+    attribution.textContent = 'View on Strava';
+    attribution.style.cssText = 'display:block;padding:0 8px 8px;color:#FC5200;font-size:10px;font-weight:700;text-decoration:underline';
+    link.append(image, title, attribution);
     container.append(link);
   });
 }
@@ -617,3 +620,4 @@ fetch('/api/dashboard', { credentials: 'same-origin' })
   .catch((error) => {
     if (error.message !== 'not-connected') showNotice('Örnek veriler gösteriliyor. Canlı bağlantı için önce Strava’yı bağla.');
   });
+
