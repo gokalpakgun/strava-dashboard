@@ -3277,9 +3277,24 @@ private struct LoadingDashboardCard: View {
     @EnvironmentObject private var model: TempoAppModel
     var body: some View {
         VStack(spacing: 16) {
-            ProgressView().controlSize(.large).tint(TempoTheme.green)
+            if model.dashboardError == nil {
+                ProgressView().controlSize(.large).tint(TempoTheme.green)
+            } else {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(TempoTheme.orange)
+                    .accessibilityHidden(true)
+            }
             Text((model.dashboardError ?? "Strava verilerin hazırlanıyor…").tempoLocalized).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
-            if model.dashboardError != nil { Button("Yeniden dene") { Task { await model.refreshDashboard() } }.buttonStyle(TempoPrimaryButtonStyle()) }
+            if let details = model.dashboardErrorDetails {
+                Text("Tanı: %@".tempoFormatted(details))
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(TempoTheme.secondary)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Tanı: %@".tempoFormatted(details))
+            }
+            if model.dashboardError != nil { Button("Yeniden dene") { Task { await model.refreshDashboard() } }.buttonStyle(TempoPrimaryButtonStyle()).disabled(model.isLoadingDashboard) }
         }.padding(35).frame(maxWidth: .infinity).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 }

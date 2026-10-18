@@ -453,6 +453,87 @@ test("parallel dashboard cache misses make one Strava fetch batch and one KV cac
   }
 });
 
+test("mobile dashboard keeps the first activity page when Strava rate limits older history", async () => {
+  const env = accountEnv();
+  env.STRAVA_CLIENT_ID = "client-id";
+  env.STRAVA_CLIENT_SECRET = "client-secret";
+  env.ASSETS = { fetch: async () => new Response("ok") };
+  const token = "b".repeat(64);
+  const tokenHash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)))]
+    .map(byte => byte.toString(16).padStart(2, "0")).join("");
+  await Promise.all([
+    env.TOKEN_STORE.put("mobile-session:" + tokenHash, "123456"),
+    env.TOKEN_STORE.put("mobile-strava:123456", JSON.stringify({
+      access_token: "access-token", refresh_token: "refresh-token", expires_at: Math.floor(Date.now() / 1000) + 3600,
+    })),
+  ]);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.pathname === "/api/v3/athlete") return new Response(JSON.stringify({ id: 123, firstname: "Tempo" }));
+    if (url.pathname === "/api/v3/segments/starred") return new Response("[]");
+    if (url.pathname === "/api/v3/athlete/activities" && url.searchParams.get("page") === "1") {
+      const activities = Array.from({ length: 100 }, (_, index) => ({
+        id: index + 1, name: `Run ${index + 1}`, sport_type: "Run", start_date_local: "2026-10-01T08:00:00Z",
+        distance: 1000, moving_time: 300, total_elevation_gain: 10, average_speed: 3.3,
+        total_photo_count: 0, map: { summary_polyline: "encoded-route" },
+      }));
+      return new Response(JSON.stringify(activities));
+    }
+    if (url.pathname === "/api/v3/athlete/activities") return new Response("rate limited", { status: 429 });
+    throw new Error("Unexpected mocked request: " + url.pathname);
+  };
+
+  try {
+    const response = await worker.fetch(new Request("https://apitempo.com/api/mobile/dashboard", {
+      headers: { Authorization: "Bearer " + token },
+    }), env);
+    assert.equal(response.status, 200);
+    const dashboard = await response.json();
+    assert.equal(dashboard.activities.length, 100);
+    assert.equal(dashboard.historyLimited, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("mobile dashboard exposes safe Strava status diagnostics for a denied activity request", async () => {
+  const env = accountEnv();
+  env.STRAVA_CLIENT_ID = "client-id";
+  env.STRAVA_CLIENT_SECRET = "client-secret";
+  env.ASSETS = { fetch: async () => new Response("ok") };
+  const token = "c".repeat(64);
+  const tokenHash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)))]
+    .map(byte => byte.toString(16).padStart(2, "0")).join("");
+  await Promise.all([
+    env.TOKEN_STORE.put("mobile-session:" + tokenHash, "654321"),
+    env.TOKEN_STORE.put("mobile-strava:654321", JSON.stringify({
+      access_token: "access-token", refresh_token: "refresh-token", expires_at: Math.floor(Date.now() / 1000) + 3600,
+    })),
+  ]);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.pathname === "/api/v3/athlete") return new Response(JSON.stringify({ id: 654321, firstname: "Tempo" }));
+    if (url.pathname === "/api/v3/segments/starred") return new Response("[]");
+    if (url.pathname === "/api/v3/athlete/activities") return new Response("forbidden", { status: 403 });
+    throw new Error("Unexpected mocked request: " + url.pathname);
+  };
+
+  try {
+    const response = await worker.fetch(new Request("https://apitempo.com/api/mobile/dashboard", {
+      headers: { Authorization: "Bearer " + token },
+    }), env);
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get("X-Tempo-Diagnostic"), "strava-activities-403");
+    assert.deepEqual(await response.json(), { error: "Strava aktiviteleri alınamadı." });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("password reset email ignores an untrusted incoming Host", async () => {
   const env = accountEnv();
   env.RESEND_API_KEY = "test-key";

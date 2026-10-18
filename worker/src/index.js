@@ -131,9 +131,13 @@ export default {
       }
       return withStaticSecurityHeaders(await env.ASSETS.fetch(request));
     } catch (error) {
-      console.error("Tempo Worker request failed:", error?.message || "unknown error");
+      const rayId = request.headers.get("cf-ray") || "unavailable";
+      const diagnostic = typeof error?.tempoDiagnostic === "string" && /^strava-[a-z-]+-\d{3}$/.test(error.tempoDiagnostic)
+        ? error.tempoDiagnostic
+        : "worker-error";
+      console.error("Tempo Worker request failed:", { path: url.pathname, rayId, diagnostic, message: error?.message || "unknown error" });
       if (url.pathname.startsWith("/api/")) {
-        return json({ error: "İstek tamamlanamadı. Biraz sonra tekrar deneyin." }, 502);
+        return json({ error: "İstek tamamlanamadı. Biraz sonra tekrar deneyin." }, 502, { "X-Tempo-Diagnostic": diagnostic });
       }
       return new Response("Bağlantı sırasında bir sorun oluştu. Lütfen yeniden deneyin.", {
         status: 502,
@@ -328,22 +332,35 @@ async function buildDashboardUncached(env, { sessionKey, cacheKey, saved, sessio
   ]);
   if (!athleteResponse.ok) {
     console.error("Strava athlete request failed with status:", athleteResponse.status);
-    return json({ error: "Strava profil veya aktiviteleri alınamadı." }, 502);
+    const status = [401, 403, 429].includes(athleteResponse.status) ? athleteResponse.status : 502;
+    return json({ error: "Strava profil veya aktiviteleri alınamadı." }, status, {
+      "X-Tempo-Diagnostic": `strava-athlete-${athleteResponse.status}`,
+    });
   }
 
   const athlete = await athleteResponse.json();
   const activities = [];
   const perPage = 100;
   const maxPages = 10;
+  let historyLimited = false;
   for (let page = 1; page <= maxPages; page += 1) {
     const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?page=${page}&per_page=${perPage}`, { headers });
     if (!response.ok) {
       console.error("Strava activities request failed with status:", response.status);
-      return json({ error: "Strava aktiviteleri alınamadı." }, response.status === 429 ? 429 : 502);
+      if (activities.length === 0) {
+        const status = [401, 403, 429].includes(response.status) ? response.status : 502;
+        return json({ error: "Strava aktiviteleri alınamadı." }, status, {
+          "X-Tempo-Diagnostic": `strava-activities-${response.status}`,
+        });
+      }
+      // Preserve available data when Strava throttles a later history page.
+      historyLimited = true;
+      break;
     }
     const pageActivities = await response.json();
     activities.push(...pageActivities);
     if (pageActivities.length < perPage) break;
+    if (page === maxPages) historyLimited = true;
   }
 
   let segments = [];
@@ -401,7 +418,7 @@ async function buildDashboardUncached(env, { sessionKey, cacheKey, saved, sessio
     segments,
     photos,
     achievement: buildAchievement(activities),
-    historyLimited: activities.length === perPage * maxPages,
+    historyLimited,
     activities: activities.map((activity) => ({
       id: activity.id,
       name: activity.name,
@@ -420,6 +437,11 @@ async function buildDashboardUncached(env, { sessionKey, cacheKey, saved, sessio
   return json(result);
 }
 
+
+function finiteNonNegative(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
 
 function buildAchievement(activities) {
   const source = Array.isArray(activities) ? activities : [];
@@ -1412,7 +1434,9 @@ async function stravaToken(fields) {
   });
   if (!response.ok) {
     console.error("Strava token request failed with status:", response.status);
-    throw new Error(`Strava token request failed (${response.status})`);
+    const error = new Error("Strava token request failed");
+    error.tempoDiagnostic = `strava-token-${response.status}`;
+    throw error;
   }
   return response.json();
 }
@@ -1480,13 +1504,14 @@ function requireBindings(env) {
   }
 }
 
-function json(value, status = 200) {
+function json(value, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(value), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      ...extraHeaders,
     },
   });
 }

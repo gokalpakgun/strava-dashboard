@@ -21,6 +21,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var healthError: String?
     @Published private(set) var dashboard: TempoDashboard?
     @Published private(set) var dashboardError: String?
+    @Published private(set) var dashboardErrorDetails: String?
     @Published var status = "Strava hesabını bağlayarak başla."
 
     let dailyGoalMl = 2_000
@@ -411,14 +412,18 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         guard let accessToken, let accountId = activeTempoAccountId, !isLoadingDashboard else { return }
         isLoadingDashboard = true
         dashboardError = nil
+        dashboardErrorDetails = nil
         defer { isLoadingDashboard = false }
 
-        let retryDelays: [UInt64] = [0, 180_000_000, 500_000_000]
+        // Retry transient network/server failures once. Repeating 4xx errors,
+        // JSON decode failures, or a Strava rate limit only delays the screen.
+        let retryDelays: [UInt64] = [0, 300_000_000]
         for attempt in retryDelays.indices {
             if retryDelays[attempt] > 0 {
                 try? await Task.sleep(nanoseconds: retryDelays[attempt])
             }
             guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
+            var attemptDiagnostic: String?
             do {
                 var request = URLRequest(url: URL(string: "/api/mobile/dashboard", relativeTo: baseURL)!)
                 request.timeoutInterval = 30
@@ -426,6 +431,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 let (data, response) = try await Self.apiSession.data(for: request)
                 guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
+                attemptDiagnostic = Self.dashboardDiagnostic(http)
 
                 if http.statusCode == 401 {
                     if attempt < retryDelays.count - 1 { continue }
@@ -447,8 +453,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 return
             } catch {
                 guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
-                if attempt < retryDelays.count - 1 { continue }
+                if attempt < retryDelays.count - 1, !(error is APIError), !(error is DecodingError) { continue }
                 dashboardError = error.localizedDescription.tempoLocalized
+                dashboardErrorDetails = attemptDiagnostic ?? Self.networkDiagnostic(error)
                 status = "Veriler yenilenemedi: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
             }
         }
@@ -807,6 +814,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             dashboard = nil
             if let activeTempoAccountId { Self.clearCachedDashboard(accountId: activeTempoAccountId) }
             dashboardError = nil
+            dashboardErrorDetails = nil
             todayWaterMl = 0
             UserDefaults.standard.set(true, forKey: Self.stravaSkippedKey)
             hasAttemptedAccountRestore = true
@@ -855,6 +863,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         accountAccessToken = nil
         dashboard = nil
         dashboardError = nil
+        dashboardErrorDetails = nil
         healthStore.disableBackgroundDelivery()
         healthSyncEnabled = false
         healthDays = [:]
@@ -1033,6 +1042,21 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     private static func serverMessage(_ data: Data, fallback: String) -> String {
         (try? JSONDecoder().decode(ServerError.self, from: data).error) ?? fallback
+    }
+
+    private static func dashboardDiagnostic(_ response: HTTPURLResponse) -> String {
+        var parts = ["HTTP \(response.statusCode)"]
+        if let upstream = response.value(forHTTPHeaderField: "X-Tempo-Diagnostic"), !upstream.isEmpty {
+            parts.append(upstream)
+        }
+        if let ray = response.value(forHTTPHeaderField: "CF-Ray"), !ray.isEmpty {
+            parts.append("CF-Ray \(ray)")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func networkDiagnostic(_ error: Error) -> String {
+        "Network \((error as NSError).code)"
     }
 
     private static func prewarmAPI() {

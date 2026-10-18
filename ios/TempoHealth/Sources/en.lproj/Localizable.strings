@@ -12,6 +12,8 @@
 "Aktivite ara" = "Search activities";
 "Aktivite geçmişi" = "Activity history";
 "Aktivite rotaları" = "Activity routes";
+"Günlük hazırlık" = "Daily readiness";
+"Tempo Dengesi" = "Tempo Balance";
 "Aktivitelerden" = "From activities";
 "%@ için %d km çevrede kayıtlı bir alan bulunamadı." = "No listed facilities found within %2$d km for %1$@.";
 "%d ml ekleniyor…" = "Adding %d ml…";
@@ -547,6 +549,7 @@
 "Strava bağlantısı tamamlanmadı: %@" = "Strava connection didn’t finish: %@";
 "Strava bağlantısı tamamlanamadı: %@" = "Couldn’t complete the Strava connection: %@";
 "Strava verileri alınamadı." = "Couldn’t load Strava data.";
+"Tanı: %@" = "Details: %@";
 "Strava doğrulaması başarısız oldu." = "Strava verification failed.";
 "Veriler yenilenemedi: %@" = "Couldn’t refresh your data: %@";
 "Strava verilerin hazırlanıyor…" = "Preparing your Strava data…";
