@@ -1060,7 +1060,7 @@ private struct ActivityDetailScreen: View {
                 DetailLine(label: "Strava aktivitesi", value: "#\(activity.id)")
             }
             Link(destination: URL(string: "https://www.strava.com/activities/\(activity.id)")!) {
-                Label("Strava’da aç", systemImage: "arrow.up.right.square").frame(maxWidth: .infinity)
+                Label("View on Strava", systemImage: "arrow.up.right.square").frame(maxWidth: .infinity)
             }
             .buttonStyle(TempoPrimaryButtonStyle())
         }
@@ -3356,3 +3356,4 @@ private func eddingtonNumber(_ activities: [TempoActivity]) -> Int {
 private extension Calendar {
     func isDateInCurrentWeek(_ date: Date) -> Bool { isDate(date, equalTo: Date(), toGranularity: .weekOfYear) }
 }
+
