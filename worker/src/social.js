@@ -1,5 +1,5 @@
 import { accountContext } from "./account.js";
-import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
+import { claimCooldown, readLimitedText, RequestBodyTooLargeError } from "./http.js";
 import { moderateCommunityText } from "./content-moderation.js";
 
 const MAX_FRIENDS = 100;
@@ -140,8 +140,10 @@ async function sendFriendRequest(request, env, user) {
   if (!/^[a-z0-9_]{3,24}$/.test(username)) return json({ error: "Geçerli bir kullanıcı adı yaz." }, 400);
   if (username === user.username) return json({ error: "Kendine arkadaşlık isteği gönderemezsin." }, 400);
   const throttleKey = "social-request-cooldown:" + user.id;
-  if (await env.TOKEN_STORE.get(throttleKey)) return json({ error: "Yeni istek göndermeden önce biraz bekle." }, 429);
-  await env.TOKEN_STORE.put(throttleKey, "1", { expirationTtl: 2 });
+  const throttle = await claimCooldown(env.TOKEN_STORE, throttleKey, 2);
+  if (!throttle.allowed) {
+    return json({ error: throttle.unavailable ? "İstek şu anda işlenemiyor. Biraz sonra tekrar dene." : "Yeni istek göndermeden önce biraz bekle." }, throttle.unavailable ? 503 : 429);
+  }
   const friendId = await env.TOKEN_STORE.get("account-username:" + username);
   const friend = friendId ? await env.TOKEN_STORE.get("account-user:" + friendId, "json") : null;
   if (!friend) return json({ error: "Bu kullanıcı adına sahip Tempo hesabı bulunamadı." }, 404);
@@ -267,8 +269,10 @@ async function createReport(request, env, user) {
     createdAt: new Date().toISOString(),
   };
   try {
-    if (await env.TOKEN_STORE.get(cooldownKey)) return json({ error: "Yeni bildirim göndermeden önce biraz bekle." }, 429);
-    await env.TOKEN_STORE.put(cooldownKey, "1", { expirationTtl: 30 });
+    const cooldown = await claimCooldown(env.TOKEN_STORE, cooldownKey, 30);
+    if (!cooldown.allowed) {
+      return json({ error: cooldown.unavailable ? "Bildirim şu anda kaydedilemedi. Biraz sonra tekrar dene." : "Yeni bildirim göndermeden önce biraz bekle." }, cooldown.unavailable ? 503 : 429);
+    }
     await env.TOKEN_STORE.put("moderation-report:" + id, JSON.stringify(report), { expirationTtl: 60 * 60 * 24 * 180 });
   } catch {
     return json({ error: "Bildirim şu anda kaydedilemedi. Biraz sonra tekrar dene." }, 503);
@@ -284,11 +288,9 @@ async function createChallenge(request, env, user) {
   const friendIds = Array.isArray(body.value.friendIds) ? [...new Set(body.value.friendIds.filter(value => typeof value === "string"))] : [];
   if (!title) return json({ error: "Yarışmaya kısa bir ad ver." }, 400);
   const cooldownKey = "social-challenge-create-cooldown:" + user.id;
-  if (await env.TOKEN_STORE.get(cooldownKey)) return json({ error: "Yeni yarışma oluşturmadan önce biraz bekle." }, 429);
-  try {
-    await env.TOKEN_STORE.put(cooldownKey, "1", { expirationTtl: 10 });
-  } catch {
-    return json({ error: "Çok hızlı deneme yapıldı. Birkaç saniye sonra tekrar dene." }, 429);
+  const cooldown = await claimCooldown(env.TOKEN_STORE, cooldownKey, 10);
+  if (!cooldown.allowed) {
+    return json({ error: cooldown.unavailable ? "Yarışma şu anda oluşturulamıyor. Biraz sonra tekrar dene." : "Çok hızlı deneme yapıldı. Birkaç saniye sonra tekrar dene." }, cooldown.unavailable ? 503 : 429);
   }
   const moderation = await moderateCommunityText(env, title);
   if (moderation.unavailable) return json({ error: "Yarışma adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene." }, 503);
@@ -459,3 +461,4 @@ function json(value, status = 200) {
     headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" },
   });
 }
+

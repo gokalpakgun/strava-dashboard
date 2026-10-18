@@ -1,5 +1,5 @@
 import { accountContext } from "./account.js";
-import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
+import { claimCooldown, readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const HEALTH_TTL_SECONDS = 60 * 60 * 24 * 100;
 const HEALTH_LIMITS = {
@@ -101,8 +101,10 @@ export async function handleSportsChat(request, env) {
   if (messages[messages.length - 1].role !== "user") return json({ error: "Son mesajın bir soru olmalı." }, 400);
 
   const cooldownKey = "sports-chat-cooldown:" + account.user.id;
-  if (await env.TOKEN_STORE.get(cooldownKey)) return json({ error: "Yeni mesaj göndermeden önce birkaç saniye bekle." }, 429);
-  await env.TOKEN_STORE.put(cooldownKey, "1", { expirationTtl: 4 });
+  const cooldown = await claimCooldown(env.TOKEN_STORE, cooldownKey, 4);
+  if (!cooldown.allowed) {
+    return json({ error: cooldown.unavailable ? "Sohbet şu anda kullanılamıyor. Biraz sonra tekrar dene." : "Yeni mesaj göndermeden önce birkaç saniye bekle." }, cooldown.unavailable ? 503 : 429);
+  }
 
   const includeHealth = input.includeHealth === true;
   const health = includeHealth ? await env.TOKEN_STORE.get("account-health:" + account.user.id, "json") : null;
@@ -174,3 +176,4 @@ function json(value, status = 200) {
     },
   });
 }
+

@@ -5,7 +5,7 @@ import { webcrypto } from "node:crypto";
 import worker from "../src/index.js";
 import { handleAccountRequest, accountContext } from "../src/account.js";
 import { deleteSocialAccount, handleModerationRequest, handleSocialRequest } from "../src/social.js";
-import { readLimitedText, RequestBodyTooLargeError } from "../src/http.js";
+import { claimCooldown, readLimitedText, RequestBodyTooLargeError } from "../src/http.js";
 
 globalThis.crypto ||= webcrypto;
 
@@ -19,7 +19,10 @@ class MemoryKV {
     return type === "json" ? JSON.parse(value) : value;
   }
 
-  async put(key, value) {
+  async put(key, value, options = {}) {
+    if (options.expirationTtl !== undefined && options.expirationTtl < 60) {
+      throw new Error("KV expirationTtl must be at least 60");
+    }
     this.values.set(key, String(value));
     this.writeCounts.set(key, (this.writeCounts.get(key) || 0) + 1);
   }
@@ -133,6 +136,31 @@ test("bounded request reader also enforces the stream limit if Content-Length li
   });
 
   await assert.rejects(readLimitedText(request, 8), RequestBodyTooLargeError);
+});
+
+test("short cooldowns use Cloudflare KV's 60-second minimum TTL without extending the cooldown", async () => {
+  const values = new Map();
+  const expirations = [];
+  const kv = {
+    async get(key) { return values.get(key) ?? null; },
+    async put(key, value, options) {
+      expirations.push(options.expirationTtl);
+      if (options.expirationTtl < 60) throw new Error("KV expirationTtl must be at least 60");
+      values.set(key, String(value));
+    },
+  };
+
+  assert.deepEqual(await claimCooldown(kv, "cooldown", 4), { allowed: true, unavailable: false });
+  assert.deepEqual(await claimCooldown(kv, "cooldown", 4), { allowed: false, unavailable: false });
+  assert.deepEqual(expirations, [60]);
+});
+
+test("cooldown KV write failures fail closed instead of throwing a Worker exception", async () => {
+  const result = await claimCooldown({
+    async get() { return null; },
+    async put() { throw new Error("KV unavailable"); },
+  }, "cooldown", 4);
+  assert.deepEqual(result, { allowed: false, unavailable: true });
 });
 
 function jsonRequest(path, value, headers = {}) {
@@ -677,3 +705,4 @@ test("privacy and terms routes select a supported language and are routed throug
     assert.match(response.headers.get("Content-Security-Policy"), /frame-ancestors 'none'/);
   }
 });
+
