@@ -29,6 +29,8 @@
 	<string>Tempo, yakınındaki tenis kortu, basketbol sahası ve diğer spor alanlarını göstermek için konumunu kullanır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Tempo, profil fotoğrafı veya antrenman kanıtı olarak seçtiğin fotoğrafları kullanır.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Tempo, oluşturduğun profil kartlarını Fotoğraflar’a kaydeder.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Tempo, seçtiğin Sağlık verilerini spor gelişimini göstermek ve antrenman zamanındaki nabız, adım veya kayıtlı antrenmanı destekleyici sinyal olarak okumak için kullanır.</string>
 	<key>NSHealthUpdateUsageDescription</key>

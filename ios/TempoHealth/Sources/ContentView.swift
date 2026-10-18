@@ -414,7 +414,6 @@ private struct HomeScreen: View {
                     hero(dashboard.athlete)
                     SectionHeading(title: "Bu hafta", caption: "HAFTALIK ÖZET", padding: false)
                     weeklyMetrics
-                    RecentActivitiesPanel(activities: dashboard.activities)
                 } else if model.isConnected {
                     LoadingDashboardCard()
                 } else {
@@ -422,6 +421,10 @@ private struct HomeScreen: View {
                         title: "Strava bağlantısı isteğe bağlı",
                         message: "Strava’yı bağlamadan da spor alanlarını keşfedebilir ve Apple Sağlık verilerini cihazında görüntüleyebilirsin."
                     )
+                }
+                HomeSocialCard()
+                if let dashboard = model.dashboard {
+                    RecentActivitiesPanel(activities: dashboard.activities)
                 }
                 quickActions
                 dailyMotivation
@@ -466,6 +469,55 @@ private struct HomeScreen: View {
 
     private var dailyMotivation: some View {
         DailyMotivationCard()
+    }
+}
+
+private struct HomeSocialCard: View {
+    var body: some View {
+        NavigationLink(destination: SocialScreen()) {
+            HStack(spacing: 13) {
+                Image(systemName: "person.2.wave.2.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(TempoTheme.green)
+                    .frame(width: 48, height: 48)
+                    .background(TempoTheme.green.opacity(0.13), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("TEMPO SOSYAL")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.1)
+                        .foregroundStyle(TempoTheme.green)
+                    Text("Arkadaşlarınla hareket et")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("Arkadaş ekle · haftalık yarışları takip et")
+                        .font(.caption)
+                        .foregroundStyle(TempoTheme.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Spacer(minLength: 2)
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(TempoTheme.green)
+                    .frame(width: 31, height: 31)
+                    .background(TempoTheme.green.opacity(0.12), in: Circle())
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [TempoTheme.green.opacity(0.10), TempoTheme.card, TempoTheme.blue.opacity(0.055)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 21, style: .continuous)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.085), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Sosyal alana git")
     }
 }
 
@@ -1661,6 +1713,21 @@ struct CoachScreen: View {
     }
 }
 
+private enum SocialSection: String, CaseIterable, Identifiable {
+    case overview
+    case friends
+    case challenges
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .overview: return "Genel"
+        case .friends: return "Arkadaşlar"
+        case .challenges: return "Yarışmalar"
+        }
+    }
+}
+
 private struct SocialScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
@@ -1669,24 +1736,91 @@ private struct SocialScreen: View {
     @State private var title = ""
     @State private var metric: TempoSocialMetric = .steps
     @State private var selectedFriends: Set<String> = []
+    @State private var selectedSection: SocialSection = .overview
     @State private var loading = false
     @State private var working = false
     @State private var notice = ""
     @State private var pendingBlockProfile: TempoSocialProfile?
     @State private var showBlockConfirmation = false
 
+    private var friends: [TempoSocialProfile] { snapshot?.friends ?? [] }
+    private var challenges: [TempoSocialChallenge] { snapshot?.challenges ?? [] }
+    private var featuredChallenges: [TempoSocialChallenge] {
+        Array(challenges.filter { $0.myStatus == "accepted" || $0.myStatus == "invited" }.prefix(2))
+    }
+
     var body: some View {
         TempoPage {
             PageTitle(title: "Sosyal", subtitle: "Arkadaşlarınla hareket et")
-            TempoCard {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Birlikte, kendi ritminizde", systemImage: "person.2.fill").font(.headline).foregroundStyle(TempoTheme.green)
-                    Text("Arkadaşını kullanıcı adıyla ekle; adım veya egzersiz dakikası için haftalık yarış başlat. Skor için Apple Sağlık gerekir. Sağlık özeti paylaşımı her yarışta ayrı ayrı ve varsayılan olarak kapalıdır. Strava gerekmez.")
-                        .font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
-                    Text("Skorlar bağımsız doğrulanmaz; yarışmalar arkadaşlar arasında eğlence amaçlıdır.")
-                        .font(.caption2).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+            socialIntro
+            Picker("Sosyal bölümü", selection: $selectedSection) {
+                ForEach(SocialSection.allCases) { section in
+                    Text(section.title.tempoLocalized).tag(section)
                 }
             }
+            .pickerStyle(.segmented)
+
+            if !notice.isEmpty {
+                Text(notice).font(.caption).foregroundStyle(TempoTheme.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if loading && snapshot == nil {
+                ProgressView().tint(TempoTheme.green).frame(maxWidth: .infinity).padding(22)
+            } else if snapshot == nil, !notice.isEmpty {
+                TempoCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Sosyal bilgiler yüklenemedi", systemImage: "wifi.exclamationmark").font(.subheadline.weight(.semibold))
+                        Button("Tekrar dene") { Task { await refresh() } }.buttonStyle(TempoSecondaryButtonStyle())
+                    }
+                }
+            } else {
+                switch selectedSection {
+                case .overview: overviewSection
+                case .friends: friendsSection
+                case .challenges: challengesSection
+                }
+            }
+        }
+        .navigationTitle("Sosyal").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .task { await refresh() }
+        .confirmationDialog("Bu kullanıcıyı engelle?", isPresented: $showBlockConfirmation, titleVisibility: .visible) {
+            Button("Engelle", role: .destructive) {
+                if let profile = pendingBlockProfile { Task { await setBlocked(profile, blocked: true) } }
+            }
+            Button("Vazgeç", role: .cancel) { pendingBlockProfile = nil }
+        } message: {
+            Text("Engellenen hesap arkadaş listesinden ve ortak yarışmalarından kaldırılır.")
+        }
+    }
+
+    private var socialIntro: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 10) {
+                    Image(systemName: "person.2.wave.2.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(TempoTheme.green)
+                        .frame(width: 38, height: 38)
+                        .background(TempoTheme.green.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Birlikte, kendi ritminizde").font(.subheadline.weight(.semibold))
+                        Text("Arkadaş bul, yarış başlat, ilerlemeni paylaş.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text("Apple Sağlık özeti her yarış için ayrı ve varsayılan olarak kapalıdır. Skorlar bağımsız doğrulanmaz; yarışmalar arkadaşlar arasında eğlence amaçlıdır. Strava gerekmez.")
+                    .font(.caption2).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var overviewSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                SocialStatTile(title: "Arkadaş", value: friends.count, icon: "person.2.fill", color: TempoTheme.green)
+                SocialStatTile(title: "Yarış", value: challenges.filter { $0.myStatus == "accepted" || $0.myStatus == "invited" }.count, icon: "trophy.fill", color: TempoTheme.orange)
+                SocialStatTile(title: "Gelen istek", value: snapshot?.incoming.count ?? 0, icon: "person.badge.plus", color: TempoTheme.blue)
+            }
+
             if !model.healthSyncEnabled {
                 NavigationLink(destination: HealthScreen()) {
                     Label("Yarışma skorları için Apple Sağlık’ı bağla", systemImage: "heart.text.square.fill")
@@ -1694,6 +1828,74 @@ private struct SocialScreen: View {
                         .padding(14).background(.pink.opacity(0.10), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                 }.buttonStyle(.plain)
             }
+
+            if !(snapshot?.incoming.isEmpty ?? true) {
+                VStack(alignment: .leading, spacing: 9) {
+                    SectionHeading(title: "Bekleyen istekler", caption: "%d YENİ".tempoFormatted(snapshot?.incoming.count ?? 0), padding: false)
+                    ForEach(Array((snapshot?.incoming ?? []).prefix(2))) { request in
+                        TempoCard {
+                            VStack(spacing: 10) {
+                                SocialPersonRow(profile: request.user, detail: "@\(request.user.username)")
+                                HStack {
+                                    Button("Kabul et") { Task { await answer(request, accept: true) } }
+                                        .buttonStyle(TempoPrimaryButtonStyle()).disabled(working)
+                                    Button("Reddet") { Task { await answer(request, accept: false) } }
+                                        .buttonStyle(TempoSecondaryButtonStyle()).disabled(working)
+                                }
+                            }
+                        }
+                    }
+                    if (snapshot?.incoming.count ?? 0) > 2 {
+                        Button("Tüm istekleri gör") { selectedSection = .friends }
+                            .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                    }
+                }
+            }
+
+            HStack {
+                SectionHeading(title: "Arkadaşların", caption: "%d KİŞİ".tempoFormatted(friends.count), padding: false)
+                Spacer()
+                Button { selectedSection = .friends } label: {
+                    Label("Arkadaş bul", systemImage: "plus")
+                        .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                }
+            }
+            if friends.isEmpty {
+                EmptyCard(icon: "person.2", text: "Henüz arkadaş yok. Kullanıcı adıyla bir istek göndererek başlayabilirsin.")
+            } else {
+                ForEach(Array(friends.prefix(3))) { friend in
+                    SocialPersonRow(profile: friend, detail: "@\(friend.username)")
+                        .padding(11).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                }
+                if friends.count > 3 {
+                    Button("%d arkadaşın tümünü gör".tempoFormatted(friends.count)) { selectedSection = .friends }
+                        .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                }
+            }
+
+            HStack {
+                SectionHeading(title: "Bu haftanın yarışları", caption: "%d AKTİF".tempoFormatted(challenges.filter { $0.myStatus == "accepted" }.count), padding: false)
+                Spacer()
+                Button { selectedSection = .challenges } label: {
+                    Label("Yarışlar", systemImage: "arrow.right")
+                        .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.orange)
+                }
+            }
+            if featuredChallenges.isEmpty {
+                EmptyCard(icon: "trophy", text: "Henüz aktif yarışma yok. Arkadaşlarınla haftalık bir hedef başlat.")
+                if !friends.isEmpty {
+                    Button { selectedSection = .challenges } label: {
+                        Label("İlk yarışmanı oluştur", systemImage: "flag.checkered").frame(maxWidth: .infinity)
+                    }.buttonStyle(TempoPrimaryButtonStyle())
+                }
+            } else {
+                ForEach(featuredChallenges) { challenge in challengeCard(challenge) }
+            }
+        }
+    }
+
+    private var friendsSection: some View {
+        VStack(alignment: .leading, spacing: 13) {
             VStack(alignment: .leading, spacing: 9) {
                 SectionHeading(title: "Arkadaş ekle", caption: "TEMPO KULLANICI ADI", padding: false)
                 HStack(spacing: 9) {
@@ -1708,9 +1910,7 @@ private struct SocialScreen: View {
                     .disabled(working || username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            if !notice.isEmpty {
-                Text(notice).font(.caption).foregroundStyle(TempoTheme.secondary).frame(maxWidth: .infinity, alignment: .leading)
-            }
+
             if !(snapshot?.incoming.isEmpty ?? true) {
                 VStack(alignment: .leading, spacing: 9) {
                     SectionHeading(title: "Arkadaşlık istekleri", caption: "GELEN", padding: false)
@@ -1727,20 +1927,18 @@ private struct SocialScreen: View {
                     }
                 }
             }
+
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
-                    SectionHeading(title: "Arkadaşların", caption: "%d KİŞİ".tempoFormatted(snapshot?.friends.count ?? 0), padding: false)
+                    SectionHeading(title: "Arkadaşların", caption: "%d KİŞİ".tempoFormatted(friends.count), padding: false)
                     Spacer()
                     Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise").foregroundStyle(TempoTheme.green) }
+                        .accessibilityLabel("Arkadaş listesini yenile")
                 }
-                if loading && snapshot == nil {
-                    ProgressView().tint(TempoTheme.green).frame(maxWidth: .infinity).padding(20)
-                } else if snapshot?.friends.isEmpty ?? true {
-                    Text("Henüz arkadaş yok. Kullanıcı adıyla bir istek göndererek başlayabilirsin.")
-                        .font(.caption).foregroundStyle(TempoTheme.secondary).padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17))
+                if friends.isEmpty {
+                    EmptyCard(icon: "person.2", text: "Henüz arkadaş yok. Kullanıcı adıyla bir istek göndererek başlayabilirsin.")
                 } else {
-                    ForEach(snapshot?.friends ?? []) { friend in
+                    ForEach(friends) { friend in
                         Button {
                             if selectedFriends.contains(friend.id) { selectedFriends.remove(friend.id) }
                             else { selectedFriends.insert(friend.id) }
@@ -1750,10 +1948,19 @@ private struct SocialScreen: View {
                                 Image(systemName: selectedFriends.contains(friend.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selectedFriends.contains(friend.id) ? TempoTheme.green : TempoTheme.secondary)
                             }
-                            .padding(10).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17))
+                            .padding(10).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .contextMenu { safetyMenu(for: friend) }
+                    }
+                }
+            }
+
+            if !(snapshot?.outgoing.isEmpty ?? true) {
+                TempoCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Gönderilen istekler").font(.subheadline.bold())
+                        ForEach(snapshot?.outgoing ?? []) { request in SocialPersonRow(profile: request.user, detail: "İstek bekliyor") }
                     }
                 }
             }
@@ -1764,25 +1971,27 @@ private struct SocialScreen: View {
                         TempoCard {
                             HStack {
                                 SocialPersonRow(profile: profile, detail: "Engellendi")
-                                Button("Engeli kaldır") {
-                                    Task { await setBlocked(profile, blocked: false) }
-                                }
-                                .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
-                                .disabled(working)
+                                Button("Engeli kaldır") { Task { await setBlocked(profile, blocked: false) } }
+                                    .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green).disabled(working)
                             }
                         }
                     }
                 }
             }
-            if !(snapshot?.outgoing.isEmpty ?? true) {
-                TempoCard {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Gönderilen istekler").font(.subheadline.bold())
-                        ForEach(snapshot?.outgoing ?? []) { request in SocialPersonRow(profile: request.user, detail: "İstek bekliyor") }
-                    }
-                }
+        }
+    }
+
+    private var challengesSection: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            if !model.healthSyncEnabled {
+                NavigationLink(destination: HealthScreen()) {
+                    Label("Yarışma skorları için Apple Sağlık’ı bağla", systemImage: "heart.text.square.fill")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.pink).frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14).background(.pink.opacity(0.10), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                }.buttonStyle(.plain)
             }
-            if !(snapshot?.friends.isEmpty ?? true) {
+
+            if !friends.isEmpty {
                 TempoCard {
                     VStack(alignment: .leading, spacing: 11) {
                         Label("Haftalık yarış oluştur", systemImage: "trophy.fill").font(.headline).foregroundStyle(TempoTheme.orange)
@@ -1790,7 +1999,16 @@ private struct SocialScreen: View {
                         Picker("Hedef", selection: $metric) {
                             ForEach(TempoSocialMetric.allCases) { option in Label(option.title, systemImage: option.symbol).tag(option) }
                         }.pickerStyle(.menu)
-                        Text("Yarışmaya katılacak arkadaşlarını yukarıdaki listeden seç.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                        Button { selectedSection = .friends } label: {
+                            HStack {
+                                Label(selectedFriends.isEmpty ? "Arkadaş seç" : "%d arkadaş seçildi".tempoFormatted(selectedFriends.count), systemImage: "person.2.fill")
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                            }
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                            .padding(12).background(TempoTheme.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
                         Button { Task { await createChallenge() } } label: {
                             Label("Seçilenlerle yarışı başlat", systemImage: "flag.checkered").frame(maxWidth: .infinity)
                         }
@@ -1798,34 +2016,41 @@ private struct SocialScreen: View {
                         .disabled(working || selectedFriends.isEmpty || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                SectionHeading(title: "Yarışmalar", caption: "APPLE SAĞLIK · İSTEĞE BAĞLI", padding: false)
-                if snapshot?.challenges.isEmpty ?? true {
-                    Text("Aktif yarışma yok. Arkadaş ekleyip haftalık bir hedef başlat.")
-                        .font(.caption).foregroundStyle(TempoTheme.secondary).padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17))
-                }
-                ForEach(snapshot?.challenges ?? []) { challenge in
-                    SocialChallengeCard(challenge: challenge, isWorking: working, healthConnected: model.healthSyncEnabled) { action in
-                        Task { await updateChallenge(challenge, action: action) }
-                    } onShareChange: { enabled in
-                        Task { await shareHealth(challenge, enabled: enabled) }
-                    } onReport: { category in
-                        Task { await reportChallenge(challenge, category: category) }
+            } else {
+                TempoCard {
+                    VStack(alignment: .leading, spacing: 9) {
+                        Label("Önce arkadaşlarını ekle", systemImage: "person.2.fill").font(.headline).foregroundStyle(TempoTheme.orange)
+                        Text("Bir yarışma başlatmak için Arkadaşlar bölümünden Tempo kullanıcı adıyla istek gönder.")
+                            .font(.caption).foregroundStyle(TempoTheme.secondary)
+                        Button { selectedSection = .friends } label: {
+                            Label("Arkadaş bul", systemImage: "person.badge.plus").frame(maxWidth: .infinity)
+                        }.buttonStyle(TempoSecondaryButtonStyle())
                     }
                 }
             }
-        }
-        .navigationTitle("Sosyal").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
-        .task { await refresh() }
-        .confirmationDialog("Bu kullanıcıyı engelle?", isPresented: $showBlockConfirmation, titleVisibility: .visible) {
-            Button("Engelle", role: .destructive) {
-                if let profile = pendingBlockProfile { Task { await setBlocked(profile, blocked: true) } }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    SectionHeading(title: "Yarışmalar", caption: "APPLE SAĞLIK · İSTEĞE BAĞLI", padding: false)
+                    Spacer()
+                    Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise").foregroundStyle(TempoTheme.green) }
+                        .accessibilityLabel("Yarışmaları yenile")
+                }
+                if challenges.isEmpty {
+                    EmptyCard(icon: "trophy", text: "Aktif yarışma yok. Arkadaş ekleyip haftalık bir hedef başlat.")
+                }
+                ForEach(challenges) { challenge in challengeCard(challenge) }
             }
-            Button("Vazgeç", role: .cancel) { pendingBlockProfile = nil }
-        } message: {
-            Text("Engellenen hesap arkadaş listesinden ve ortak yarışmalarından kaldırılır.")
+        }
+    }
+
+    private func challengeCard(_ challenge: TempoSocialChallenge) -> some View {
+        SocialChallengeCard(challenge: challenge, isWorking: working, healthConnected: model.healthSyncEnabled) { action in
+            Task { await updateChallenge(challenge, action: action) }
+        } onShareChange: { enabled in
+            Task { await shareHealth(challenge, enabled: enabled) }
+        } onReport: { category in
+            Task { await reportChallenge(challenge, category: category) }
         }
     }
 
@@ -1936,6 +2161,120 @@ private struct SocialPersonRow: View {
     }
 }
 
+private struct SocialStatTile: View {
+    let title: String
+    let value: Int
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(color)
+                    .frame(width: 29, height: 29)
+                    .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Spacer(minLength: 2)
+                Text(value.formatted())
+                    .font(.title3.weight(.bold).monospacedDigit())
+                    .foregroundStyle(.white)
+            }
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(TempoTheme.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(.white.opacity(0.06), lineWidth: 1))
+    }
+}
+
+private struct SocialParticipantRow: View {
+    let participant: TempoSocialParticipant
+    let rank: Int
+    let myUserId: String
+    let metric: TempoSocialMetric
+    let maxScore: Int
+
+    private var isCurrentUser: Bool { participant.userId == myUserId }
+    private var status: String {
+        if isCurrentUser { return "Sen" }
+        if participant.status == "invited" { return "Davet bekliyor" }
+        return participant.shareHealth ? "Paylaşım açık" : "Paylaşım kapalı"
+    }
+    private var rankColor: Color {
+        switch rank {
+        case 1: return TempoTheme.orange
+        case 2: return TempoTheme.blue
+        case 3: return TempoTheme.green
+        default: return TempoTheme.secondary
+        }
+    }
+    private var progress: CGFloat {
+        guard let score = participant.score, maxScore > 0 else { return 0 }
+        return min(max(CGFloat(score) / CGFloat(maxScore), 0), 1)
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 9) {
+                Text("%d".tempoFormatted(rank))
+                    .font(.caption.bold().monospacedDigit())
+                    .foregroundStyle(rankColor)
+                    .frame(width: 23)
+                Text(String(participant.user.displayName.prefix(1)).uppercased())
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isCurrentUser ? .black : TempoTheme.green)
+                    .frame(width: 34, height: 34)
+                    .background(isCurrentUser ? TempoTheme.green : TempoTheme.green.opacity(0.13), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(participant.user.displayName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(status.tempoLocalized)
+                        .font(.caption2)
+                        .foregroundStyle(TempoTheme.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if let score = participant.score {
+                    Text("\(score.formatted()) \(metric.unit)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(isCurrentUser ? TempoTheme.green : .white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                } else if participant.status == "accepted" {
+                    Text(participant.shareHealth ? "Veri bekleniyor" : "—")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(TempoTheme.secondary)
+                }
+            }
+
+            if participant.score != nil {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.08))
+                        Capsule()
+                            .fill(LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geometry.size.width * progress)
+                    }
+                }
+                .frame(height: 4)
+                .padding(.leading, 32)
+                .accessibilityLabel("Yarışma ilerlemesi")
+            }
+        }
+        .padding(10)
+        .background(isCurrentUser ? TempoTheme.green.opacity(0.075) : TempoTheme.raised.opacity(0.38), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(isCurrentUser ? TempoTheme.green.opacity(0.22) : .white.opacity(0.04), lineWidth: 1))
+    }
+}
+
 private struct SocialChallengeCard: View {
     let challenge: TempoSocialChallenge
     let isWorking: Bool
@@ -1950,6 +2289,7 @@ private struct SocialChallengeCard: View {
             return $0.user.displayName.localizedStandardCompare($1.user.displayName) == .orderedAscending
         }
     }
+    private var leaderScore: Int { sortedParticipants.compactMap(\.score).max() ?? 0 }
     var body: some View {
         TempoCard {
             VStack(alignment: .leading, spacing: 11) {
@@ -1987,16 +2327,7 @@ private struct SocialChallengeCard: View {
                         .font(.caption2).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
                     ForEach(sortedParticipants.indices, id: \.self) { index in
                         let participant = sortedParticipants[index]
-                        HStack(spacing: 8) {
-                            Text("%d".tempoFormatted(index + 1)).font(.caption.bold()).foregroundStyle(TempoTheme.secondary).frame(width: 18)
-                            SocialPersonRow(profile: participant.user, detail: participant.userId == challenge.myUserId ? "Sen" : participant.status == "invited" ? "Davet bekliyor" : participant.shareHealth ? "Paylaşım açık" : "Paylaşım kapalı")
-                            Spacer(minLength: 2)
-                            if let score = participant.score {
-                                Text("\(score.formatted()) \(metric.unit)").font(.caption.bold().monospacedDigit()).foregroundStyle(TempoTheme.green)
-                            } else if participant.status == "accepted" {
-                                Text(participant.shareHealth ? "Veri bekleniyor" : "—").font(.caption.bold()).foregroundStyle(TempoTheme.secondary)
-                            }
-                        }
+                        SocialParticipantRow(participant: participant, rank: index + 1, myUserId: challenge.myUserId, metric: metric, maxScore: leaderScore)
                     }
                     Text("Skorlar yalnızca paylaşmayı açan katılımcılar için görünür.").font(.caption2).foregroundStyle(TempoTheme.secondary)
                 }
@@ -2015,6 +2346,27 @@ private struct MoreScreen: View {
             TempoPage {
                 PageTitle(title: "Profil ve araçlar", subtitle: "TEMPO ALANIN")
                 AccountProfileCard()
+                NavigationLink(destination: TempoProfileShareScreen()) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.and.arrow.up.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(TempoTheme.green)
+                            .frame(width: 42, height: 42)
+                            .background(TempoTheme.green.opacity(0.13), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Profil kartını oluştur")
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                            Text("PNG olarak kaydet veya paylaş")
+                                .font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(TempoTheme.secondary)
+                    }
+                    .padding(13)
+                    .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
                 if let dashboard = model.dashboard { StravaConnectionCard(dashboard: dashboard) }
                 else if model.isConnected { LoadingDashboardCard() }
                 else {

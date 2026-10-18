@@ -1,4 +1,5 @@
 import PhotosUI
+import Photos
 import SwiftUI
 import UIKit
 
@@ -760,6 +761,295 @@ struct AccountProfileCard: View {
             .buttonStyle(.plain)
         }
     }
+}
+
+struct TempoProfileShareScreen: View {
+    @EnvironmentObject private var account: TempoAccountStore
+    @EnvironmentObject private var model: TempoAppModel
+    @State private var isSaving = false
+    @State private var shareURL: URL?
+    @State private var showShareSheet = false
+    @State private var notice = ""
+
+    private var achievement: TempoAchievement { model.dashboard?.achievement ?? .empty }
+    private var profileCard: some View {
+        Group {
+            if let profile = account.profile {
+                TempoProfileShareArtwork(profile: profile, achievement: achievement)
+            } else {
+                EmptyCard(icon: "person.crop.rectangle", text: "Profil bilgisi yüklenemedi.")
+            }
+        }
+    }
+
+    var body: some View {
+        TempoPage {
+            PageTitle(title: "Profil kartın", subtitle: "Hareketini paylaş")
+            Text("Kartın kullanıcı adını, seçtiğin sporları ve Tempo başarılarını içerir. E-posta veya özel sağlık verileri eklenmez.")
+                .font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+
+            profileCard
+                .aspectRatio(4.0 / 5.0, contentMode: .fit)
+                .frame(maxWidth: 360)
+                .frame(maxWidth: .infinity)
+
+            VStack(spacing: 10) {
+                Button(action: saveToPhotos) {
+                    if isSaving {
+                        ProgressView().tint(.black).frame(maxWidth: .infinity)
+                    } else {
+                        Label("PNG’yi Fotoğraflar’a kaydet", systemImage: "square.and.arrow.down.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(TempoPrimaryButtonStyle())
+                .disabled(isSaving || account.profile == nil)
+
+                Button(action: prepareShare) {
+                    Label("Başkalarıyla paylaş", systemImage: "paperplane.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(TempoSecondaryButtonStyle())
+                .disabled(account.profile == nil)
+            }
+
+            if !notice.isEmpty {
+                Text(notice).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLiveRegion(.polite)
+            }
+        }
+        .navigationTitle("Profil kartı").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .sheet(isPresented: $showShareSheet, onDismiss: removeTemporaryShareFile) {
+            if let shareURL { TempoProfileActivitySheet(items: [shareURL]) }
+        }
+    }
+
+    @MainActor
+    private func renderedPNG() -> Data? {
+        guard let profile = account.profile else { return nil }
+        let renderer = ImageRenderer(content: TempoProfileShareArtwork(profile: profile, achievement: achievement).frame(width: 360, height: 450))
+        renderer.scale = 3
+        return renderer.uiImage?.pngData()
+    }
+
+    @MainActor
+    private func saveToPhotos() {
+        guard !isSaving, let imageData = renderedPNG(), let image = UIImage(data: imageData) else {
+            notice = "Profil kartı oluşturulamadı. Tekrar deneyebilirsin."
+            return
+        }
+        isSaving = true
+        notice = ""
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else {
+                DispatchQueue.main.async {
+                    isSaving = false
+                    notice = status == .denied || status == .restricted
+                        ? "Fotoğraflar’a ekleme izni kapalı. iPhone Ayarları’ndan izin verebilirsin."
+                        : "Fotoğraflar izni alınamadı."
+                }
+                return
+            }
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            } completionHandler: { success, error in
+                DispatchQueue.main.async {
+                    isSaving = false
+                    notice = success ? "Profil kartı PNG olarak Fotoğraflar’a kaydedildi." : "Fotoğraf kaydedilemedi: %@".tempoFormatted(error?.localizedDescription ?? "Bilinmeyen hata")
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func prepareShare() {
+        guard let data = renderedPNG() else {
+            notice = "Profil kartı oluşturulamadı. Tekrar deneyebilirsin."
+            return
+        }
+        do {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Tempo-Profil-\(UUID().uuidString).png")
+            try data.write(to: url, options: .atomic)
+            shareURL = url
+            notice = ""
+            showShareSheet = true
+        } catch {
+            notice = "Paylaşım dosyası oluşturulamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
+        }
+    }
+
+    private func removeTemporaryShareFile() {
+        guard let shareURL else { return }
+        try? FileManager.default.removeItem(at: shareURL)
+        self.shareURL = nil
+    }
+}
+
+private struct TempoProfileShareArtwork: View {
+    let profile: TempoUserProfile
+    let achievement: TempoAchievement
+
+    private var name: String { profile.displayName.isEmpty ? profile.username : profile.displayName }
+    private var sports: [TempoSportChoice] { profile.sports.compactMap(TempoSportChoice.init(rawValue:)) }
+    private var displaySports: [TempoSportChoice] { Array(sports.prefix(6)) }
+    private var remainingSportsCount: Int { max(sports.count - displaySports.count, 0) }
+    private var badges: [TempoBadge] { Array(achievement.unlockedBadges.reversed().prefix(3)) }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                .fill(LinearGradient(colors: [Color(red: 0.035, green: 0.075, blue: 0.09), Color(red: 0.055, green: 0.07, blue: 0.09), Color(red: 0.035, green: 0.045, blue: 0.065)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            Circle().fill(TempoTheme.green.opacity(0.18)).frame(width: 210).blur(radius: 60).offset(x: 125, y: -190)
+            Circle().fill(TempoTheme.blue.opacity(0.16)).frame(width: 190).blur(radius: 58).offset(x: -140, y: 170)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 9) {
+                    TempoBrandMark(size: 31)
+                    Text("TEMPO")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .tracking(3.2).foregroundStyle(.white)
+                    Spacer()
+                    Text("SPORCU PROFİLİ".tempoLocalized)
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .tracking(1.1).foregroundStyle(TempoTheme.green)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(.white.opacity(0.055), in: Capsule())
+                }
+
+                Spacer(minLength: 20)
+
+                HStack(spacing: 16) {
+                    AccountAvatarView(data: profile.avatarData, size: 84)
+                        .overlay(Circle().stroke(TempoTheme.green.opacity(0.72), lineWidth: 2).padding(-4))
+                        .shadow(color: TempoTheme.green.opacity(0.19), radius: 15)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(name)
+                            .font(.system(size: 23, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.78)
+                        Text("@\(profile.username)")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(TempoTheme.green)
+                        Text("KENDİ RİTMİNDE İLERLE".tempoLocalized)
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .tracking(1).foregroundStyle(TempoTheme.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                Spacer(minLength: 20)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "figure.run")
+                        .foregroundStyle(TempoTheme.green)
+                    Text("İLGİ ALANLARI")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .tracking(1.3).foregroundStyle(TempoTheme.secondary)
+                }
+                .padding(.bottom, 10)
+
+                if displaySports.isEmpty {
+                    Text("Henüz spor seçilmedi")
+                        .font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(TempoTheme.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(stride(from: 0, to: displaySports.count, by: 2)), id: \.self) { start in
+                            HStack(spacing: 8) {
+                                sportPill(displaySports[start])
+                                if start + 1 < displaySports.count { sportPill(displaySports[start + 1]) }
+                                if start + 2 == displaySports.count, remainingSportsCount > 0 {
+                                    Text("+%d".tempoFormatted(remainingSportsCount))
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundStyle(TempoTheme.secondary)
+                                        .padding(.horizontal, 9).padding(.vertical, 8)
+                                        .background(.white.opacity(0.045), in: Capsule())
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(minLength: 18)
+
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("TEMPO SEVİYESİ")
+                            .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.1).foregroundStyle(TempoTheme.secondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text("\(achievement.level)")
+                                .font(.system(size: 44, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                            Text(achievement.title.tempoLocalized.uppercased())
+                                .font(.system(size: 10, weight: .bold, design: .rounded)).foregroundStyle(TempoTheme.green).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("TOPLAM XP")
+                            .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.1).foregroundStyle(TempoTheme.secondary)
+                        Text(achievement.totalXp.formatted())
+                            .font(.system(size: 23, weight: .bold, design: .rounded).monospacedDigit()).foregroundStyle(.white)
+                        Text("%d ROZET".tempoFormatted(achievement.unlockedBadgeCount))
+                            .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(0.8).foregroundStyle(TempoTheme.secondary)
+                    }
+                }
+                .padding(16)
+                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
+
+                if !badges.isEmpty {
+                    HStack(spacing: 7) {
+                        ForEach(badges) { badge in
+                            HStack(spacing: 5) {
+                                Image(systemName: badge.symbol)
+                                Text(badge.title.tempoLocalized).lineLimit(1).minimumScaleFactor(0.7)
+                            }
+                            .font(.system(size: 8, weight: .semibold, design: .rounded))
+                            .foregroundStyle(badge.tempoColor)
+                            .padding(.horizontal, 8).padding(.vertical, 7)
+                            .background(badge.tempoColor.opacity(0.10), in: Capsule())
+                        }
+                    }
+                    .padding(.top, 12)
+                }
+
+                Spacer(minLength: 13)
+
+                HStack {
+                    Text("HAREKETİNİ PAYLAŞ".tempoLocalized)
+                        .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.4).foregroundStyle(TempoTheme.secondary)
+                    Spacer()
+                    Text("APITEMPO.COM")
+                        .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.2).foregroundStyle(TempoTheme.green)
+                }
+            }
+            .padding(25)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).stroke(.white.opacity(0.09), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func sportPill(_ sport: TempoSportChoice) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: sport.symbol).foregroundStyle(TempoTheme.green)
+            Text(sport.title).foregroundStyle(.white.opacity(0.92)).lineLimit(1)
+        }
+        .font(.system(size: 10, weight: .semibold, design: .rounded))
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(.white.opacity(0.055), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.06), lineWidth: 1))
+    }
+}
+
+private struct TempoProfileActivitySheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 struct AchievementsScreen: View {
