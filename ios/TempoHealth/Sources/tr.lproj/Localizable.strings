@@ -1,5 +1,7 @@
 /* Tempo follows the iPhone preferred language automatically. */
 
+"View on Strava" = "View on Strava";
+
 "1 yıl" = "1 yıl";
 "30 gün" = "30 gün";
 "6 ay" = "6 ay";
@@ -522,3 +524,4 @@
 "Bu yarışma adı topluluk kurallarına uygun değil." = "Bu yarışma adı topluluk kurallarına uygun değil.";
 "Bildirim sistemi henüz etkinleştirilmedi." = "Bildirim sistemi henüz etkinleştirilmedi.";
 "Bu kullanıcıyla bağlantı kurulamıyor." = "Bu kullanıcıyla bağlantı kurulamıyor.";
+
