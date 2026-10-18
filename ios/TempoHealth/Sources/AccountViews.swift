@@ -816,7 +816,6 @@ struct TempoProfileShareScreen: View {
             if !notice.isEmpty {
                 Text(notice).font(.caption).foregroundStyle(TempoTheme.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLiveRegion(.polite)
             }
         }
         .navigationTitle("Profil kartı").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
