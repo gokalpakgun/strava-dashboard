@@ -38,8 +38,21 @@ function formatDate(value) {
 
 function activityType(activity) {
   const type = activity.type || '';
-  if (type.toLowerCase().includes('run')) return { label: 'Koşu', icon: '↗', className: 'run' };
-  if (type.toLowerCase().includes('ride') || type.toLowerCase().includes('cycle')) return { label: 'Bisiklet', icon: '⌁', className: 'ride' };
+  const normalized = type.toLowerCase().replace(/[^a-z]/g, '');
+  const labels = {
+    walk: 'Yürüyüş', hike: 'Doğa yürüyüşü', wheelchair: 'Tekerlekli sandalye',
+    swim: 'Yüzme', weighttraining: 'Kuvvet antrenmanı', workout: 'Antrenman',
+    yoga: 'Yoga', tennis: 'Tenis', soccer: 'Futbol', football: 'Futbol',
+    basketball: 'Basketbol', volleyball: 'Voleybol', badminton: 'Badminton',
+    tabletennis: 'Masa tenisi', pickleball: 'Pickleball', rowing: 'Kürek',
+    canoeing: 'Kano', kayaking: 'Kano', crossfit: 'CrossFit', elliptical: 'Eliptik',
+    stairstepper: 'Merdiven antrenmanı', snowboard: 'Snowboard', alpineski: 'Alp disiplini kayak',
+    nordicski: 'Kuzey disiplini kayak', mountaineering: 'Dağcılık', iceskate: 'Buz pateni',
+    inlineskate: 'Paten', virtualrun: 'Sanal koşu', trailrun: 'Arazi koşusu',
+  };
+  if (Object.hasOwn(labels, normalized)) return { label: labels[normalized], icon: '✳', className: 'run' };
+  if (normalized.includes('run')) return { label: 'Koşu', icon: '↗', className: 'run' };
+  if (normalized.includes('ride') || normalized.includes('cycle') || normalized.includes('bike')) return { label: 'Bisiklet', icon: '⌁', className: 'ride' };
   return { label: type || 'Aktivite', icon: '✳', className: 'run' };
 }
 
@@ -144,6 +157,12 @@ function renderDashboard(activities) {
   goalTip.replaceChildren(goalTipIcon, document.createTextNode(' Haftalık hedefin için '), remainingDistance, document.createTextNode(' kaldı.'));
   drawChart(activities, weekStart);
   renderActivities(activities);
+  const activityFooter = document.querySelector('.table-footer');
+  if (activityFooter) {
+    activityFooter.textContent = activities.length
+      ? `${Math.min(activities.length, 8)} son aktivite Strava hesabından gösteriliyor.`
+      : 'Strava hesabında henüz görüntülenecek aktivite bulunamadı.';
+  }
   document.querySelector('#connection-title').textContent = 'Strava bağlantısı aktif';
   document.querySelector('#connection-copy').textContent = 'Aktivitelerin canlı verilerle güncellendi.';
   document.querySelector('.profile strong').textContent = 'Strava hesabın';
@@ -353,8 +372,7 @@ function renderHeatmap(activities) {
   count.textContent = select.value === 'all' ? `${selected.length} rota` : '1 rota';
   if (select.value === 'all') caption.textContent = `${selected.length} GPS rotası gösteriliyor.`;
   else {
-    const { activity } = selected[0];
-    caption.textContent = `Seçili rota: ${formatDate(activity.start_date_local)} · ${activityType(activity).label} · ${(Number(activity.distance || 0) / 1000).toFixed(1)} km`;
+    caption.textContent = `Seçili rota: ${select.selectedOptions[0].textContent}`;
   }
   requestAnimationFrame(() => heatmapMap.invalidateSize());
 }
