@@ -3375,7 +3375,7 @@ private struct PhotosScreen: View {
     }
 }
 
-private struct TempoPage<Content: View>: View {
+struct TempoPage<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
@@ -3412,7 +3412,7 @@ private struct HomeHeader: View {
     }
 }
 
-private struct PageTitle: View {
+struct PageTitle: View {
     let title: String
     let subtitle: String
     var body: some View {
@@ -3584,7 +3584,7 @@ private struct MoreLink: View {
     }
 }
 
-private struct EmptyCard: View {
+struct EmptyCard: View {
     let icon: String; let text: String
     var body: some View {
         VStack(spacing: 11) { Image(systemName: icon).font(.title).foregroundStyle(TempoTheme.secondary); Text(text.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center) }
@@ -3678,14 +3678,14 @@ private struct SummaryLine: View {
     }
 }
 
-private struct TempoPrimaryButtonStyle: ButtonStyle {
+struct TempoPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.headline).foregroundStyle(.black).padding(.vertical, 15)
             .background(TempoTheme.green.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 }
 
-private struct TempoSecondaryButtonStyle: ButtonStyle {
+struct TempoSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.headline).foregroundStyle(.red).padding(.vertical, 15)
             .background(TempoTheme.card.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
