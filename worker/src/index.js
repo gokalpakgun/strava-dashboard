@@ -1,6 +1,6 @@
 import { accountContext, handleAccountRequest, handlePasswordResetPage } from "./account.js";
 import { handleAccountHealth, handleSportsChat } from "./sports-chat.js";
-import { handleSocialRequest } from "./social.js";
+import { handleModerationRequest, handleSocialRequest } from "./social.js";
 import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const SESSION_COOKIE = "tempo_session";
@@ -28,6 +28,10 @@ export default {
       if (url.pathname === "/api/account/social" || url.pathname.startsWith("/api/account/social/")) {
         const socialResponse = await handleSocialRequest(request, env, url);
         if (socialResponse) return socialResponse;
+      }
+      if (url.pathname === "/api/moderation/reports" || url.pathname.startsWith("/api/moderation/reports/")) {
+        const moderationResponse = await handleModerationRequest(request, env, url);
+        if (moderationResponse) return moderationResponse;
       }
       if (url.pathname === "/reset-password" && (request.method === "GET" || request.method === "POST")) {
         return handlePasswordResetPage(request, env, url);

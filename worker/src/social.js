@@ -1,5 +1,6 @@
 import { accountContext } from "./account.js";
 import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
+import { moderateCommunityText } from "./content-moderation.js";
 
 const MAX_FRIENDS = 100;
 const MAX_PENDING = 50;
@@ -13,14 +14,56 @@ export async function handleSocialRequest(request, env, url) {
   const userId = account.user.id;
   const root = "/api/account/social";
 
+  if (!hasModerationToken(env) && [root + "/friends", root + "/requests"].includes(url.pathname)) {
+    return json({ error: "Sosyal güvenlik ayarı tamamlanana kadar bu özellik kullanılamıyor." }, 503);
+  }
+  if (!hasModerationToken(env) && url.pathname.startsWith(root + "/challenges")) {
+    return json({ error: "Sosyal güvenlik ayarı tamamlanana kadar bu özellik kullanılamıyor." }, 503);
+  }
+
   if (url.pathname === root && request.method === "GET") return loadSnapshot(env, account.user);
   if (url.pathname === root + "/friends" && request.method === "POST") return sendFriendRequest(request, env, account.user);
   if (url.pathname === root + "/requests" && request.method === "POST") return respondToFriendRequest(request, env, account.user);
+  if (url.pathname === root + "/blocks" && request.method === "POST") return updateBlock(request, env, account.user);
+  if (url.pathname === root + "/reports" && request.method === "POST") return createReport(request, env, account.user);
   if (url.pathname === root + "/challenges" && request.method === "POST") return createChallenge(request, env, account.user);
   const match = url.pathname.match(/^\/api\/account\/social\/challenges\/([a-f0-9-]{20,64})$/i);
   if (match && request.method === "POST") return updateChallenge(request, env, account.user, match[1]);
   if (url.pathname === root && request.method !== "GET") return json({ error: "Bu sosyal işlem desteklenmiyor." }, 405);
   return null;
+}
+
+export async function handleModerationRequest(request, env, url) {
+  if (url.pathname !== "/api/moderation/reports" && !/^\/api\/moderation\/reports\/[a-f0-9-]{20,64}$/i.test(url.pathname)) return null;
+  const secret = hasModerationToken(env) ? env.MODERATION_TOKEN : "";
+  if (!secret) return json({ error: "Bildirim sistemi henüz etkinleştirilmedi." }, 503);
+  const supplied = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!secret || !constantTimeEqual(supplied, secret)) return json({ error: "Yetkisiz." }, 401);
+  if (!env.TOKEN_STORE) return json({ error: "Hesap depolama bağlantısı hazır değil." }, 503);
+  if (url.pathname === "/api/moderation/reports" && request.method === "GET") {
+    const cursor = url.searchParams.get("cursor") || undefined;
+    const listed = await env.TOKEN_STORE.list({ prefix: "moderation-report:", limit: 100, ...(cursor ? { cursor } : {}) });
+    const reports = await Promise.all(listed.keys.map(item => env.TOKEN_STORE.get(item.name, "json")));
+    return json({
+      reports: reports.filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      complete: listed.list_complete,
+      cursor: listed.list_complete ? null : listed.cursor || null,
+    });
+  }
+  const match = url.pathname.match(/^\/api\/moderation\/reports\/([a-f0-9-]{20,64})$/i);
+  if (request.method === "POST" && match) {
+    const body = await readBody(request, 512);
+    if (body.error) return body.error;
+    if (body.value.action !== "resolve") return json({ error: "Desteklenmeyen işlem." }, 400);
+    const key = "moderation-report:" + match[1];
+    const report = await env.TOKEN_STORE.get(key, "json");
+    if (!report) return json({ error: "Bildirim bulunamadı." }, 404);
+    report.status = "resolved";
+    report.resolvedAt = new Date().toISOString();
+    await env.TOKEN_STORE.put(key, JSON.stringify(report), { expirationTtl: 60 * 60 * 24 * 180 });
+    return json({ ok: true });
+  }
+  return json({ error: "Method not allowed." }, 405);
 }
 
 export async function deleteSocialAccount(env, userId) {
@@ -62,7 +105,7 @@ export async function deleteSocialAccount(env, userId) {
 async function loadSnapshot(env, user) {
   const state = await readState(env, user.id);
   const [friends, incoming, outgoing, challengeRecords] = await Promise.all([
-    Promise.all(state.friends.slice(0, MAX_FRIENDS).map(id => loadPublicUser(env, id))),
+    Promise.all(state.friends.filter(id => !state.blocked.includes(id)).slice(0, MAX_FRIENDS).map(id => loadPublicUser(env, id))),
     Promise.all(state.incoming.slice(0, MAX_PENDING).map(id => loadRequest(env, id))),
     Promise.all(state.outgoing.slice(0, MAX_PENDING).map(id => loadRequest(env, id))),
     Promise.all(state.challenges.slice(0, 40).map(id => loadChallenge(env, id))),
@@ -79,6 +122,7 @@ async function loadSnapshot(env, user) {
   return json({
     profile: publicProfile(user),
     friends: friends.filter(Boolean),
+    blocked: (await Promise.all(state.blocked.slice(0, MAX_FRIENDS).map(id => loadPublicUser(env, id)))).filter(Boolean),
     incoming: (await Promise.all(incoming.filter(item => item?.status === "pending" && item.to === user.id).map(async item => ({
       id: item.id, createdAt: item.createdAt, user: await loadPublicUser(env, item.from),
     })))).filter(item => item.user),
@@ -102,6 +146,7 @@ async function sendFriendRequest(request, env, user) {
   const friend = friendId ? await env.TOKEN_STORE.get("account-user:" + friendId, "json") : null;
   if (!friend) return json({ error: "Bu kullanıcı adına sahip Tempo hesabı bulunamadı." }, 404);
   const [mine, theirs] = await Promise.all([readState(env, user.id), readState(env, friend.id)]);
+  if (mine.blocked.includes(friend.id) || theirs.blocked.includes(user.id)) return json({ error: "Bu kullanıcıyla bağlantı kurulamıyor." }, 403);
   if (mine.friends.includes(friend.id)) return json({ error: "Bu kişi zaten arkadaş listende." }, 409);
   if (mine.outgoing.length >= MAX_PENDING || theirs.incoming.length >= MAX_PENDING) {
     return json({ error: "Bekleyen arkadaşlık isteği sınırına ulaşıldı." }, 429);
@@ -131,6 +176,7 @@ async function respondToFriendRequest(request, env, user) {
   const record = await env.TOKEN_STORE.get(key, "json");
   if (!record || record.to !== user.id || record.status !== "pending") return json({ error: "Bekleyen arkadaşlık isteği bulunamadı." }, 404);
   const [mine, theirs] = await Promise.all([readState(env, user.id), readState(env, record.from)]);
+  if (mine.blocked.includes(record.from) || theirs.blocked.includes(user.id)) return json({ error: "Bu kullanıcıyla bağlantı kurulamıyor." }, 403);
   mine.incoming = mine.incoming.filter(value => value !== id);
   theirs.outgoing = theirs.outgoing.filter(value => value !== id);
   if (action === "accept") {
@@ -143,6 +189,93 @@ async function respondToFriendRequest(request, env, user) {
   return json({ ok: true });
 }
 
+async function updateBlock(request, env, user) {
+  const body = await readBody(request, 1024);
+  if (body.error) return body.error;
+  const userId = typeof body.value.userId === "string" ? body.value.userId : "";
+  const action = body.value.action;
+  if (!/^[a-f0-9]{40}$/i.test(userId) || userId === user.id || !["block", "unblock"].includes(action)) {
+    return json({ error: "Engelleme işlemi geçersiz." }, 400);
+  }
+  const target = await env.TOKEN_STORE.get("account-user:" + userId, "json");
+  if (!target) return json({ error: "Tempo hesabı bulunamadı." }, 404);
+  const [mine, theirs] = await Promise.all([readState(env, user.id), readState(env, userId)]);
+  if (action === "unblock") {
+    mine.blocked = mine.blocked.filter(id => id !== userId);
+    await saveState(env, user.id, mine);
+    return json({ ok: true });
+  }
+
+  if (!mine.blocked.includes(userId) && mine.blocked.length >= MAX_FRIENDS) return json({ error: "Engellenen hesap sınırına ulaşıldı." }, 429);
+  if (!mine.blocked.includes(userId)) mine.blocked.unshift(userId);
+  mine.friends = mine.friends.filter(id => id !== userId);
+  theirs.friends = theirs.friends.filter(id => id !== user.id);
+
+  const requestIds = new Set([...mine.incoming, ...mine.outgoing, ...theirs.incoming, ...theirs.outgoing]);
+  for (const id of requestIds) {
+    const record = await loadRequest(env, id);
+    if (record && ((record.from === user.id && record.to === userId) || (record.from === userId && record.to === user.id))) {
+      mine.incoming = mine.incoming.filter(value => value !== id);
+      mine.outgoing = mine.outgoing.filter(value => value !== id);
+      theirs.incoming = theirs.incoming.filter(value => value !== id);
+      theirs.outgoing = theirs.outgoing.filter(value => value !== id);
+      await env.TOKEN_STORE.delete("social-request:" + id);
+    }
+  }
+
+  const sharedChallenges = [...new Set([...mine.challenges, ...theirs.challenges])];
+  await Promise.all(sharedChallenges.map(async id => {
+    const challenge = await loadChallenge(env, id);
+    if (!challenge || !challenge.participants.some(item => item.userId === user.id) || !challenge.participants.some(item => item.userId === userId)) return;
+    challenge.participants = challenge.participants.filter(item => item.userId !== userId);
+    await env.TOKEN_STORE.put("social-challenge:" + id, JSON.stringify(challenge), { expirationTtl: Math.max(60, Math.ceil((Date.parse(challenge.endsAt) - Date.now()) / 1000) + 60 * 60 * 24 * 14) });
+  }));
+  await Promise.all([saveState(env, user.id, mine), saveState(env, userId, theirs)]);
+  return json({ ok: true });
+}
+
+async function createReport(request, env, user) {
+  if (!hasModerationToken(env)) return json({ error: "Bildirim sistemi henüz etkinleştirilmedi." }, 503);
+  const body = await readBody(request, 1024);
+  if (body.error) return body.error;
+  const category = body.value.category;
+  if (!["harassment", "spam", "impersonation", "inappropriate"].includes(category)) return json({ error: "Bildirim nedeni geçersiz." }, 400);
+  const state = await readState(env, user.id);
+  const targetId = typeof body.value.userId === "string" ? body.value.userId : "";
+  const challengeId = typeof body.value.challengeId === "string" ? body.value.challengeId : "";
+  let target;
+  if (challengeId) {
+    const challenge = await loadChallenge(env, challengeId);
+    if (!challenge || !challenge.participants.some(item => item.userId === user.id)) return json({ error: "Yarışma bulunamadı." }, 404);
+    target = await loadPublicUser(env, challenge.creatorId);
+    if (!target) return json({ error: "Kullanıcı bulunamadı." }, 404);
+  } else {
+    if (!/^[a-f0-9]{40}$/i.test(targetId) || targetId === user.id || !state.friends.includes(targetId)) return json({ error: "Yalnızca arkadaş listesindeki bir hesabı bildirebilirsin." }, 400);
+    target = await loadPublicUser(env, targetId);
+    if (!target) return json({ error: "Kullanıcı bulunamadı." }, 404);
+  }
+  const cooldownKey = "social-report-cooldown:" + user.id;
+  const id = crypto.randomUUID();
+  const report = {
+    id,
+    reporterId: user.id,
+    targetUserId: target.id,
+    targetUsername: target.username,
+    challengeId: challengeId || null,
+    category,
+    status: "open",
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    if (await env.TOKEN_STORE.get(cooldownKey)) return json({ error: "Yeni bildirim göndermeden önce biraz bekle." }, 429);
+    await env.TOKEN_STORE.put(cooldownKey, "1", { expirationTtl: 30 });
+    await env.TOKEN_STORE.put("moderation-report:" + id, JSON.stringify(report), { expirationTtl: 60 * 60 * 24 * 180 });
+  } catch {
+    return json({ error: "Bildirim şu anda kaydedilemedi. Biraz sonra tekrar dene." }, 503);
+  }
+  return json({ ok: true, message: "Bildirim alındı." }, 201);
+}
+
 async function createChallenge(request, env, user) {
   const body = await readBody(request, 4096);
   if (body.error) return body.error;
@@ -150,6 +283,16 @@ async function createChallenge(request, env, user) {
   const metric = body.value.metric;
   const friendIds = Array.isArray(body.value.friendIds) ? [...new Set(body.value.friendIds.filter(value => typeof value === "string"))] : [];
   if (!title) return json({ error: "Yarışmaya kısa bir ad ver." }, 400);
+  const cooldownKey = "social-challenge-create-cooldown:" + user.id;
+  if (await env.TOKEN_STORE.get(cooldownKey)) return json({ error: "Yeni yarışma oluşturmadan önce biraz bekle." }, 429);
+  try {
+    await env.TOKEN_STORE.put(cooldownKey, "1", { expirationTtl: 10 });
+  } catch {
+    return json({ error: "Çok hızlı deneme yapıldı. Birkaç saniye sonra tekrar dene." }, 429);
+  }
+  const moderation = await moderateCommunityText(env, title);
+  if (moderation.unavailable) return json({ error: "Yarışma adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene." }, 503);
+  if (!moderation.allowed) return json({ error: "Bu yarışma adı topluluk kurallarına uygun değil." }, 400);
   if (!["steps", "exerciseMinutes"].includes(metric)) return json({ error: "Yarışma yalnızca adım veya egzersiz dakikası üzerinden olabilir." }, 400);
   if (friendIds.length < 1 || friendIds.length > MAX_CHALLENGE_MEMBERS - 1) return json({ error: "En az bir arkadaş seç; yarışmaya en fazla 20 arkadaş eklenebilir." }, 400);
   const state = await readState(env, user.id);
@@ -254,6 +397,7 @@ async function readState(env, userId) {
     incoming: Array.isArray(state?.incoming) ? state.incoming : [],
     outgoing: Array.isArray(state?.outgoing) ? state.outgoing : [],
     challenges: Array.isArray(state?.challenges) ? state.challenges : [],
+    blocked: Array.isArray(state?.blocked) ? state.blocked : [],
   };
 }
 
@@ -284,6 +428,17 @@ function publicProfile(user) {
 
 function normalizeUsername(value) {
   return typeof value === "string" ? value.trim().replace(/^@/, "").toLowerCase() : "";
+}
+
+function constantTimeEqual(left, right) {
+  if (typeof left !== "string" || typeof right !== "string" || left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return difference === 0;
+}
+
+function hasModerationToken(env) {
+  return typeof env.MODERATION_TOKEN === "string" && env.MODERATION_TOKEN.length >= 32;
 }
 
 async function readBody(request, maximum) {

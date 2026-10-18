@@ -1672,6 +1672,8 @@ private struct SocialScreen: View {
     @State private var loading = false
     @State private var working = false
     @State private var notice = ""
+    @State private var pendingBlockProfile: TempoSocialProfile?
+    @State private var showBlockConfirmation = false
 
     var body: some View {
         TempoPage {
@@ -1749,7 +1751,26 @@ private struct SocialScreen: View {
                                     .foregroundStyle(selectedFriends.contains(friend.id) ? TempoTheme.green : TempoTheme.secondary)
                             }
                             .padding(10).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17))
-                        }.buttonStyle(.plain)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu { safetyMenu(for: friend) }
+                    }
+                }
+            }
+            if !(snapshot?.blocked.isEmpty ?? true) {
+                VStack(alignment: .leading, spacing: 9) {
+                    SectionHeading(title: "Engellenen hesaplar", caption: "%d KİŞİ".tempoFormatted(snapshot?.blocked.count ?? 0), padding: false)
+                    ForEach(snapshot?.blocked ?? []) { profile in
+                        TempoCard {
+                            HStack {
+                                SocialPersonRow(profile: profile, detail: "Engellendi")
+                                Button("Engeli kaldır") {
+                                    Task { await setBlocked(profile, blocked: false) }
+                                }
+                                .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                                .disabled(working)
+                            }
+                        }
                     }
                 }
             }
@@ -1790,12 +1811,22 @@ private struct SocialScreen: View {
                         Task { await updateChallenge(challenge, action: action) }
                     } onShareChange: { enabled in
                         Task { await shareHealth(challenge, enabled: enabled) }
+                    } onReport: { category in
+                        Task { await reportChallenge(challenge, category: category) }
                     }
                 }
             }
         }
         .navigationTitle("Sosyal").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .task { await refresh() }
+        .confirmationDialog("Bu kullanıcıyı engelle?", isPresented: $showBlockConfirmation, titleVisibility: .visible) {
+            Button("Engelle", role: .destructive) {
+                if let profile = pendingBlockProfile { Task { await setBlocked(profile, blocked: true) } }
+            }
+            Button("Vazgeç", role: .cancel) { pendingBlockProfile = nil }
+        } message: {
+            Text("Engellenen hesap arkadaş listesinden ve ortak yarışmalarından kaldırılır.")
+        }
     }
 
     private func refresh() async {
@@ -1844,6 +1875,49 @@ private struct SocialScreen: View {
         do { try await account.setSocialChallengeHealthSharing(id: challenge.id, enabled: enabled); notice = "Yarışma paylaşım tercihin kaydedildi."; await refresh() }
         catch { notice = error.localizedDescription.tempoLocalized }
     }
+
+    @ViewBuilder
+    private func safetyMenu(for profile: TempoSocialProfile) -> some View {
+        Menu("Kullanıcıyı bildir", systemImage: "flag") {
+            Button("Taciz veya nefret", systemImage: "hand.raised") { Task { await reportUser(profile, category: "harassment") } }
+            Button("Spam", systemImage: "envelope.badge") { Task { await reportUser(profile, category: "spam") } }
+            Button("Taklit", systemImage: "person.crop.circle.badge.exclamationmark") { Task { await reportUser(profile, category: "impersonation") } }
+            Button("Uygunsuz içerik", systemImage: "exclamationmark.bubble") { Task { await reportUser(profile, category: "inappropriate") } }
+        }
+        Button("Engelle", systemImage: "hand.raised.fill", role: .destructive) {
+            pendingBlockProfile = profile
+            showBlockConfirmation = true
+        }
+    }
+
+    private func setBlocked(_ profile: TempoSocialProfile, blocked: Bool) async {
+        guard !working else { return }
+        working = true; defer { working = false }
+        do {
+            try await account.setSocialBlock(userId: profile.id, blocked: blocked)
+            notice = blocked ? "Kullanıcı engellendi." : "Engel kaldırıldı."
+            pendingBlockProfile = nil
+            await refresh()
+        } catch { notice = error.localizedDescription.tempoLocalized }
+    }
+
+    private func reportUser(_ profile: TempoSocialProfile, category: String) async {
+        guard !working else { return }
+        working = true; defer { working = false }
+        do {
+            try await account.reportSocialUser(userId: profile.id, category: category)
+            notice = "Bildirim inceleme kuyruğuna gönderildi."
+        } catch { notice = error.localizedDescription.tempoLocalized }
+    }
+
+    private func reportChallenge(_ challenge: TempoSocialChallenge, category: String) async {
+        guard !working else { return }
+        working = true; defer { working = false }
+        do {
+            try await account.reportSocialChallenge(id: challenge.id, category: category)
+            notice = "Bildirim inceleme kuyruğuna gönderildi."
+        } catch { notice = error.localizedDescription.tempoLocalized }
+    }
 }
 
 private struct SocialPersonRow: View {
@@ -1868,6 +1942,7 @@ private struct SocialChallengeCard: View {
     let healthConnected: Bool
     let onAction: (String) -> Void
     let onShareChange: (Bool) -> Void
+    let onReport: (String) -> Void
     private var metric: TempoSocialMetric { TempoSocialMetric(rawValue: challenge.metric) ?? .steps }
     private var sortedParticipants: [TempoSocialParticipant] {
         challenge.participants.sorted {
@@ -1883,7 +1958,18 @@ private struct SocialChallengeCard: View {
                         Text(challenge.title).font(.headline)
                         Label("7 günlük · %@".tempoFormatted(metric.title), systemImage: metric.symbol).font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
-                    Spacer(); Image(systemName: "trophy.fill").foregroundStyle(TempoTheme.orange)
+                    Spacer()
+                    Menu {
+                        Menu("Yarışmayı bildir", systemImage: "flag") {
+                            Button("Taciz veya nefret", systemImage: "hand.raised") { onReport("harassment") }
+                            Button("Spam", systemImage: "envelope.badge") { onReport("spam") }
+                            Button("Taklit", systemImage: "person.crop.circle.badge.exclamationmark") { onReport("impersonation") }
+                            Button("Uygunsuz içerik", systemImage: "exclamationmark.bubble") { onReport("inappropriate") }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(TempoTheme.secondary)
+                    }
+                    Image(systemName: "trophy.fill").foregroundStyle(TempoTheme.orange)
                 }
                 if challenge.myStatus == "invited" {
                     Text("Bir arkadaşın seni bu haftalık yarışmaya çağırdı.").font(.caption).foregroundStyle(TempoTheme.secondary)

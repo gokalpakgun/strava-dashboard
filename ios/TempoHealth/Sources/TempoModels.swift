@@ -355,6 +355,19 @@ struct TempoSocialSnapshot: Decodable {
     let incoming: [TempoSocialRequest]
     let outgoing: [TempoSocialRequest]
     let challenges: [TempoSocialChallenge]
+    let blocked: [TempoSocialProfile]
+
+    private enum CodingKeys: String, CodingKey { case profile, friends, incoming, outgoing, challenges, blocked }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        profile = try values.decodeIfPresent(TempoSocialProfile.self, forKey: .profile)
+        friends = try values.decodeIfPresent([TempoSocialProfile].self, forKey: .friends) ?? []
+        incoming = try values.decodeIfPresent([TempoSocialRequest].self, forKey: .incoming) ?? []
+        outgoing = try values.decodeIfPresent([TempoSocialRequest].self, forKey: .outgoing) ?? []
+        challenges = try values.decodeIfPresent([TempoSocialChallenge].self, forKey: .challenges) ?? []
+        blocked = try values.decodeIfPresent([TempoSocialProfile].self, forKey: .blocked) ?? []
+    }
 }
 
 enum TempoSocialMetric: String, CaseIterable, Identifiable {

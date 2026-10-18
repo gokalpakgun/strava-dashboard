@@ -4,7 +4,7 @@ import test from "node:test";
 import { webcrypto } from "node:crypto";
 import worker from "../src/index.js";
 import { handleAccountRequest, accountContext } from "../src/account.js";
-import { deleteSocialAccount } from "../src/social.js";
+import { deleteSocialAccount, handleModerationRequest, handleSocialRequest } from "../src/social.js";
 import { readLimitedText, RequestBodyTooLargeError } from "../src/http.js";
 
 globalThis.crypto ||= webcrypto;
@@ -35,7 +35,13 @@ class MemoryKV {
   }
 }
 
-function accountEnv() { return { TOKEN_STORE: new MemoryKV() }; }
+function accountEnv() {
+  return {
+    TOKEN_STORE: new MemoryKV(),
+    AUTH_PEPPER: "test-only-high-entropy-auth-pepper",
+    AI: { run: async () => ({ response: "safe" }) },
+  };
+}
 
 test("Strava OAuth state survives KV edge propagation and rejects tampering", async () => {
   const env = {
@@ -147,6 +153,161 @@ async function signUp(env, requestId = "") {
   return { response, body: await response.json() };
 }
 
+async function signUpAs(env, email, username) {
+  const request = jsonRequest("/api/account/signup", { email, username, password: "OriginalPass123" });
+  const response = await handleAccountRequest(request, env, new URL(request.url));
+  return { response, body: await response.json() };
+}
+
+test("password hashes are peppered and legacy users are upgraded on successful login", async () => {
+  const env = accountEnv();
+  const created = await signUpAs(env, "legacy@example.com", "legacy_user");
+  const user = await env.TOKEN_STORE.get("account-user:" + created.body.user.id, "json");
+  const salt = Uint8Array.from(atob(user.passwordSalt), character => character.charCodeAt(0));
+  const material = await crypto.subtle.importKey("raw", new TextEncoder().encode("OriginalPass123"), "PBKDF2", false, ["deriveBits"]);
+  const legacyBits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100000 }, material, 256);
+  user.passwordHash = btoa(String.fromCharCode(...new Uint8Array(legacyBits)));
+  delete user.passwordPepperVersion;
+  await env.TOKEN_STORE.put("account-user:" + user.id, JSON.stringify(user));
+
+  const loginRequest = jsonRequest("/api/account/login", { identifier: "legacy_user", password: "OriginalPass123" });
+  const login = await handleAccountRequest(loginRequest, env, new URL(loginRequest.url));
+  assert.equal(login.status, 200);
+  const upgraded = await env.TOKEN_STORE.get("account-user:" + user.id, "json");
+  assert.equal(upgraded.passwordPepperVersion, 1);
+  assert.notEqual(upgraded.passwordHash, user.passwordHash);
+
+  const unconfigured = { TOKEN_STORE: new MemoryKV() };
+  const rejectedSignup = await signUpAs(unconfigured, "new@example.com", "new_user");
+  assert.equal(rejectedSignup.response.status, 503);
+  const weakPepper = { ...accountEnv(), AUTH_PEPPER: "too-short" };
+  const weakSignup = await signUpAs(weakPepper, "weak@example.com", "weak_user");
+  assert.equal(weakSignup.response.status, 503);
+});
+
+function socialRequest(path, token, value, method = "POST") {
+  return new Request("https://apitempo.com" + path, {
+    method,
+    headers: { Authorization: "Bearer " + token, ...(value ? { "Content-Type": "application/json" } : {}) },
+    ...(value ? { body: JSON.stringify(value) } : {}),
+  });
+}
+
+test("social report queue is private; blocking removes friendship, requests and challenge access", async () => {
+  const env = { ...accountEnv(), MODERATION_TOKEN: "test-only-moderation-secret-at-least-32-chars" };
+  const [alice, bob] = await Promise.all([
+    signUpAs(env, "alice@example.com", "alice_audit"),
+    signUpAs(env, "bob@example.com", "bob_audit"),
+  ]);
+  assert.equal(alice.response.status, 201);
+  assert.equal(bob.response.status, 201);
+
+  const sendRequest = await worker.fetch(socialRequest("/api/account/social/friends", alice.body.token, { username: "bob_audit" }), env);
+  assert.equal(sendRequest.status, 201);
+  const pending = await worker.fetch(socialRequest("/api/account/social", bob.body.token, null, "GET"), env);
+  const pendingData = await pending.json();
+  const accept = await worker.fetch(socialRequest("/api/account/social/requests", bob.body.token, { requestId: pendingData.incoming[0].id, action: "accept" }), env);
+  assert.equal(accept.status, 200);
+
+  const createdChallenge = await worker.fetch(socialRequest("/api/account/social/challenges", alice.body.token, {
+    title: "Audit challenge", metric: "steps", friendIds: [bob.body.user.id],
+  }), env);
+  assert.equal(createdChallenge.status, 201);
+  const challengeData = await createdChallenge.json();
+  const reported = await worker.fetch(socialRequest("/api/account/social/reports", bob.body.token, {
+    challengeId: challengeData.challenge.id, category: "inappropriate",
+  }), env);
+  assert.equal(reported.status, 201);
+
+  const unauthorized = await worker.fetch(new Request("https://apitempo.com/api/moderation/reports"), env);
+  assert.equal(unauthorized.status, 401);
+  const queue = await worker.fetch(new Request("https://apitempo.com/api/moderation/reports", {
+    headers: { Authorization: "Bearer " + env.MODERATION_TOKEN },
+  }), env);
+  assert.equal(queue.status, 200);
+  const reports = await queue.json();
+  assert.equal(reports.reports.length, 1);
+  assert.equal(reports.reports[0].targetUserId, alice.body.user.id);
+  assert.equal(reports.reports[0].status, "open");
+
+  const resolve = await worker.fetch(new Request("https://apitempo.com/api/moderation/reports/" + reports.reports[0].id, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + env.MODERATION_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "resolve" }),
+  }), env);
+  assert.equal(resolve.status, 200);
+  const closedQueue = await (await worker.fetch(new Request("https://apitempo.com/api/moderation/reports", {
+    headers: { Authorization: "Bearer " + env.MODERATION_TOKEN },
+  }), env)).json();
+  assert.equal(closedQueue.reports[0].status, "resolved");
+
+  const blocked = await worker.fetch(socialRequest("/api/account/social/blocks", alice.body.token, { userId: bob.body.user.id, action: "block" }), env);
+  assert.equal(blocked.status, 200);
+  const aliceSnapshot = await (await worker.fetch(socialRequest("/api/account/social", alice.body.token, null, "GET"), env)).json();
+  assert.deepEqual(aliceSnapshot.friends, []);
+  assert.equal(aliceSnapshot.blocked[0].id, bob.body.user.id);
+  assert.equal(aliceSnapshot.challenges[0].participants.some(participant => participant.userId === bob.body.user.id), false);
+  const rejectedReconnect = await worker.fetch(socialRequest("/api/account/social/friends", bob.body.token, { username: "alice_audit" }), env);
+  assert.equal(rejectedReconnect.status, 403);
+});
+
+test("social creation stays disabled when the moderation secret is missing or weak", async () => {
+  const env = { ...accountEnv(), MODERATION_TOKEN: "short" };
+  const user = await signUpAs(env, "social@example.com", "social_audit");
+  const response = await worker.fetch(socialRequest("/api/account/social/challenges", user.body.token, {
+    title: "Weekly", metric: "steps", friendIds: ["a".repeat(40)],
+  }), env);
+  assert.equal(response.status, 503);
+  const reportQueue = await worker.fetch(new Request("https://apitempo.com/api/moderation/reports", {
+    headers: { Authorization: "Bearer short" },
+  }), env);
+  assert.equal(reportQueue.status, 503);
+});
+
+test("public usernames are moderated on signup and username changes", async () => {
+  const env = accountEnv();
+  env.AI = { run: async () => ({ response: "unsafe S10" }) };
+  const rejectedSignup = await signUpAs(env, "bad-name@example.com", "unsafe_user");
+  assert.equal(rejectedSignup.response.status, 400);
+
+  env.AI = { run: async () => ({ response: "safe" }) };
+  const user = await signUpAs(env, "good-name@example.com", "safe_user");
+  env.AI = { run: async () => ({ response: "unsafe S10" }) };
+  const usernameChange = await worker.fetch(new Request("https://apitempo.com/api/account/profile", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + user.body.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "unsafe_user_2" }),
+  }), env);
+  assert.equal(usernameChange.status, 400);
+});
+
+test("community text is rejected when classified unsafe and fails closed when moderation is unavailable", async () => {
+  const env = { ...accountEnv(), MODERATION_TOKEN: "test-only-moderation-secret-at-least-32-chars" };
+  const user = await signUpAs(env, "filtered@example.com", "filtered_user");
+  env.AI = { run: async () => ({ response: "unsafe S10" }) };
+  const profileRequest = new Request("https://apitempo.com/api/account/profile", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + user.body.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ displayName: "blocked text" }),
+  });
+  const profile = await worker.fetch(profileRequest, env);
+  assert.equal(profile.status, 400);
+
+  const challengeRequest = socialRequest("/api/account/social/challenges", user.body.token, {
+    title: "blocked title", metric: "steps", friendIds: ["a".repeat(40)],
+  });
+  const challenge = await worker.fetch(challengeRequest, env);
+  assert.equal(challenge.status, 400);
+
+  env.AI = { run: async () => { throw new Error("moderation unavailable"); } };
+  const unavailable = await worker.fetch(new Request("https://apitempo.com/api/account/profile", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + user.body.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ displayName: "not reviewed" }),
+  }), env);
+  assert.equal(unavailable.status, 503);
+});
+
 test("signup idempotency never exposes an existing session to a request-ID-only caller", async () => {
   const env = accountEnv();
   const requestId = "d707bc40-a42c-49c9-8598-5a8109f3b4ee";
@@ -247,7 +408,7 @@ test("rate-limit KV write contention returns 429 instead of a Worker error", asy
       return super.put(key, value, options);
     }
   }
-  const env = { TOKEN_STORE: new ContendedKV() };
+  const env = { TOKEN_STORE: new ContendedKV(), AUTH_PEPPER: "test-only-high-entropy-auth-pepper", AI: { run: async () => ({ response: "safe" }) } };
   const first = await signUp(env);
   assert.equal(first.response.status, 201);
   const secondRequest = jsonRequest("/api/account/signup", {
@@ -409,7 +570,7 @@ test("deleting a user removes their pending friend-request references from the o
   await env.TOKEN_STORE.put("social-request:req-1", JSON.stringify({ id: "req-1", from: "remaining", to: "deleted", status: "pending" }));
 
   await deleteSocialAccount(env, "deleted");
-  assert.deepEqual(await env.TOKEN_STORE.get("social-state:remaining", "json"), { friends: [], incoming: [], outgoing: [], challenges: [] });
+  assert.deepEqual(await env.TOKEN_STORE.get("social-state:remaining", "json"), { friends: [], incoming: [], outgoing: [], challenges: [], blocked: [] });
   assert.equal(await env.TOKEN_STORE.get("social-request:req-1"), null);
   assert.equal(await env.TOKEN_STORE.get("social-state:deleted"), null);
 });

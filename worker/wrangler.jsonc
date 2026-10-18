@@ -5,7 +5,7 @@
   "compatibility_date": "2026-10-06",
   "workers_dev": true,
   "secrets": {
-    "required": ["STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET"]
+    "required": ["STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "MODERATION_TOKEN", "AUTH_PEPPER"]
   },
   "kv_namespaces": [
     { "binding": "TOKEN_STORE", "id": "932a2f4aa3ec4f3fac45f3497344571f" }

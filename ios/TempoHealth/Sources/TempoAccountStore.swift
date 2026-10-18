@@ -264,6 +264,18 @@ final class TempoAccountStore: ObservableObject {
         _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: action))
     }
 
+    func setSocialBlock(userId: String, blocked: Bool) async throws {
+        _ = try await socialRequest(path: "/api/account/social/blocks", method: "POST", body: SocialBlockAction(userId: userId, action: blocked ? "block" : "unblock"))
+    }
+
+    func reportSocialUser(userId: String, category: String = "inappropriate") async throws {
+        _ = try await socialRequest(path: "/api/account/social/reports", method: "POST", body: SocialReportRequest(userId: userId, challengeId: nil, category: category))
+    }
+
+    func reportSocialChallenge(id: String, category: String = "inappropriate") async throws {
+        _ = try await socialRequest(path: "/api/account/social/reports", method: "POST", body: SocialReportRequest(userId: nil, challengeId: id, category: category))
+    }
+
     func setSocialChallengeHealthSharing(id: String, enabled: Bool) async throws {
         _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: "share", share: enabled))
     }
@@ -463,6 +475,8 @@ private struct ProfileUpdate: Encodable {
 private struct EmptyPayload: Encodable {}
 private struct SocialFriendRequest: Encodable { let username: String }
 private struct SocialFriendResponse: Encodable { let requestId: String; let action: String }
+private struct SocialBlockAction: Encodable { let userId: String; let action: String }
+private struct SocialReportRequest: Encodable { let userId: String?; let challengeId: String?; let category: String }
 private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String] }
 private struct SocialChallengeAction: Encodable { let action: String; var share: Bool? = nil }
 private struct AccountEnvelope: Decodable {

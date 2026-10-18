@@ -1,9 +1,11 @@
 import { deleteSocialAccount } from "./social.js";
 import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
+import { moderateCommunityText } from "./content-moderation.js";
 
 const ACCOUNT_SESSION_SECONDS = 60 * 60 * 24 * 30;
 // Cloudflare Workers production rejects PBKDF2 counts above 100,000.
 const PASSWORD_ITERATIONS = 100000;
+const PASSWORD_PEPPER_VERSION = 1;
 const MAX_PROFILE_BODY = 800000;
 const encoder = new TextEncoder();
 const allowedSports = new Set([
@@ -50,10 +52,14 @@ async function signUp(request, env) {
   const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
   const validation = validateCredentials(email, username, password);
   if (validation) return responseJSON({ error: validation }, 400);
+  if (typeof env.AUTH_PEPPER !== "string" || env.AUTH_PEPPER.length < 32) return responseJSON({ error: "Hesap güvenliği ayarı tamamlanana kadar yeni kayıt açılamıyor." }, 503);
 
   const requestId = String(request.headers.get("X-Tempo-Request-ID") || "").trim().toLowerCase();
   const limited = await rateLimit(request, env, "signup", 10);
   if (limited) return limited;
+  const usernameModeration = await moderateCommunityText(env, username);
+  if (usernameModeration.unavailable) return responseJSON({ error: "Kullanıcı adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene." }, 503);
+  if (!usernameModeration.allowed) return responseJSON({ error: "Bu kullanıcı adı topluluk kurallarına uygun değil." }, 400);
   const idempotencyKey = /^[a-f0-9-]{20,64}$/.test(requestId)
     ? "account-signup-request:" + await sha256Hex(requestId)
     : "";
@@ -68,7 +74,7 @@ async function signUp(request, env) {
       const passwordMatches = sameAccount
         && completedUser.passwordHash
         && constantTimeEqual(
-          await derivePassword(password, completedUser.passwordSalt, completedUser.passwordIterations || PASSWORD_ITERATIONS),
+          await derivePassword(password, completedUser.passwordSalt, storedPasswordIterations(completedUser), pepperForUser(completedUser, env)),
           completedUser.passwordHash,
         );
       if (!passwordMatches) {
@@ -90,7 +96,7 @@ async function signUp(request, env) {
 
   const id = randomHex(20);
   const salt = randomBase64(16);
-  const passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS);
+  const passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS, env.AUTH_PEPPER);
   const now = new Date().toISOString();
   const user = {
     id,
@@ -106,6 +112,7 @@ async function signUp(request, env) {
     passwordSalt: salt,
     passwordHash,
     passwordIterations: PASSWORD_ITERATIONS,
+    passwordPepperVersion: PASSWORD_PEPPER_VERSION,
   };
 
   await Promise.all([
@@ -149,9 +156,25 @@ async function signIn(request, env) {
     return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
-  const candidate = await derivePassword(password, user.passwordSalt, user.passwordIterations || PASSWORD_ITERATIONS);
+  if (user.passwordPepperVersion && user.passwordPepperVersion !== PASSWORD_PEPPER_VERSION) {
+    return responseJSON({ error: "Hesap güvenliği sürümü desteklenmiyor." }, 503);
+  }
+  if (user.passwordPepperVersion && (typeof env.AUTH_PEPPER !== "string" || env.AUTH_PEPPER.length < 32)) {
+    return responseJSON({ error: "Hesap güvenliği yapılandırması eksik." }, 503);
+  }
+  const candidate = await derivePassword(password, user.passwordSalt, storedPasswordIterations(user), pepperForUser(user, env));
   if (!constantTimeEqual(candidate, user.passwordHash)) {
     return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
+  }
+
+  // Upgrade older unpeppered hashes after a successful login. If the secret is
+  // absent, keep legacy accounts usable until production is configured.
+  if (!user.passwordPepperVersion && env.AUTH_PEPPER) {
+    user.passwordHash = await derivePassword(password, user.passwordSalt, PASSWORD_ITERATIONS, env.AUTH_PEPPER);
+    user.passwordIterations = PASSWORD_ITERATIONS;
+    user.passwordPepperVersion = PASSWORD_PEPPER_VERSION;
+    user.updatedAt = new Date().toISOString();
+    await env.TOKEN_STORE.put("account-user:" + user.id, JSON.stringify(user));
   }
 
   const session = await createSession(env, user.id, user.sessionVersion || 1);
@@ -228,6 +251,7 @@ async function resetPasswordValues(tokenValue, passwordValue, env) {
   if (password.length < 8 || password.length > 128) {
     return { ok: false, status: 400, error: "Şifre 8–128 karakter olmalı." };
   }
+  if (typeof env.AUTH_PEPPER !== "string" || env.AUTH_PEPPER.length < 32) return { ok: false, status: 503, error: "Hesap güvenliği ayarı tamamlanana kadar şifre değiştirilemiyor." };
 
   const resetKey = "account-reset:" + await sha256Hex(token);
   const userId = await env.TOKEN_STORE.get(resetKey);
@@ -243,8 +267,9 @@ async function resetPasswordValues(tokenValue, passwordValue, env) {
 
   const salt = randomBase64(16);
   user.passwordSalt = salt;
-  user.passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS);
+  user.passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS, env.AUTH_PEPPER);
   user.passwordIterations = PASSWORD_ITERATIONS;
+  user.passwordPepperVersion = PASSWORD_PEPPER_VERSION;
   user.sessionVersion = (Number.isInteger(user.sessionVersion) && user.sessionVersion > 0 ? user.sessionVersion : 1) + 1;
   user.updatedAt = new Date().toISOString();
   await Promise.all([
@@ -346,6 +371,20 @@ async function updateProfile(request, env) {
       const owner = await env.TOKEN_STORE.get("account-username:" + username);
       if (owner && owner !== user.id) return responseJSON({ error: "Bu kullanıcı adı alınmış." }, 409);
       user.username = username;
+    }
+  }
+
+  const publicTextChanged = user.displayName !== context.user.displayName || user.username !== oldUsername;
+  if (publicTextChanged) {
+    const limited = await rateLimit(request, env, "profile-public-text", 20, user.id);
+    if (limited) return limited;
+    const texts = [];
+    if (user.displayName !== context.user.displayName) texts.push([user.displayName, "Görünen ad"]);
+    if (user.username !== oldUsername) texts.push([user.username, "Kullanıcı adı"]);
+    for (const [text, label] of texts) {
+      const moderation = await moderateCommunityText(env, text);
+      if (moderation.unavailable) return responseJSON({ error: `${label} denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene.` }, 503);
+      if (!moderation.allowed) return responseJSON({ error: `Bu ${label.toLocaleLowerCase("tr-TR")} topluluk kurallarına uygun değil.` }, 400);
     }
   }
 
@@ -637,8 +676,8 @@ function publicUser(user) {
   };
 }
 
-async function derivePassword(password, saltBase64, iterations) {
-  const material = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+async function derivePassword(password, saltBase64, iterations, pepper = "") {
+  const material = await crypto.subtle.importKey("raw", encoder.encode(pepper ? password + "\u0000" + pepper : password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({
     name: "PBKDF2",
     hash: "SHA-256",
@@ -646,6 +685,15 @@ async function derivePassword(password, saltBase64, iterations) {
     iterations,
   }, material, 256);
   return bytesBase64(new Uint8Array(bits));
+}
+
+function storedPasswordIterations(user) {
+  const value = user?.passwordIterations;
+  return Number.isInteger(value) && value >= 10000 && value <= PASSWORD_ITERATIONS ? value : PASSWORD_ITERATIONS;
+}
+
+function pepperForUser(user, env) {
+  return user?.passwordPepperVersion === PASSWORD_PEPPER_VERSION ? env.AUTH_PEPPER || "" : "";
 }
 
 async function sha256Hex(value) {
