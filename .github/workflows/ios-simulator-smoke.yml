@@ -1,0 +1,73 @@
+name: iOS Simulator Smoke Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-simulator-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-smoke:
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Report Xcode and simulator runtimes
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+
+      - name: Build for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/TempoHealth/TempoHealth.xcodeproj \
+            -scheme TempoHealth \
+            -configuration Debug \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Install and launch on an iPhone simulator
+        run: |
+          set -euo pipefail
+          DEVICE_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          test -n "$DEVICE_ID"
+          echo "Using iPhone simulator $DEVICE_ID"
+
+          APP_PATH="$RUNNER_TEMP/TempoSimulatorBuild/Build/Products/Debug-iphonesimulator/Tempo.app"
+          test -d "$APP_PATH"
+
+          xcrun simctl boot "$DEVICE_ID"
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          LAUNCH_OUTPUT="$(xcrun simctl launch --terminate-running-process "$DEVICE_ID" com.apitempo.tempohealth)"
+          echo "$LAUNCH_OUTPUT"
+          [[ "$LAUNCH_OUTPUT" =~ [0-9]+ ]]
+
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/Tempo-simulator-launch.png"
+
+      - name: Keep simulator launch screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-ios-simulator-launch
+          path: ${{ runner.temp }}/Tempo-simulator-launch.png
+          if-no-files-found: ignore
+          retention-days: 7
+
