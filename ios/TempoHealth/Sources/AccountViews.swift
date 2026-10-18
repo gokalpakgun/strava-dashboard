@@ -4,13 +4,37 @@ import SwiftUI
 import UIKit
 
 struct TempoLaunchView: View {
+    @State private var hasAppeared = false
+
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
-            VStack(spacing: 18) {
-                TempoBrandMark(size: 82)
-                Text("TEMPO").font(.headline.bold()).tracking(4).foregroundStyle(TempoTheme.green)
-                ProgressView().tint(TempoTheme.green)
+            Circle()
+                .fill(TempoTheme.green.opacity(0.13))
+                .frame(width: 172, height: 172)
+                .blur(radius: 48)
+                .offset(y: -24)
+
+            VStack(spacing: 17) {
+                Image("TempoLaunchMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 112, height: 112)
+                    .shadow(color: TempoTheme.green.opacity(0.30), radius: 22)
+                    .shadow(color: TempoTheme.blue.opacity(0.22), radius: 34)
+                    .scaleEffect(hasAppeared ? 1 : 0.92)
+                    .opacity(hasAppeared ? 1 : 0)
+
+                Text("TEMPO")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .tracking(5)
+                    .foregroundStyle(.white.opacity(0.92))
+                    .opacity(hasAppeared ? 1 : 0)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.48)) {
+                hasAppeared = true
             }
         }
     }
@@ -20,16 +44,12 @@ struct TempoBrandMark: View {
     var size: CGFloat = 76
 
     var body: some View {
-        Image("TempoLogo")
+        Image("TempoLaunchMark")
             .resizable()
             .scaledToFit()
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.30, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: size * 0.30, style: .continuous)
-                .stroke(.white.opacity(0.09), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 20, y: 12)
+            .frame(width: size, height: size)
+            .shadow(color: TempoTheme.green.opacity(0.18), radius: size * 0.24)
+            .shadow(color: TempoTheme.blue.opacity(0.12), radius: size * 0.34)
     }
 }
 
@@ -1786,6 +1806,17 @@ struct TempoGlassBackButtonModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 18, coordinateSpace: .global)
+                    .onEnded { value in
+                        let beganAtLeadingEdge = value.startLocation.x <= 28
+                        let wasPrimarilyHorizontal = abs(value.translation.height) < 64
+                        guard beganAtLeadingEdge,
+                              wasPrimarilyHorizontal,
+                              value.translation.width >= 88 else { return }
+                        dismiss()
+                    }
+            )
             .navigationBarBackButtonHidden(true)
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)

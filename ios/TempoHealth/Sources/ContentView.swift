@@ -20,10 +20,11 @@ struct ContentView: View {
     @EnvironmentObject private var model: TempoAppModel
     @EnvironmentObject private var account: TempoAccountStore
     @State private var selectedTab = 0
+    @State private var minimumLaunchFinished = false
 
     var body: some View {
         Group {
-            if account.isRestoring {
+            if !minimumLaunchFinished || account.isRestoring {
                 TempoLaunchView()
             } else if !account.isAuthenticated {
                 AccountWelcomeView()
@@ -34,6 +35,12 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            withAnimation(.easeOut(duration: 0.28)) {
+                minimumLaunchFinished = true
+            }
+        }
         .task(id: account.isAuthenticated) {
             guard account.isAuthenticated else { return }
             model.setTempoAccount(account.profile?.id)
@@ -80,7 +87,13 @@ private struct TempoMainShell: View {
     }
 
     var body: some View {
-        selectedScreen
+        ZStack {
+            selectedScreen
+                .id(selectedTab)
+                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.24), value: selectedTab)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 TempoGlassTabBar(selectedTab: $selectedTab)
                     .padding(.horizontal, 12)
