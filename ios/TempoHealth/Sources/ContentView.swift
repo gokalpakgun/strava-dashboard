@@ -43,6 +43,9 @@ struct ContentView: View {
             }
         }
         .task(id: account.isAuthenticated) {
+#if DEBUG
+            guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+#endif
             guard account.isAuthenticated else { return }
             model.setTempoAccount(account.profile?.id)
             await model.restoreConnectionIfNeeded(accountToken: account.authorizationToken, accountId: account.profile?.id)
@@ -199,6 +202,7 @@ private struct TempoGlassTabBar: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("tab.\(tab.id)")
                 .accessibilityLabel(tab.title.tempoLocalized)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
@@ -787,6 +791,7 @@ private struct ActivitiesScreen: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(TempoSecondaryButtonStyle())
+                    .accessibilityIdentifier("activity.manual.add")
                 }
                 if !model.manualWorkouts.isEmpty {
                     VStack(alignment: .leading, spacing: 11) {
@@ -1131,6 +1136,7 @@ private struct ManualWorkoutForm: View {
                     notes: $notes
                 )
             }
+            .accessibilityIdentifier("activity.manual.form")
             .scrollContentBackground(.hidden)
             .background(TempoTheme.background)
             .navigationTitle("Antrenman ekle")
@@ -1241,6 +1247,7 @@ private struct ManualWorkoutToolbar: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("İptal", action: onCancel)
+                .accessibilityIdentifier("activity.manual.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
             Button(isSaving ? "Kaydediliyor…" : "Kaydet", action: onSave)
@@ -1977,10 +1984,13 @@ private struct SocialScreen: View {
             socialIntro
             Picker("Sosyal bölümü", selection: $selectedSection) {
                 ForEach(SocialSection.allCases) { section in
-                    Text(section.title.tempoLocalized).tag(section)
+                    Text(section.title.tempoLocalized)
+                        .tag(section)
+                        .accessibilityIdentifier("social.section.\(section.rawValue)")
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("social.sections")
 
             if !notice.isEmpty {
                 Text(notice).font(.caption).foregroundStyle(TempoTheme.secondary).frame(maxWidth: .infinity, alignment: .leading)
@@ -2003,7 +2013,12 @@ private struct SocialScreen: View {
             }
         }
         .navigationTitle("Sosyal").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
-        .task { await refresh() }
+        .task {
+#if DEBUG
+            guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+#endif
+            await refresh()
+        }
         .confirmationDialog("Bu kullanıcıyı engelle?", isPresented: $showBlockConfirmation, titleVisibility: .visible) {
             Button("Engelle", role: .destructive) {
                 if let profile = pendingBlockProfile { Task { await setBlocked(profile, blocked: true) } }
@@ -2126,6 +2141,7 @@ private struct SocialScreen: View {
                         .padding(13).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                         .submitLabel(.send)
                         .onSubmit { Task { await sendRequest() } }
+                        .accessibilityIdentifier("social.friendUsername")
                     Button { Task { await sendRequest() } } label: {
                         if working { ProgressView().tint(.black).frame(width: 46, height: 46) }
                         else { Image(systemName: "person.badge.plus").foregroundStyle(.black).frame(width: 46, height: 46) }
@@ -2133,6 +2149,7 @@ private struct SocialScreen: View {
                     .background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .disabled(working || username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityLabel("Arkadaşlık isteği gönder")
+                    .accessibilityIdentifier("social.sendFriendRequest")
                 }
                 Text("@ işaretiyle veya işaretsiz Tempo kullanıcı adını yazabilirsin.")
                     .font(.caption2).foregroundStyle(TempoTheme.secondary)
@@ -2613,6 +2630,7 @@ private struct MoreScreen: View {
                 }
                 LazyVGrid(columns: columns, spacing: 12) {
                     MoreLink(title: "Sosyal", subtitle: "Arkadaşlar ve yarışlar", icon: "person.2.fill", color: TempoTheme.green, destination: AnyView(SocialScreen()))
+                        .accessibilityIdentifier("more.social")
                     MoreLink(title: "Tempo Hesabı", subtitle: "Profil ve sporların", icon: "person.crop.circle.badge.checkmark", color: TempoTheme.green, destination: AnyView(AccountSettingsScreen()))
                     MoreLink(title: "Başarılar", subtitle: "Seviye ve rozetlerin", icon: "medal.fill", color: TempoTheme.orange, destination: AnyView(AchievementsScreen()))
                     MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
@@ -3632,6 +3650,7 @@ private struct HomeHeader: View {
                     .font(.caption.bold())
                     .tracking(3)
                     .foregroundStyle(TempoTheme.green)
+                    .accessibilityIdentifier("screen.summary")
                 Text(dateText.prefix(1).uppercased() + dateText.dropFirst())
                     .font(.title3.bold())
             }
@@ -3646,7 +3665,9 @@ struct PageTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(subtitle.tempoLocalized).font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.secondary)
-            Text(title.tempoLocalized).font(.system(size: 31, weight: .bold, design: .rounded))
+            Text(title.tempoLocalized)
+                .font(.system(size: 31, weight: .bold, design: .rounded))
+                .accessibilityIdentifier("page.title.\(title)")
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
     }
 }

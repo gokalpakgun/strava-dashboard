@@ -69,6 +69,7 @@ struct SportsHubScreen: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("SANA ÖZEL".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                 Text("Sporlarım").font(.system(size: 27, weight: .bold, design: .rounded))
+                    .accessibilityIdentifier("screen.sports")
                 Text("Antrenmanların ve araçların tek yerde.")
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
             }

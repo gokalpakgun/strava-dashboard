@@ -122,6 +122,7 @@ struct AccountWelcomeView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(AccountPrimaryButtonStyle())
+                            .accessibilityIdentifier("auth.createAccount")
 
                             NavigationLink(destination: AccountFormView(mode: .signIn)) {
                                 HStack {
@@ -132,6 +133,7 @@ struct AccountWelcomeView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(AccountOutlineButtonStyle())
+                            .accessibilityIdentifier("auth.signIn")
                         }
 
                         Text("Tempo, hareketini günlük bir ritme dönüştürür.")
@@ -264,6 +266,7 @@ private struct AccountFormView: View {
                         Text(mode.title.tempoLocalized)
                             .font(.system(size: 33, weight: .bold, design: .rounded))
                             .tracking(-0.7)
+                            .accessibilityIdentifier("auth.form.title")
                         Text(mode.subtitle.tempoLocalized)
                             .font(.subheadline)
                             .foregroundStyle(TempoTheme.secondary)
@@ -279,17 +282,20 @@ private struct AccountFormView: View {
                                 text: $email,
                                 contentType: mode == .signUp ? .emailAddress : .username
                             )
+                            .accessibilityIdentifier("auth.email")
                             .keyboardType(mode == .signUp ? .emailAddress : .default)
                         }
 
                         if mode == .signUp {
                             AccountFormFieldLabel(title: "Kullanıcı adı") {
                                 AccountTextField(title: "kullaniciadi", icon: "at", text: $username, contentType: .username)
+                                        .accessibilityIdentifier("auth.username")
                             }
                         }
 
                         AccountFormFieldLabel(title: "Şifre") {
                             AccountSecureField(title: mode == .signUp ? "En az 8 karakter" : "Şifren", text: $password)
+                                .accessibilityIdentifier("auth.password")
                         }
 
                         if mode == .signIn {
@@ -301,6 +307,7 @@ private struct AccountFormView: View {
                                 }
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(TempoTheme.green)
+                                .accessibilityIdentifier("auth.forgotPassword")
                             }
                         }
 
@@ -346,6 +353,7 @@ private struct AccountFormView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(AccountPrimaryButtonStyle())
+                        .accessibilityIdentifier("auth.submit")
                         .disabled(account.isBusy || !canSubmit)
                         .opacity(canSubmit ? 1 : 0.56)
                     }
@@ -369,6 +377,7 @@ private struct AccountFormView: View {
                                 .fontWeight(.semibold)
                                 .foregroundStyle(TempoTheme.green)
                         }
+                        .accessibilityIdentifier("auth.switchMode")
                     }
                     .font(.subheadline)
 
@@ -433,6 +442,7 @@ private struct PasswordResetSheet: View {
                                 .lineSpacing(3)
                             Button("Tamam") { dismiss() }
                                 .buttonStyle(AccountPrimaryButtonStyle())
+                                .accessibilityIdentifier("auth.passwordReset.done")
                         }
                         .frame(maxWidth: .infinity)
                     } else {
@@ -448,6 +458,7 @@ private struct PasswordResetSheet: View {
                         AccountFormFieldLabel(title: "E-posta") {
                             AccountTextField(title: "ornek@eposta.com", icon: "envelope", text: $email, contentType: .emailAddress)
                                 .keyboardType(.emailAddress)
+                                .accessibilityIdentifier("auth.passwordReset.email")
                         }
 
                         if !account.errorMessage.isEmpty {
@@ -473,6 +484,7 @@ private struct PasswordResetSheet: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(AccountPrimaryButtonStyle())
+                        .accessibilityIdentifier("auth.passwordReset.submit")
                         .disabled(account.isBusy || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     Spacer()
@@ -483,6 +495,7 @@ private struct PasswordResetSheet: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Kapat") { dismiss() }
                         .foregroundStyle(TempoTheme.secondary)
+                        .accessibilityIdentifier("auth.passwordReset.close")
                 }
             }
         }

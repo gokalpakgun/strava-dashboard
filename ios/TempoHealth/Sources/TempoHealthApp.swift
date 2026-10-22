@@ -13,6 +13,9 @@ struct TempoHealthApp: App {
                 .environmentObject(account)
                 .onOpenURL(perform: model.handleCallback)
                 .onChange(of: scenePhase) { _, phase in
+#if DEBUG
+                    guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+#endif
                     if phase == .active {
                         account.restoreSessionIfNeeded()
                         model.syncWhenActive()

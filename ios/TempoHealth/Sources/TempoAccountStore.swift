@@ -159,6 +159,23 @@ final class TempoAccountStore: ObservableObject {
     var authorizationToken: String? { sessionToken }
 
     init() {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing-authenticated") {
+            sessionToken = "ui-test-session"
+            profile = TempoUserProfile(
+                id: "ui-test-account",
+                email: "tester@example.com",
+                username: "tempo_tester",
+                displayName: "Tempo Tester",
+                avatarBase64: nil,
+                sports: ["run", "tennis"],
+                onboardingComplete: true,
+                createdAt: nil
+            )
+            isRestoring = false
+            return
+        }
+#endif
         let storedToken = AccountTokenStore.read()
         let cachedProfile = storedToken == nil ? nil : AccountProfileCache.read()
         sessionToken = storedToken

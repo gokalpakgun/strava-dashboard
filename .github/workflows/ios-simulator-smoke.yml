@@ -49,6 +49,7 @@ jobs:
           DEVICE_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
           test -n "$DEVICE_ID"
           echo "Using iPhone simulator $DEVICE_ID"
+          echo "TEMPO_SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
 
           APP_PATH="$RUNNER_TEMP/TempoSimulatorBuild/Build/Products/Debug-iphonesimulator/Tempo.app"
           test -d "$APP_PATH"
@@ -62,12 +63,35 @@ jobs:
 
           xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/Tempo-simulator-launch.png"
 
+      - name: Run user-flow UI tests on the iPhone simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/TempoHealth/TempoHealth.xcodeproj \
+            -scheme TempoHealth \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$TEMPO_SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
+            -resultBundlePath "$RUNNER_TEMP/TempoUITests.xcresult" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
       - name: Keep simulator launch screenshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tempo-ios-simulator-launch
           path: ${{ runner.temp }}/Tempo-simulator-launch.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Keep UI test results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-ios-ui-test-results
+          path: ${{ runner.temp }}/TempoUITests.xcresult
           if-no-files-found: ignore
           retention-days: 7
 

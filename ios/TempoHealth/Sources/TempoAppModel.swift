@@ -56,11 +56,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     override init() {
         super.init()
-        Self.prewarmAPI()
-        let storedToken = SecureTokenStore.read()
+#if DEBUG
+        let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+#else
+        let isUITesting = false
+#endif
+        if !isUITesting { Self.prewarmAPI() }
+        let storedToken = isUITesting ? nil : SecureTokenStore.read()
         accessToken = storedToken
         isConnected = storedToken != nil
-        isRestoringConnection = storedToken == nil && !UserDefaults.standard.bool(forKey: Self.stravaSkippedKey)
+        isRestoringConnection = !isUITesting && storedToken == nil && !UserDefaults.standard.bool(forKey: Self.stravaSkippedKey)
         if storedToken != nil { status = "Strava bağlı. Verilerin hazırlanıyor." }
         Self.clearLegacyGlobalCaches()
     }
