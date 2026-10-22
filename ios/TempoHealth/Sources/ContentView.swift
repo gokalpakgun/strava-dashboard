@@ -990,10 +990,10 @@ private struct ManualWorkoutRow: View {
 private struct ManualWorkoutRouteScreen: View {
     let workout: TempoManualWorkout
     @Environment(\.dismiss) private var dismiss
-    @State private var region = MKCoordinateRegion(
+    @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 39.0, longitude: 35.0),
         span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-    )
+    ))
 
     private var coordinates: [CLLocationCoordinate2D] {
         (workout.routeCoordinates ?? []).map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
@@ -1003,7 +1003,7 @@ private struct ManualWorkoutRouteScreen: View {
         NavigationStack {
             VStack(spacing: 0) {
                 if coordinates.count >= 2 {
-                    Map(coordinateRegion: $region, interactionModes: [.pan, .zoom]) {
+                    Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
                         MapPolyline(coordinates: coordinates).stroke(TempoTheme.green, lineWidth: 5)
                     }
                     .mapStyle(.standard(elevation: .flat))
@@ -1036,10 +1036,10 @@ private struct ManualWorkoutRouteScreen: View {
         let latitudes = coordinates.map(\.latitude)
         let longitudes = coordinates.map(\.longitude)
         let center = CLLocationCoordinate2D(latitude: (latitudes.min()! + latitudes.max()!) / 2, longitude: (longitudes.min()! + longitudes.max()!) / 2)
-        region = MKCoordinateRegion(
+        cameraPosition = .region(MKCoordinateRegion(
             center: center,
             span: MKCoordinateSpan(latitudeDelta: max((latitudes.max()! - latitudes.min()!) * 1.6, 0.006), longitudeDelta: max((longitudes.max()! - longitudes.min()!) * 1.6, 0.006))
-        )
+        ))
     }
 }
 

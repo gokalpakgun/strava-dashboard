@@ -145,10 +145,10 @@ struct TempoPhoneTrackerScreen: View {
     @State private var enjoyment: Int?
     @State private var isSaving = false
     @State private var showCloseConfirmation = false
-    @State private var region = MKCoordinateRegion(
+    @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 39, longitude: 35),
         span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
-    )
+    ))
 
     private var routeCoordinates: [CLLocationCoordinate2D] { recorder.route.map(\.coordinate) }
     private var sportTitle: String { selectedSport == "run" ? "Koşu".tempoLocalized : "Yürüyüş".tempoLocalized }
@@ -215,7 +215,7 @@ struct TempoPhoneTrackerScreen: View {
 
     private var mapCard: some View {
         ZStack(alignment: .topLeading) {
-            Map(coordinateRegion: $region, interactionModes: [.pan, .zoom]) {
+            Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
                 if routeCoordinates.count >= 2 {
                     MapPolyline(coordinates: routeCoordinates).stroke(TempoTheme.green, lineWidth: 5)
                 }
@@ -327,10 +327,10 @@ struct TempoPhoneTrackerScreen: View {
         guard !routeCoordinates.isEmpty else { return }
         let latitudes = routeCoordinates.map(\.latitude)
         let longitudes = routeCoordinates.map(\.longitude)
-        region = MKCoordinateRegion(
+        cameraPosition = .region(MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: (latitudes.min()! + latitudes.max()!) / 2, longitude: (longitudes.min()! + longitudes.max()!) / 2),
             span: MKCoordinateSpan(latitudeDelta: max((latitudes.max()! - latitudes.min()!) * 1.6, 0.006), longitudeDelta: max((longitudes.max()! - longitudes.min()!) * 1.6, 0.006))
-        )
+        ))
     }
 
     private func saveWorkout() {
