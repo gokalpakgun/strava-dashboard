@@ -150,11 +150,33 @@ async function sendFriendRequest(request, env, user) {
   const [mine, theirs] = await Promise.all([readState(env, user.id), readState(env, friend.id)]);
   if (mine.blocked.includes(friend.id) || theirs.blocked.includes(user.id)) return json({ error: "Bu kullanıcıyla bağlantı kurulamıyor." }, 403);
   if (mine.friends.includes(friend.id)) return json({ error: "Bu kişi zaten arkadaş listende." }, 409);
+  const existingRequests = await findRequestsBetween(env, mine, theirs, user.id, friend.id);
+  const incomingRequest = existingRequests.find(item => item.from === friend.id && item.to === user.id);
+  if (incomingRequest) {
+
+    // If both people send an invite before either sees the notification,
+    // treat the second invite as acceptance instead of trapping them in a 409.
+    if (mine.friends.length >= MAX_FRIENDS || theirs.friends.length >= MAX_FRIENDS) {
+      return json({ error: "Arkadaş listesi sınırına ulaşıldı." }, 409);
+    }
+    const requestIds = new Set(existingRequests.map(item => item.id));
+    mine.incoming = mine.incoming.filter(id => !requestIds.has(id));
+    mine.outgoing = mine.outgoing.filter(id => !requestIds.has(id));
+    theirs.incoming = theirs.incoming.filter(id => !requestIds.has(id));
+    theirs.outgoing = theirs.outgoing.filter(id => !requestIds.has(id));
+    mine.friends.unshift(friend.id);
+    theirs.friends.unshift(user.id);
+    await Promise.all([
+      ...existingRequests.map(item => env.TOKEN_STORE.delete("social-request:" + item.id)),
+      saveState(env, user.id, mine),
+      saveState(env, friend.id, theirs),
+    ]);
+    return json({ ok: true, accepted: true, user: publicProfile(friend) });
+  }
+  if (existingRequests.length) return json({ error: "Bu kişiye zaten bekleyen bir istek var." }, 409);
   if (mine.outgoing.length >= MAX_PENDING || theirs.incoming.length >= MAX_PENDING) {
     return json({ error: "Bekleyen arkadaşlık isteği sınırına ulaşıldı." }, 429);
   }
-  const existingRequest = await findRequestBetween(env, mine, theirs, user.id, friend.id);
-  if (existingRequest) return json({ error: "Bu kişiye zaten bekleyen bir istek var." }, 409);
   const id = crypto.randomUUID();
   const record = { id, from: user.id, to: friend.id, status: "pending", createdAt: new Date().toISOString() };
   mine.outgoing.unshift(id);
@@ -295,7 +317,7 @@ async function createChallenge(request, env, user) {
   const moderation = await moderateCommunityText(env, title);
   if (moderation.unavailable) return json({ error: "Yarışma adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene." }, 503);
   if (!moderation.allowed) return json({ error: "Bu yarışma adı topluluk kurallarına uygun değil." }, 400);
-  if (!["steps", "exerciseMinutes"].includes(metric)) return json({ error: "Yarışma yalnızca adım veya egzersiz dakikası üzerinden olabilir." }, 400);
+  if (!["steps", "exerciseMinutes", "movementDays"].includes(metric)) return json({ error: "Yarışma hedefi geçersiz." }, 400);
   if (friendIds.length < 1 || friendIds.length > MAX_CHALLENGE_MEMBERS - 1) return json({ error: "En az bir arkadaş seç; yarışmaya en fazla 20 arkadaş eklenebilir." }, 400);
   const state = await readState(env, user.id);
   await pruneExpiredChallenges(env, user.id, state);
@@ -380,16 +402,27 @@ async function challengeScore(env, userId, challenge) {
   let hasMeasurement = false;
   for (const [day, values] of Object.entries(health?.days || {})) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < startDay || day >= endDayExclusive || Date.now() < Date.parse(challenge.startsAt)) continue;
+    if (challenge.metric === "movementDays") {
+      const steps = Number(values?.steps);
+      const minutes = Number(values?.exerciseMinutes);
+      const hasSteps = Number.isFinite(steps) && steps >= 0;
+      const hasMinutes = Number.isFinite(minutes) && minutes >= 0;
+      if (hasSteps || hasMinutes) {
+        hasMeasurement = true;
+        if ((hasSteps && steps >= 3_000) || (hasMinutes && minutes >= 10)) total += 1;
+      }
+      continue;
+    }
     const value = Number(values?.[challenge.metric]);
     if (Number.isFinite(value) && value >= 0) { total += value; hasMeasurement = true; }
   }
   return hasMeasurement ? Math.round(total) : null;
 }
 
-async function findRequestBetween(env, mine, theirs, from, to) {
+async function findRequestsBetween(env, mine, theirs, from, to) {
   const ids = [...new Set([...mine.outgoing, ...mine.incoming, ...theirs.outgoing, ...theirs.incoming])];
   const records = await Promise.all(ids.map(id => loadRequest(env, id)));
-  return records.find(item => item?.status === "pending" && ((item.from === from && item.to === to) || (item.from === to && item.to === from)));
+  return records.filter(item => item?.status === "pending" && ((item.from === from && item.to === to) || (item.from === to && item.to === from)));
 }
 
 async function readState(env, userId) {

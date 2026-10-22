@@ -19,6 +19,7 @@
 		A10000000000000000000011 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* Localizable.strings */; };
 		A10000000000000000000012 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000005 /* InfoPlist.strings */; };
 		A10000000000000000000013 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* PrivacyInfo.xcprivacy */; };
+		A10000000000000000000014 /* TempoPhoneTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* TempoPhoneTracker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		A20000000000000000000016 /* English */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = English; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A20000000000000000000017 /* Turkish */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Turkish; path = tr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A20000000000000000000018 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A20000000000000000000019 /* TempoPhoneTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoPhoneTracker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +70,7 @@
 				A20000000000000000000011 /* TempoAccountStore.swift */,
 				A20000000000000000000012 /* AccountViews.swift */,
 				A20000000000000000000013 /* SportsExperience.swift */,
+				A20000000000000000000019 /* TempoPhoneTracker.swift */,
 				A20000000000000000000018 /* PrivacyInfo.xcprivacy */,
 				A40000000000000000000004 /* Localizable.strings */,
 				A40000000000000000000005 /* InfoPlist.strings */,
@@ -153,6 +156,7 @@
 			A10000000000000000000008 /* TempoAccountStore.swift in Sources */,
 			A10000000000000000000009 /* AccountViews.swift in Sources */,
 			A10000000000000000000010 /* SportsExperience.swift in Sources */,
+			A10000000000000000000014 /* TempoPhoneTracker.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

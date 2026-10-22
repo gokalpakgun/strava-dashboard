@@ -1,5 +1,5 @@
 "CFBundleDisplayName" = "Tempo";
-"NSLocationWhenInUseUsageDescription" = "Tempo uses your location to show nearby tennis courts, basketball courts and other sports places.";
+"NSLocationWhenInUseUsageDescription" = "Tempo uses your location to show nearby sports places and to record a run or walk route on your iPhone when you start a recording.";
 "NSPhotoLibraryUsageDescription" = "Tempo uses photos you choose for your profile or as supporting workout images.";
 "NSPhotoLibraryAddUsageDescription" = "Tempo saves profile cards you create to your Photos library.";
 "NSHealthShareUsageDescription" = "Tempo reads the Health data you choose to share and can check heart rate, steps or a saved workout around the workout time as supporting signals.";

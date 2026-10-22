@@ -248,8 +248,9 @@ final class TempoAccountStore: ObservableObject {
         return try JSONDecoder().decode(TempoSocialSnapshot.self, from: data)
     }
 
-    func sendFriendRequest(username: String) async throws {
-        _ = try await socialRequest(path: "/api/account/social/friends", method: "POST", body: SocialFriendRequest(username: username))
+    func sendFriendRequest(username: String) async throws -> Bool {
+        let data = try await socialRequest(path: "/api/account/social/friends", method: "POST", body: SocialFriendRequest(username: username))
+        return (try? JSONDecoder().decode(SocialFriendRequestResult.self, from: data).accepted) ?? false
     }
 
     func respondToFriendRequest(id: String, accept: Bool) async throws {
@@ -474,6 +475,7 @@ private struct ProfileUpdate: Encodable {
 
 private struct EmptyPayload: Encodable {}
 private struct SocialFriendRequest: Encodable { let username: String }
+private struct SocialFriendRequestResult: Decodable { let accepted: Bool? }
 private struct SocialFriendResponse: Encodable { let requestId: String; let action: String }
 private struct SocialBlockAction: Encodable { let userId: String; let action: String }
 private struct SocialReportRequest: Encodable { let userId: String?; let challengeId: String?; let category: String }

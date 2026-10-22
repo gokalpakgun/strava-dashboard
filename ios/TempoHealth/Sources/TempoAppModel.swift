@@ -212,7 +212,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         startedAt: Date,
         durationMinutes: Int,
         notes: String,
-        photoData: Data?
+        photoData: Data?,
+        perceivedEffort: Int? = nil,
+        enjoyment: Int? = nil
     ) async throws {
         guard let accountId = activeTempoAccountId, !accountId.isEmpty else {
             throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
@@ -259,7 +261,62 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             durationMinutes: safeDuration,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             photoFilename: filename,
-            healthSignal: healthSignal
+            healthSignal: healthSignal,
+            durationSeconds: nil,
+            distanceKm: nil,
+            routeCoordinates: nil,
+            recordSource: "health-supported-manual",
+            perceivedEffort: perceivedEffort.map { min(max($0, 1), 5) },
+            enjoyment: enjoyment.map { min(max($0, 1), 5) }
+        )
+        var updated = manualWorkouts
+        updated.insert(workout, at: 0)
+        try Self.saveManualWorkouts(updated, accountId: accountId)
+        manualWorkouts = updated
+    }
+
+    func addPhoneTrackedWorkout(
+        sportId: String,
+        sportTitle: String,
+        startedAt: Date,
+        durationSeconds: Int,
+        distanceKm: Double,
+        routeCoordinates: [TempoCoordinate],
+        notes: String = "",
+        perceivedEffort: Int? = nil,
+        enjoyment: Int? = nil
+    ) throws {
+        guard let accountId = activeTempoAccountId, !accountId.isEmpty else {
+            throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
+        }
+        let safeSeconds = min(max(durationSeconds, 1), 24 * 60 * 60)
+        let cleanRoute = Array(routeCoordinates.prefix(12_000)).filter {
+            $0.latitude.isFinite && $0.longitude.isFinite
+                && (-90...90).contains($0.latitude)
+                && (-180...180).contains($0.longitude)
+        }
+        guard startedAt <= Date(), safeSeconds >= 60,
+              distanceKm.isFinite, distanceKm > 0, distanceKm <= 500,
+              cleanRoute.count >= 2 else {
+            throw APIError.server("GPS kaydı için en az 1 dakika ve iki konum noktası gerekiyor.")
+        }
+
+        let workout = TempoManualWorkout(
+            id: UUID(),
+            sportId: sportId,
+            sportTitle: sportTitle,
+            title: sportTitle,
+            startedAt: startedAt,
+            durationMinutes: max(1, Int((Double(safeSeconds) / 60).rounded())),
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            photoFilename: nil,
+            healthSignal: nil,
+            durationSeconds: safeSeconds,
+            distanceKm: distanceKm,
+            routeCoordinates: cleanRoute,
+            recordSource: "phone-gps",
+            perceivedEffort: perceivedEffort.map { min(max($0, 1), 5) },
+            enjoyment: enjoyment.map { min(max($0, 1), 5) }
         )
         var updated = manualWorkouts
         updated.insert(workout, at: 0)

@@ -180,8 +180,19 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
     let notes: String
     let photoFilename: String?
     let healthSignal: TempoWorkoutHealthSignal?
+    let durationSeconds: Int?
+    let distanceKm: Double?
+    let routeCoordinates: [TempoCoordinate]?
+    let recordSource: String?
+    let perceivedEffort: Int?
+    let enjoyment: Int?
 
-    var endedAt: Date { startedAt.addingTimeInterval(Double(durationMinutes) * 60) }
+    var endedAt: Date { startedAt.addingTimeInterval(Double(durationSeconds ?? durationMinutes * 60)) }
+}
+
+struct TempoCoordinate: Codable, Equatable {
+    let latitude: Double
+    let longitude: Double
 }
 
 enum TempoSport: Hashable {
@@ -373,10 +384,29 @@ struct TempoSocialSnapshot: Decodable {
 enum TempoSocialMetric: String, CaseIterable, Identifiable {
     case steps
     case exerciseMinutes
+    case movementDays
     var id: String { rawValue }
-    var title: String { self == .steps ? "Adımlar".tempoLocalized : "Egzersiz dakikası".tempoLocalized }
-    var symbol: String { self == .steps ? "figure.walk" : "figure.run" }
-    var unit: String { self == .steps ? "adım".tempoLocalized : "dk" }
+    var title: String {
+        switch self {
+        case .steps: return "Adımlar".tempoLocalized
+        case .exerciseMinutes: return "Egzersiz dakikası".tempoLocalized
+        case .movementDays: return "Hareket edilen gün".tempoLocalized
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .steps: return "figure.walk"
+        case .exerciseMinutes: return "figure.run"
+        case .movementDays: return "calendar.badge.checkmark"
+        }
+    }
+    var unit: String {
+        switch self {
+        case .steps: return "adım".tempoLocalized
+        case .exerciseMinutes: return "dk"
+        case .movementDays: return "gün".tempoLocalized
+        }
+    }
 }
 
 struct TempoHealthMetrics: Codable, Equatable {
