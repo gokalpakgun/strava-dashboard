@@ -414,17 +414,14 @@ private struct ImportPill: View {
 private struct HomeScreen: View {
     @EnvironmentObject private var model: TempoAppModel
 
-    private var activities: [TempoActivity] { model.dashboard?.activities ?? [] }
-    private var weekActivities: [TempoActivity] { activities.filter { $0.date.map(Calendar.current.isDateInCurrentWeek) ?? false } }
     private var weekManualWorkouts: [TempoManualWorkout] {
         model.manualWorkouts.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }
     }
     private var weekDistance: Double {
-        weekActivities.reduce(0) { $0 + $1.distanceKm } + weekManualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
+        weekManualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
     }
     private var weekSeconds: Double {
-        weekActivities.reduce(0) { $0 + $1.movingSeconds }
-            + weekManualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
+        weekManualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
     }
 
     var body: some View {
@@ -435,8 +432,6 @@ private struct HomeScreen: View {
                 HomeMovementMenuCard()
                 if let dashboard = model.dashboard {
                     hero(dashboard.athlete)
-                    SectionHeading(title: "Bu hafta", caption: "HAFTALIK ÖZET", padding: false)
-                    weeklyMetrics
                 } else if model.isConnected {
                     LoadingDashboardCard()
                 } else {
@@ -445,6 +440,8 @@ private struct HomeScreen: View {
                         message: "Strava’yı bağlamadan da spor alanlarını keşfedebilir ve Apple Sağlık verilerini cihazında görüntüleyebilirsin."
                     )
                 }
+                SectionHeading(title: "Bu hafta", caption: "TEMPO KAYITLARI", padding: false)
+                weeklyMetrics
                 HomeSocialCard()
                 if let dashboard = model.dashboard {
                     RecentActivitiesPanel(activities: dashboard.activities)
@@ -473,7 +470,7 @@ private struct HomeScreen: View {
 
     private var weeklyMetrics: some View {
         HStack(spacing: 10) {
-            MetricCard(value: "\(weekActivities.count + weekManualWorkouts.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
+            MetricCard(value: "\(weekManualWorkouts.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
             MetricCard(value: TempoFormat.duration(weekSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
             MetricCard(value: TempoFormat.distance(weekDistance), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.purple)
         }
@@ -768,13 +765,12 @@ private struct ActivitiesScreen: View {
 
     private var allActivities: [TempoActivity] { model.dashboard?.activities ?? [] }
     private var totalDistance: Double {
-        allActivities.reduce(0) { $0 + $1.distanceKm } + model.manualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
+        model.manualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
     }
     private var totalTime: Double {
-        allActivities.reduce(0) { $0 + $1.movingSeconds }
-            + model.manualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
+        model.manualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
     }
-    private var totalWorkoutCount: Int { allActivities.count + model.manualWorkouts.count }
+    private var totalWorkoutCount: Int { model.manualWorkouts.count }
 
     var body: some View {
         NavigationStack {
@@ -811,15 +807,17 @@ private struct ActivitiesScreen: View {
                         }
                     }
                 }
+                if !model.manualWorkouts.isEmpty {
+                    activitySnapshot
+                }
                 if !model.isConnected {
                     StravaOptionalCard(
                         title: "Aktivitelerin burada görünsün",
-                        message: "Aktivite geçmişi ve Strava istatistikleri için hesabını istediğin zaman bağlayabilirsin."
+                        message: "Strava aktivitelerini ve rotalarını görmek istersen hesabını istediğin zaman bağlayabilirsin."
                     )
                 } else if model.dashboard == nil {
                     LoadingDashboardCard()
                 } else {
-                    activitySnapshot
                     SearchField(text: $search, placeholder: "Aktivite ara")
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -841,7 +839,6 @@ private struct ActivitiesScreen: View {
                     HStack {
                         Text("SON HAREKETLER".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Spacer()
-                        Text("%d aktivite".tempoFormatted(filtered.count)).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
                     }
                     LazyVStack(spacing: 10) {
                         ForEach(filtered) { activity in
@@ -869,7 +866,7 @@ private struct ActivitiesScreen: View {
                 Text("HAREKET ÖZETİ".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                 Text("%d antrenman".tempoFormatted(totalWorkoutCount))
                     .font(.title3.bold())
-                Text("Strava ve cihaz kayıtların".tempoLocalized)
+                Text("Yalnızca Tempo kayıtların".tempoLocalized)
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
             }
             Spacer(minLength: 10)
@@ -1145,7 +1142,7 @@ private struct ManualWorkoutForm: View {
                 Task { await loadPhoto(item) }
             }
             .alert(errorTitle.tempoLocalized, isPresented: $showingError) {
-                Button("Tamam") { dismiss() }
+                Button("Tamam") { }
             } message: {
                 Text(errorMessage ?? "Fotoğraf tek başına yeterli değil. Antrenman saatinde anlamlı bir hareket veya Sağlık sinyali bulunamadı.")
             }
@@ -1485,7 +1482,7 @@ private struct RecentActivitiesPanel: View {
                             Text("Aktivite geçmişi")
                                 .font(.subheadline.bold())
                                 .foregroundStyle(.white)
-                            Text("Dönemlere göre gruplanmış %d aktivite".tempoFormatted(activities.count))
+                            Text("Aktiviteleri tarihe göre görüntüle")
                                 .font(.caption)
                                 .foregroundStyle(TempoTheme.secondary)
                         }
@@ -1535,7 +1532,6 @@ private struct ActivityTimelineGroup: Identifiable {
     let title: String
     var activities: [TempoActivity]
 
-    var distanceKm: Double { activities.reduce(0) { $0 + $1.distanceKm } }
 }
 
 private struct ActivityTimelineScreen: View {
@@ -1602,10 +1598,6 @@ private struct ActivityTimelineScreen: View {
         return result
     }
 
-    private var totalDistance: Double { filteredActivities.reduce(0) { $0 + $1.distanceKm } }
-    private var totalSeconds: Double { filteredActivities.reduce(0) { $0 + $1.movingSeconds } }
-    private var totalElevation: Double { filteredActivities.reduce(0) { $0 + $1.elevationMeters } }
-
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
@@ -1615,19 +1607,12 @@ private struct ActivityTimelineScreen: View {
                         Text("AKTİVİTE ARŞİVİ".tempoSentenceCased)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(TempoTheme.secondary)
-                        Text("Ritmini dönemlere göre incele.")
+                        Text("Strava’dan gelen aktiviteleri tarih sırasıyla görüntüle.")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
 
-                        HStack(spacing: 9) {
-                            MetricCard(value: "\(filteredActivities.count)", label: "Aktivite", icon: "figure.run", color: TempoTheme.green)
-                            MetricCard(value: TempoFormat.distance(totalDistance), label: "Mesafe", icon: "arrow.left.and.right", color: TempoTheme.orange)
-                            MetricCard(value: TempoFormat.duration(totalSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
-                        }
-                        if totalElevation > 0 {
-                            Label("Toplam %@ m tırmanış".tempoFormatted(Int(totalElevation).formatted()), systemImage: "mountain.2.fill")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(TempoTheme.secondary)
-                        }
+                        Text("Strava kayıtları burada doğrudan görüntülenir; Tempo puanlarına ve hedeflerine katılmaz.")
+                            .font(.caption)
+                            .foregroundStyle(TempoTheme.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1657,14 +1642,8 @@ private struct ActivityTimelineScreen: View {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(group.title.tempoLocalized).font(.headline)
-                                        Text("%d aktivite".tempoFormatted(group.activities.count))
-                                            .font(.caption)
-                                            .foregroundStyle(TempoTheme.secondary)
                                     }
                                     Spacer()
-                                    Text(TempoFormat.distance(group.distanceKm))
-                                        .font(.subheadline.bold())
-                                        .foregroundStyle(TempoTheme.green)
                                 }
                                 .padding(.top, 5)
 
@@ -3455,14 +3434,12 @@ private struct TempoBalanceFactorRow: View {
 
 private struct MonthlyStatsScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    var stats: [TempoMonthStat] { makeMonthStats(model.dashboard?.activities ?? []) }
+    var stats: [TempoMonthStat] { makeMonthStats(model.manualWorkouts) }
     var body: some View {
         TempoPage {
-            PageTitle(title: "Aylık İstatistikler", subtitle: "Son altı ay")
-            if !model.isConnected {
-                StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Aylık aktivite istatistiklerini görmek için Strava’yı istediğin zaman bağlayabilirsin.")
-            } else if model.dashboard == nil {
-                LoadingDashboardCard()
+            PageTitle(title: "Aylık İstatistikler", subtitle: "Son altı ay · Tempo kayıtların")
+            if model.manualWorkouts.isEmpty {
+                EmptyCard(icon: "chart.bar", text: "Tempo’da antrenman kaydettikçe aylık ilerlemen burada görünür.")
             } else {
                 TempoCard {
                     Chart(stats) { item in
@@ -3551,20 +3528,18 @@ private struct SegmentsScreen: View {
 
 private struct EddingtonScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    private var number: Int { eddingtonNumber(model.dashboard?.activities ?? []) }
+    private var number: Int { eddingtonNumber(model.manualWorkouts) }
     var body: some View {
         TempoPage {
-            PageTitle(title: "Eddington Sayısı", subtitle: "Koşu istikrarın")
-            if !model.isConnected {
-                StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Koşu istikrarı hesabın Strava aktivitelerin bağlandığında oluşturulur.")
-            } else if model.dashboard == nil {
-                LoadingDashboardCard()
+            PageTitle(title: "Eddington Sayısı", subtitle: "Tempo GPS kayıtlarındaki koşu istikrarın")
+            if !model.manualWorkouts.contains(where: { $0.sportId == "run" && ($0.distanceKm ?? 0) > 0 }) {
+                EmptyCard(icon: "figure.run", text: "Tempo’da GPS ile koşu kaydettikçe Eddington sayın oluşur.")
             } else {
                 TempoCard {
                     VStack(spacing: 16) {
                         Text("\(number)").font(.system(size: 92, weight: .bold, design: .rounded)).foregroundStyle(TempoTheme.green)
                         Text("%d farklı günde en az %d km koştun.".tempoFormatted(number, number)).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-                        Text("Bu sayı düzenli ve uzun mesafeli koşular yaptıkça yükselir.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+                        Text("Yalnızca Tempo GPS kayıtlarındaki koşular sayılır.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
                     }.padding(.vertical, 28).frame(maxWidth: .infinity)
                 }
             }
@@ -3574,26 +3549,22 @@ private struct EddingtonScreen: View {
 
 private struct YearSummaryScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    private var activities: [TempoActivity] {
-        (model.dashboard?.activities ?? []).filter { activity in
-            guard let date = activity.date else { return false }
-            return Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+    private var workouts: [TempoManualWorkout] {
+        model.manualWorkouts.filter { workout in
+            Calendar.current.isDate(workout.startedAt, equalTo: Date(), toGranularity: .year)
         }
     }
     var body: some View {
         TempoPage {
-            PageTitle(title: "%d Özeti".tempoFormatted(Calendar.current.component(.year, from: Date())), subtitle: "Yıl içindeki hareketin")
-            if !model.isConnected {
-                StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Yıllık aktivite özetin Strava verilerini bağladıktan sonra burada görünür.")
-            } else if model.dashboard == nil {
-                LoadingDashboardCard()
+            PageTitle(title: "%d Özeti".tempoFormatted(Calendar.current.component(.year, from: Date())), subtitle: "Tempo’da kaydettiğin antrenmanlar")
+            if workouts.isEmpty {
+                EmptyCard(icon: "calendar", text: "Tempo’da bu yıl antrenman kaydettikçe özetin burada görünür.")
             } else {
                 VStack(spacing: 10) {
-                    SummaryLine(icon: "figure.run", title: "Aktivite", value: "\(activities.count)", color: TempoTheme.orange)
-                    SummaryLine(icon: "arrow.left.and.right", title: "Toplam mesafe", value: TempoFormat.distance(activities.reduce(0) { $0 + $1.distanceKm }), color: TempoTheme.green)
-                    SummaryLine(icon: "clock.fill", title: "Hareket süresi", value: TempoFormat.duration(activities.reduce(0) { $0 + $1.movingSeconds }), color: TempoTheme.blue)
-                    SummaryLine(icon: "mountain.2.fill", title: "Yükseklik", value: "\(Int(activities.reduce(0) { $0 + $1.elevationMeters })) m", color: TempoTheme.purple)
-                    SummaryLine(icon: "trophy.fill", title: "En uzun", value: TempoFormat.distance(activities.map(\.distanceKm).max() ?? 0), color: TempoTheme.orange)
+                    SummaryLine(icon: "figure.run", title: "Antrenman", value: "\(workouts.count)", color: TempoTheme.orange)
+                    SummaryLine(icon: "arrow.left.and.right", title: "Toplam mesafe", value: TempoFormat.distance(workouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }), color: TempoTheme.green)
+                    SummaryLine(icon: "clock.fill", title: "Hareket süresi", value: TempoFormat.duration(workouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }), color: TempoTheme.blue)
+                    SummaryLine(icon: "trophy.fill", title: "En uzun seans", value: TempoFormat.duration(workouts.map { Double($0.durationSeconds ?? $0.durationMinutes * 60) }.max() ?? 0), color: TempoTheme.orange)
                 }
             }
         }.navigationTitle("Yıl Özeti").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
@@ -3684,7 +3655,6 @@ private struct StravaConnectionCard: View {
     let dashboard: TempoDashboard
 
     private var athlete: TempoAthlete { dashboard.athlete }
-    private var totalDistance: Double { dashboard.activities.reduce(0) { $0 + $1.distanceKm } }
 
     var body: some View {
         Link(destination: URL(string: "https://www.strava.com/athletes/\(athlete.id)")!) {
@@ -3724,7 +3694,7 @@ private struct StravaConnectionCard: View {
                     }
                     Text(athlete.fullName.isEmpty ? "Strava Sporcusu".tempoLocalized : athlete.fullName)
                         .font(.headline).foregroundStyle(.white).lineLimit(1)
-                    Text("%d aktivite · %@".tempoFormatted(dashboard.activities.count, TempoFormat.distance(totalDistance)))
+                    Text("Strava hesabın bağlı".tempoLocalized)
                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                 }
 
@@ -3949,27 +3919,27 @@ struct TempoSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-private func makeMonthStats(_ activities: [TempoActivity]) -> [TempoMonthStat] {
+private func makeMonthStats(_ workouts: [TempoManualWorkout]) -> [TempoMonthStat] {
     let calendar = Calendar.current
     let current = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
     var result: [TempoMonthStat] = (0..<6).reversed().compactMap { offset in
         calendar.date(byAdding: .month, value: -offset, to: current).map { TempoMonthStat(date: $0, distanceKm: 0, count: 0, seconds: 0) }
     }
-    for activity in activities {
-        guard let date = activity.date, let index = result.firstIndex(where: { calendar.isDate($0.date, equalTo: date, toGranularity: .month) }) else { continue }
-        result[index].distanceKm += activity.distanceKm
+    for workout in workouts {
+        guard let index = result.firstIndex(where: { calendar.isDate($0.date, equalTo: workout.startedAt, toGranularity: .month) }) else { continue }
+        result[index].distanceKm += workout.distanceKm ?? 0
         result[index].count += 1
-        result[index].seconds += activity.movingSeconds
+        result[index].seconds += Double(workout.durationSeconds ?? workout.durationMinutes * 60)
     }
     return result
 }
 
-private func eddingtonNumber(_ activities: [TempoActivity]) -> Int {
+private func eddingtonNumber(_ workouts: [TempoManualWorkout]) -> Int {
     let calendar = Calendar.current
     var days: [Date: Double] = [:]
-    for activity in activities where activity.sport == .run {
-        guard let date = activity.date else { continue }
-        days[calendar.startOfDay(for: date), default: 0] += activity.distanceKm
+    for workout in workouts where workout.sportId == "run" {
+        guard let distance = workout.distanceKm, distance > 0 else { continue }
+        days[calendar.startOfDay(for: workout.startedAt), default: 0] += distance
     }
     let distances = days.values.sorted(by: >)
     var result = 0

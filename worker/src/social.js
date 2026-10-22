@@ -14,9 +14,6 @@ export async function handleSocialRequest(request, env, url) {
   const userId = account.user.id;
   const root = "/api/account/social";
 
-  if (!hasModerationToken(env) && [root + "/friends", root + "/requests"].includes(url.pathname)) {
-    return json({ error: "Sosyal güvenlik ayarı tamamlanana kadar bu özellik kullanılamıyor." }, 503);
-  }
   if (!hasModerationToken(env) && url.pathname.startsWith(root + "/challenges")) {
     return json({ error: "Sosyal güvenlik ayarı tamamlanana kadar bu özellik kullanılamıyor." }, 503);
   }

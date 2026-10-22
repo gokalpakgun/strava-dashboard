@@ -26,8 +26,8 @@ struct SportsHubScreen: View {
                                 .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                         } else {
                             ForEach(selectedSports) { sport in
-                                NavigationLink(destination: SportDetailScreen(sport: sport, activities: model.dashboard?.activities ?? [], manualWorkouts: model.manualWorkouts)) {
-                                    SportSummaryCard(sport: sport, activities: model.dashboard?.activities ?? [], manualWorkouts: model.manualWorkouts)
+                                NavigationLink(destination: SportDetailScreen(sport: sport, manualWorkouts: model.manualWorkouts)) {
+                                    SportSummaryCard(sport: sport, manualWorkouts: model.manualWorkouts)
                                 }
                                 .buttonStyle(.plain)
                                 .simultaneousGesture(TapGesture().onEnded { TempoHaptics.selection() })
@@ -88,16 +88,13 @@ struct SportsHubScreen: View {
 
 private struct SportSummaryCard: View {
     let sport: TempoSportChoice
-    let activities: [TempoActivity]
     let manualWorkouts: [TempoManualWorkout]
 
-    private var matching: [TempoActivity] { activities.filter { sport.matches(activityType: $0.type) } }
     private var matchingManual: [TempoManualWorkout] { manualWorkouts.filter { $0.sportId == sport.rawValue } }
-    private var distance: Double { matching.reduce(0) { $0 + $1.distanceKm } + matchingManual.reduce(0) { $0 + ($1.distanceKm ?? 0) } }
-    private var seconds: Double { matching.reduce(0) { $0 + $1.movingSeconds } + matchingManual.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) } }
+    private var distance: Double { matchingManual.reduce(0) { $0 + ($1.distanceKm ?? 0) } }
+    private var seconds: Double { matchingManual.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) } }
     private var weekCount: Int {
-        matching.filter { $0.date.map(Calendar.current.isDateInCurrentWeek) ?? false }.count
-            + matchingManual.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }.count
+        matchingManual.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }.count
     }
 
     var body: some View {
@@ -107,7 +104,7 @@ private struct SportSummaryCard: View {
                     .frame(width: 50, height: 50).background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sport.title).font(.title3.bold())
-                    Text("%d kayıtlı aktivite".tempoFormatted(matching.count + matchingManual.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Text("%d Tempo kaydı".tempoFormatted(matchingManual.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
@@ -216,8 +213,9 @@ struct TempoMovementMenuScreen: View {
     }
 
     private var lastRecordedWorkoutDate: Date? {
-        let dates = model.manualWorkouts.map(\.startedAt) + (model.dashboard?.activities ?? []).compactMap(\.date)
-        return dates.max()
+        // Use the same combined movement history shown below so Health-only users
+        // are not incorrectly put into return mode while their daily activity is current.
+        movementDates.max()
     }
     private var daysSinceLastWorkout: Int? {
         guard let lastRecordedWorkoutDate else { return nil }
@@ -238,9 +236,6 @@ struct TempoMovementMenuScreen: View {
         let calendar = Calendar.current
         var dates = Set<Date>()
         for workout in model.manualWorkouts { dates.insert(calendar.startOfDay(for: workout.startedAt)) }
-        for activity in model.dashboard?.activities ?? [] {
-            if let date = activity.date { dates.insert(calendar.startOfDay(for: date)) }
-        }
         for (day, values) in model.healthDays where (values.steps ?? 0) >= 3_000 || (values.exerciseMinutes ?? 0) >= 10 {
             if let date = TempoFormat.date(from: day) { dates.insert(calendar.startOfDay(for: date)) }
         }
@@ -399,7 +394,7 @@ struct TempoMovementMenuScreen: View {
                     Spacer()
                 }
                 .padding(10).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 13))
-                Text("Özet Apple Sağlık, Strava, iPhone GPS, manuel kayıt ve tamamlanan çevrimdışı planlardan gelir. Yalnızca erişilebilir veriler sayılır.")
+                Text("Bu ritim özeti Apple Sağlık hareket günlerini, Tempo GPS ve manuel kayıtlarını, ayrıca tamamlanan çevrimdışı planları kullanır. Strava verileri puana katılmaz.")
                     .font(.caption2).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
             }
         }
@@ -542,17 +537,12 @@ private enum SportDetailSection: String, CaseIterable, Identifiable {
 private struct SportDetailScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
     let sport: TempoSportChoice
-    let activities: [TempoActivity]
     let manualWorkouts: [TempoManualWorkout]
     @State private var section: SportDetailSection = .overview
     @State private var weeklyTarget = 3
     @Namespace private var sectionAnimation
 
     private var weeklyTargetKey: String { "tempo.sport.weekly-target.\(account.profile?.id ?? "guest").\(sport.rawValue)" }
-
-    private var matching: [TempoActivity] {
-        activities.filter { sport.matches(activityType: $0.type) }
-    }
 
     private var matchingManual: [TempoManualWorkout] {
         manualWorkouts.filter { $0.sportId == sport.rawValue }
@@ -571,7 +561,7 @@ private struct SportDetailScreen: View {
                     Group {
                         switch section {
                         case .overview:
-                            SportOverviewSection(sport: sport, activities: matching, manualWorkouts: matchingManual, weeklyTarget: $weeklyTarget)
+                            SportOverviewSection(sport: sport, manualWorkouts: matchingManual, weeklyTarget: $weeklyTarget)
                         case .program:
                             SportProgramSection(sport: sport, guide: guide)
                         case .guide:
@@ -680,20 +670,15 @@ private struct SportMotionArtwork: View {
 
 private struct SportOverviewSection: View {
     let sport: TempoSportChoice
-    let activities: [TempoActivity]
     let manualWorkouts: [TempoManualWorkout]
     @Binding var weeklyTarget: Int
 
-    private var distance: Double { activities.reduce(0) { $0 + $1.distanceKm } + manualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) } }
-    private var seconds: Double { activities.reduce(0) { $0 + $1.movingSeconds } + manualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) } }
+    private var distance: Double { manualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) } }
+    private var seconds: Double { manualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) } }
     private var weekCount: Int {
-        activities.filter { $0.date.map(Calendar.current.isDateInCurrentWeek) ?? false }.count
-            + manualWorkouts.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }.count
+        manualWorkouts.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }.count
     }
     private var recentEntries: [SportRecentEntry] {
-        let strava = activities.map { activity in
-            SportRecentEntry(id: "strava-\(activity.id)", title: activity.name ?? sport.title, date: activity.date, durationSeconds: activity.movingSeconds, source: "Strava")
-        }
         let local = manualWorkouts.map { workout in
             SportRecentEntry(
                 id: "local-\(workout.id.uuidString)",
@@ -703,20 +688,20 @@ private struct SportOverviewSection: View {
                 source: workout.recordSource == "phone-gps" ? "iPhone GPS kaydı" : (workout.healthSignal == nil ? "Elle eklendi" : "Elle eklendi · Sağlık sinyali")
             )
         }
-        return (strava + local).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+        return local.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
 
     var body: some View {
         VStack(spacing: 15) {
             HStack(spacing: 8) {
-                SportMetric(value: "\(activities.count + manualWorkouts.count)", label: "Aktivite")
+                SportMetric(value: "\(manualWorkouts.count)", label: "Tempo kaydı")
                 SportMetric(value: TempoFormat.duration(seconds), label: "Toplam süre")
                 SportMetric(value: "\(weekCount)", label: "Bu hafta")
             }
 
             weeklyGoalCard
 
-            if activities.isEmpty && manualWorkouts.isEmpty {
+            if manualWorkouts.isEmpty {
                 SportEmptyState(sport: sport)
             } else {
                 VStack(alignment: .leading, spacing: 15) {
@@ -728,7 +713,7 @@ private struct SportOverviewSection: View {
                         Spacer()
                         Text(TempoFormat.distance(distance)).font(.subheadline.bold()).foregroundStyle(sport.accentColor)
                     }
-                    WeeklySportChart(sport: sport, activities: activities, manualWorkouts: manualWorkouts)
+                    WeeklySportChart(sport: sport, manualWorkouts: manualWorkouts)
                 }
                 .padding(18)
                 .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -781,7 +766,7 @@ private struct SportOverviewSection: View {
                 }
             }
             .frame(height: 7)
-            Text("Hedef yalnızca bu sporun Strava ve cihaz kayıtlarını sayar; dilediğinde değiştirebilirsin.")
+            Text("Hedef yalnızca bu spor için Tempo’da kaydettiğin antrenmanları sayar; dilediğinde değiştirebilirsin.")
                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
         }
         .padding(15)
@@ -799,7 +784,6 @@ private struct SportRecentEntry: Identifiable {
 
 private struct WeeklySportChart: View {
     let sport: TempoSportChoice
-    let activities: [TempoActivity]
     let manualWorkouts: [TempoManualWorkout]
 
     private var days: [SportDayValue] {
@@ -807,16 +791,11 @@ private struct WeeklySportChart: View {
         let today = calendar.startOfDay(for: Date())
         return (0..<7).reversed().compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
-            let activityMinutes: Double = activities.reduce(0) { total, activity in
-                guard let activityDate = activity.date, calendar.isDate(activityDate, inSameDayAs: date) else { return total }
-                return total + activity.movingSeconds / 60
-            }
             let manualMinutes: Double = manualWorkouts.reduce(0) { total, workout in
                 guard calendar.isDate(workout.startedAt, inSameDayAs: date) else { return total }
                 return total + Double(workout.durationSeconds ?? workout.durationMinutes * 60) / 60
             }
-            let value = activityMinutes + manualMinutes
-            return SportDayValue(date: date, minutes: value)
+            return SportDayValue(date: date, minutes: manualMinutes)
         }
     }
 
@@ -870,7 +849,7 @@ private struct SportEmptyState: View {
                 Image(systemName: sport.symbol).font(.system(size: 38)).foregroundStyle(sport.accentColor)
             }
             Text("İlk %@ kaydını bekliyoruz".tempoFormatted(sport.title.lowercased())).font(.headline)
-            Text("Tempo ile kaydettiğin, elle eklediğin veya Strava’dan gelen aktiviteler burada görünür.".tempoLocalized)
+            Text("Tempo’da kaydettiğin veya elle eklediğin antrenmanlar burada görünür.".tempoLocalized)
                 .font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).lineSpacing(3)
         }
         .padding(25).frame(maxWidth: .infinity)

@@ -22,7 +22,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var dashboard: TempoDashboard?
     @Published private(set) var dashboardError: String?
     @Published private(set) var dashboardErrorDetails: String?
-    @Published var status = "Strava hesabını bağlayarak başla."
+    @Published var status = "Apple Sağlık ana kaynağın; Strava isteğe bağlı."
 
     let dailyGoalMl = 2_000
     private let baseURL = URL(string: "https://apitempo.com")!
@@ -568,6 +568,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     var latestWeightKg: Double? {
         healthDays.sorted { $0.key > $1.key }.compactMap { $0.value.bodyMassKg }.first
+    }
+
+    var tempoAchievement: TempoAchievement {
+        TempoAchievementFactory.make(workouts: manualWorkouts, healthDays: healthDays)
     }
 
     var tempoBalance: TempoBalanceScore? {

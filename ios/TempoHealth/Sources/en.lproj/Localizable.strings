@@ -678,7 +678,7 @@
 "Antrenman" = "Workout";
 "Bağla" = "Connect";
 "Her hareket gelişimin bir parçası." = "Every movement is part of your progress.";
-"Strava hesabını bağlayarak başla." = "Start by connecting your Strava account.";
+"Apple Sağlık ana kaynağın; Strava isteğe bağlı." = "Apple Health is your primary source; Strava is optional.";
 "Strava bağlı. Verilerin hazırlanıyor." = "Strava connected. Preparing your data.";
 "Strava bağlantın hazır." = "Your Strava connection is ready.";
 "Strava hesabını bir kez bağla; sonraki açılışlarda bağlantın korunacak." = "Connect Strava once and stay connected the next time you open Tempo.";
@@ -1055,7 +1055,7 @@
 "PNG olarak kaydet veya paylaş" = "Save as PNG or share";
 "Profil kartın" = "Your profile card";
 "Hareketini paylaş" = "Share your movement";
-"Kartın kullanıcı adını, seçtiğin sporları ve Tempo başarılarını içerir. E-posta veya özel sağlık verileri eklenmez." = "Your card includes your username, selected sports, and Tempo achievements. It doesn’t include your email or private Health data.";
+"Kartında profil adın, kullanıcı adın, fotoğrafın ve seçtiğin sporlar yer alır. E-posta, sağlık verileri ve Strava istatistikleri paylaşılmaz." = "Your card includes your profile name, username, photo, and selected sports. Email, Health data, and Strava statistics are not shared.";
 "PNG’yi Fotoğraflar’a kaydet" = "Save PNG to Photos";
 "Başkalarıyla paylaş" = "Share with others";
 "Profil kartı oluşturulamadı. Tekrar deneyebilirsin." = "Couldn’t create the profile card. Try again.";
@@ -1065,15 +1065,22 @@
 "Fotoğraf kaydedilemedi: %@" = "Couldn’t save the photo: %@";
 "Paylaşım dosyası oluşturulamadı: %@" = "Couldn’t create the share file: %@";
 "Profil bilgisi yüklenemedi." = "Couldn’t load profile information.";
-"SPORCU PROFİLİ" = "ATHLETE PROFILE";
+"SPORCU KARTI" = "ATHLETE CARD";
 "KENDİ RİTMİNDE İLERLE" = "MOVE AT YOUR OWN PACE";
-"İLGİ ALANLARI" = "SPORTS I ENJOY";
+"HAREKET SENİNLE BAŞLAR" = "MOVEMENT STARTS WITH YOU";
+"HAREKETİNİ" = "MOVE";
+"KENDİ RİTMİNDE YAŞA" = "AT YOUR OWN PACE";
+"KENDİ TEMPO’NDA. KENDİ YOLUNDA." = "YOUR PACE. YOUR PATH.";
+"%d spor" = "%d sports";
+"Spor tercihlerini Tempo profilinden ekleyebilirsin." = "Add your sport preferences from your Tempo profile.";
+"KENDİ TEMPO’N" = "YOUR OWN TEMPO";
+"Küçük adımlar, güçlü alışkanlıklar." = "Small steps. Strong habits.";
 "Henüz spor seçilmedi" = "No sports selected yet";
-"TEMPO SEVİYESİ" = "TEMPO LEVEL";
-"TOPLAM XP" = "TOTAL XP";
-"%d ROZET" = "%d BADGES";
 "HAREKETİNİ PAYLAŞ" = "SHARE YOUR MOVEMENT";
 "Profil kartı" = "Profile card";
+"Temizle" = "Clear";
+"Duraklat" = "Pause";
+"Bitir" = "Finish";
 
 
 /* New movement menu, phone tracking, and social challenge copy. */
@@ -1224,7 +1231,8 @@
 "Haftalık kişisel hedef" = "Personal weekly goal";
 "%d / %d antrenman" = "%d / %d workouts";
 "Haftalık antrenman hedefi" = "Weekly workout goal";
-"Hedef yalnızca bu sporun Strava ve cihaz kayıtlarını sayar; dilediğinde değiştirebilirsin." = "This goal counts this sport’s Strava and device activities. You can change it any time.";
+"Hedef yalnızca bu sporun Strava ve cihaz kayıtlarını sayar; dilediğinde değiştirebilirsin." = "This goal counts this sport’s Tempo workouts. You can change it any time.";
+"Hedef yalnızca bu spor için Tempo’da kaydettiğin antrenmanları sayar; dilediğinde değiştirebilirsin." = "This goal counts only workouts you record in Tempo for this sport. You can change it any time.";
 
 /* Phone recording status. */
 "KAYIT DURAKLATILDI" = "RECORDING PAUSED";
@@ -1235,3 +1243,33 @@
 "Son antrenman kaydının üzerinden %d gün geçti. Kısa ve kolay başlayıp ritmini yeniden kurabilirsin." = "It has been %d days since your last recorded workout. Start short and easy to build your rhythm again.";
 
 "Tempo ile kaydettiğin, elle eklediğin veya Strava’dan gelen aktiviteler burada görünür." = "Activities recorded with Tempo, added manually, or imported from Strava appear here.";
+"Uyku, hareket ve toparlanma verilerini bağla" = "Connect sleep, movement, and recovery data.";
+"Spor ve sağlıklı yaşam için sohbet asistanın" = "Your chat assistant for sport and wellbeing.";
+"Yalnızca bu sohbet isteğinde paylaşılır." = "Shared only for this chat request.";
+"Kişisel sağlık ölçüsü eklemek için önce Apple Sağlık’ı bağla." = "Connect Apple Health first to include personal health measurements.";
+"Sağlık verilerini bağla" = "Connect your health data";
+"Apple Sağlık Tempo’nun ana sağlık kaynağıdır. Strava isteğe bağlıdır ve daha sonra bağlanabilir." = "Apple Health is Tempo’s primary health source. Strava is optional and can be connected later.";
+"Apple Sağlık · Önerilen" = "Apple Health · Recommended";
+"Strava · İsteğe bağlı" = "Strava · Optional";
+"Aktivitelerini, rotalarını ve spor istatistiklerini ekle." = "Add your activities, routes, and sport statistics.";
+"MAKSİMUM" = "MAX";
+"En uzun" = "Longest";
+"%@ · %@ · %d dk" = "%1$@ · %2$@ · %3$d min";
+"· %@" = "· %@";
+"%@, %d" = "%1$@, %2$d";
+"%02d" = "%02d";
+"Strava bağlantısı sunucudan kaldırılamadı: %@" = "Couldn’t disconnect Strava on the server: %@";
+"Tempo ilerlemen hazırlanıyor…" = "Preparing your Tempo progress…";
+"Yalnızca Tempo kayıtların" = "Your Tempo workouts only";
+"Strava hesabın bağlı" = "Your Strava account is connected";
+"Strava kayıtları burada doğrudan görüntülenir; Tempo puanlarına ve hedeflerine katılmaz." = "Strava activities are shown here as provided and are not used for Tempo scores or goals.";
+"Strava’dan gelen aktiviteleri tarih sırasıyla görüntüle." = "View activities from Strava in date order.";
+"Strava aktivitelerini ve rotalarını görmek istersen hesabını istediğin zaman bağlayabilirsin." = "Connect your account any time to view your Strava activities and routes.";
+"Tempo’da kaydettiğin veya elle eklediğin antrenmanlar burada görünür." = "Workouts you record in Tempo or add manually appear here.";
+"XP ve rozetler yalnızca Tempo’da kaydettiğin antrenmanlar ve Apple Sağlık’taki hareket günlerinden hesaplanır. Strava aktiviteleri bu puana katılmaz." = "XP and badges use only Tempo workouts and movement days from Apple Health. Strava activities do not count toward these scores.";
+"Tempo kaydı" = "Tempo workout";
+"%d Tempo kaydı" = "%d Tempo workouts";
+"TEMPO KAYITLARI" = "TEMPO WORKOUTS";
+"Strava aktivitelerini ve rotalarını isteğe bağlı görüntüle." = "Optionally view your Strava activities and routes.";
+"Bu ritim özeti Apple Sağlık hareket günlerini, Tempo GPS ve manuel kayıtlarını, ayrıca tamamlanan çevrimdışı planları kullanır. Strava verileri puana katılmaz." = "This rhythm summary uses Apple Health movement days, Tempo GPS and manual workouts, and completed offline plans. Strava data is not included in the score.";
+"Aktiviteleri tarihe göre görüntüle" = "View activities by date";
