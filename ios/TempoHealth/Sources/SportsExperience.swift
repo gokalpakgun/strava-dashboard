@@ -807,12 +807,15 @@ private struct WeeklySportChart: View {
         let today = calendar.startOfDay(for: Date())
         return (0..<7).reversed().compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
-            let value = activities
-                .filter { $0.date.map { calendar.isDate($0, inSameDayAs: date) } ?? false }
-                .reduce(0) { $0 + $1.movingSeconds / 60 }
-                + manualWorkouts
-                    .filter { calendar.isDate($0.startedAt, inSameDayAs: date) }
-                    .reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) / 60 }
+            let activityMinutes: Double = activities.reduce(0) { total, activity in
+                guard let activityDate = activity.date, calendar.isDate(activityDate, inSameDayAs: date) else { return total }
+                return total + activity.movingSeconds / 60
+            }
+            let manualMinutes: Double = manualWorkouts.reduce(0) { total, workout in
+                guard calendar.isDate(workout.startedAt, inSameDayAs: date) else { return total }
+                return total + Double(workout.durationSeconds ?? workout.durationMinutes * 60) / 60
+            }
+            let value = activityMinutes + manualMinutes
             return SportDayValue(date: date, minutes: value)
         }
     }

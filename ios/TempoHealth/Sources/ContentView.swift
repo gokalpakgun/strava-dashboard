@@ -3750,7 +3750,7 @@ private struct StravaConnectionCard: View {
     }
 }
 
-private struct TempoCard<Content: View>: View {
+struct TempoCard<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
@@ -3786,7 +3786,7 @@ private struct MetricCard: View {
     }
 }
 
-private struct SectionHeading: View {
+struct SectionHeading: View {
     let title: String; let caption: String; var padding = true
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
