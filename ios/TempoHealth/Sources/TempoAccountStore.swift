@@ -406,6 +406,7 @@ final class TempoAccountStore: ObservableObject {
         request.httpMethod = method
         request.timeoutInterval = 18
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Tempo-Request-ID")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

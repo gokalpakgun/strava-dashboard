@@ -63,7 +63,10 @@ if (mode === 'begin') {
     await writeFile(reportPath, JSON.stringify({ timestamp: new Date().toISOString(), results: state.results }, null, 2));
     await unlink(statePath);
   } else {
-    const login = await call('/api/account/login', { body: { identifier: state.email, password: state.newPassword || state.password } });
+    let login = await call('/api/account/login', { body: { identifier: state.email, password: state.newPassword || state.password } });
+    if (login.status === 401 && state.newPassword) {
+      login = await call('/api/account/login', { body: { identifier: state.email, password: state.password } });
+    }
     if (login.status === 200) state.token = login.data.token;
     check('Delete disposable email test account', await call('/api/account', { method: 'DELETE', token: state.token, body: {} }), 200);
     await unlink(statePath);

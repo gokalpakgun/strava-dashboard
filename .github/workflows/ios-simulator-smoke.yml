@@ -40,6 +40,13 @@ jobs:
           swiftc ios/TempoHealth/Sources/TempoSleepAggregation.swift ios/HealthRegressionTests/main.swift -o "$RUNNER_TEMP/health-regressions"
           "$RUNNER_TEMP/health-regressions"
 
+      - name: Select an iPhone simulator
+        run: |
+          set -euo pipefail
+          DEVICE_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          test -n "$DEVICE_ID"
+          echo "TEMPO_SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
@@ -47,20 +54,20 @@ jobs:
             -project ios/TempoHealth/TempoHealth.xcodeproj \
             -scheme TempoHealth \
             -configuration Debug \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "platform=iOS Simulator,id=$TEMPO_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
-            build
+            ONLY_ACTIVE_ARCH=YES \
+            build-for-testing
 
       - name: Install and launch on an iPhone simulator
         run: |
           set -euo pipefail
-          DEVICE_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          DEVICE_ID="$TEMPO_SIMULATOR_ID"
           test -n "$DEVICE_ID"
           echo "Using iPhone simulator $DEVICE_ID"
-          echo "TEMPO_SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
 
           APP_PATH="$RUNNER_TEMP/TempoSimulatorBuild/Build/Products/Debug-iphonesimulator/Tempo.app"
           test -d "$APP_PATH"
@@ -88,7 +95,7 @@ jobs:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
-            test
+            test-without-building
 
       - name: Export UI test screenshots
         if: always()

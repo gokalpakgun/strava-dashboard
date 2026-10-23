@@ -44,7 +44,7 @@ struct ContentView: View {
         }
         .task(id: account.isAuthenticated) {
 #if DEBUG
-            guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+            guard !ProcessInfo.processInfo.arguments.contains("--ui-testing-authenticated") else { return }
 #endif
             guard account.isAuthenticated else { return }
             model.setTempoAccount(account.profile?.id)

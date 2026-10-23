@@ -58,22 +58,22 @@ final class TempoHealthUserFlowTests: XCTestCase {
         let create = element("auth.createAccount", in: app)
         XCTAssertTrue(create.waitForExistence(timeout: 15))
         create.tap()
-        enter(email, into: "auth.email", in: app)
-        enter(username, into: "auth.username", in: app)
-        enter(password, into: "auth.password", in: app)
-        tapButton("auth.submit", in: app)
+        try enter(email, into: "auth.email", in: app)
+        try enter(username, into: "auth.username", in: app)
+        try enter(password, into: "auth.password", in: app)
+        try tapButton("auth.submit", in: app)
 
         let onboarding = element("onboarding.profile.title", in: app)
-        XCTAssertTrue(onboarding.waitForExistence(timeout: 50), "Real registration did not reach onboarding. \(accountError(in: app))")
+        try require(onboarding.waitForExistence(timeout: 50), "Real registration did not reach onboarding. \(accountError(in: app))", in: app)
         capture(app, named: "Live account created - onboarding")
-        tapButton("onboarding.profile.continue", in: app)
+        try tapButton("onboarding.profile.continue", in: app)
         let sport = element("sport.selection.run", in: app)
-        XCTAssertTrue(sport.waitForExistence(timeout: 30), "Real profile save did not advance to sports")
+        try require(sport.waitForExistence(timeout: 30), "Real profile save did not advance to sports", in: app)
         sport.tap()
-        tapButton("onboarding.sports.continue", in: app)
-        XCTAssertTrue(element("onboarding.finish", in: app).waitForExistence(timeout: 30), "Real sports save did not advance to connections")
-        tapButton("onboarding.finish", in: app)
-        XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 30), "Onboarding should finish without requiring Strava or Apple Health")
+        try tapButton("onboarding.sports.continue", in: app)
+        try require(element("onboarding.finish", in: app).waitForExistence(timeout: 30), "Real sports save did not advance to connections", in: app)
+        try tapButton("onboarding.finish", in: app)
+        try require(element("screen.summary", in: app).waitForExistence(timeout: 30), "Onboarding should finish without requiring Strava or Apple Health", in: app)
         capture(app, named: "Live account onboarding completed")
 
         app.terminate()
@@ -88,10 +88,10 @@ final class TempoHealthUserFlowTests: XCTestCase {
             let signIn = element("auth.signIn", in: app)
             XCTAssertTrue(signIn.waitForExistence(timeout: 15), "UI test restart must begin independently of Keychain state")
             signIn.tap()
-            enter(identifier, into: "auth.email", in: app)
-            enter(password, into: "auth.password", in: app)
-            tapButton("auth.submit", in: app)
-            XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 50), "Real \(name) sign-in failed. \(accountError(in: app))")
+            try enter(identifier, into: "auth.email", in: app)
+            try enter(password, into: "auth.password", in: app)
+            try tapButton("auth.submit", in: app)
+            try require(element("screen.summary", in: app).waitForExistence(timeout: 50), "Real \(name) sign-in failed. \(accountError(in: app))", in: app)
             capture(app, named: "Live sign-in by " + name)
         }
         app.terminate()
@@ -195,28 +195,55 @@ final class TempoHealthUserFlowTests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
-    private func enter(_ text: String, into identifier: String, in app: XCUIApplication) {
-        let container = element(identifier, in: app)
-        XCTAssertTrue(container.waitForExistence(timeout: 8), "Missing input \(identifier)")
-        let field: XCUIElement
-        if container.elementType == .textField || container.elementType == .secureTextField {
-            field = container
-        } else if container.descendants(matching: .textField).firstMatch.exists {
-            field = container.descendants(matching: .textField).firstMatch
-        } else {
-            field = container.descendants(matching: .secureTextField).firstMatch
-        }
-        XCTAssertTrue(field.exists, "Input \(identifier) must contain a text field")
+    private func enter(_ text: String, into identifier: String, in app: XCUIApplication) throws {
+        let textField = app.textFields.matching(identifier: identifier).firstMatch
+        let secureField = app.secureTextFields.matching(identifier: identifier).firstMatch
+        let containers = app.descendants(matching: .any).matching(identifier: identifier)
+        try require(textField.exists || secureField.exists || containers.firstMatch.waitForExistence(timeout: 8), "Missing input \(identifier)", in: app)
+
+        // SwiftUI may propagate the HStack identifier to both its icon and input.
+        // Prefer typed queries; an arbitrary firstMatch can be the icon.
+        var resolved: XCUIElement?
+        let deadline = Date().addingTimeInterval(8)
+        repeat {
+            if textField.exists {
+                resolved = textField
+            } else if secureField.exists {
+                resolved = secureField
+            } else {
+                for container in containers.allElementsBoundByIndex {
+                    let nestedText = container.descendants(matching: .textField).firstMatch
+                    let nestedSecure = container.descendants(matching: .secureTextField).firstMatch
+                    if nestedText.exists { resolved = nestedText; break }
+                    if nestedSecure.exists { resolved = nestedSecure; break }
+                }
+            }
+            if resolved == nil { Thread.sleep(forTimeInterval: 0.1) }
+        } while resolved == nil && Date() < deadline
+
+        try require(resolved != nil, "Input \(identifier) must contain a text field", in: app)
+        guard let field = resolved else { return } // require above throws before this fallback.
         field.tap()
         field.typeText(text)
     }
 
-    private func tapButton(_ identifier: String, in app: XCUIApplication) {
-        let button = element(identifier, in: app)
+    private func tapButton(_ identifier: String, in app: XCUIApplication) throws {
+        let button = app.buttons.matching(identifier: identifier).firstMatch
+        try require(button.waitForExistence(timeout: 8), "Missing action \(identifier)", in: app)
         for _ in 0..<6 where !button.isHittable { app.swipeUp() }
-        XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing action \(identifier)")
-        XCTAssertTrue(button.isEnabled, "Action \(identifier) should be enabled")
+        try require(button.isEnabled, "Action \(identifier) should be enabled", in: app)
         button.tap()
+    }
+
+    private func require(_ condition: Bool, _ message: String, in app: XCUIApplication) throws {
+        guard !condition else { return }
+        capture(app, named: "Account flow failure")
+        let hierarchy = XCTAttachment(string: app.debugDescription)
+        hierarchy.name = "Account failure accessibility hierarchy"
+        hierarchy.lifetime = .keepAlways
+        add(hierarchy)
+        XCTFail(message)
+        throw NSError(domain: "TempoLiveAccountFlow", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
     private func accountError(in app: XCUIApplication) -> String {
