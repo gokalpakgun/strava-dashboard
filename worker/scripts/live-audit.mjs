@@ -22,7 +22,7 @@ async function call(path, { method = 'GET', body, token } = {}) {
 function check(name, actual, expected, extra = {}) {
   const pass = actual.status === expected;
   const row = { name, pass, status: actual.status, expected, ms: actual.ms, ...extra,
-    ...(!pass ? { error: actual.data?.error || 'Unexpected result' } : {}) };
+    ...(!pass ? { error: actual.data?.error || 'Unexpected result', diagnostic: actual.data?.diagnostic } : {}) };
   results.push(row);
   console.log(JSON.stringify(row));
   return pass;
