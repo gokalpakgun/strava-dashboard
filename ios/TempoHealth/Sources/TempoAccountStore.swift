@@ -175,6 +175,14 @@ final class TempoAccountStore: ObservableObject {
             isRestoring = false
             return
         }
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+            // UI tests start independently of any real session saved by an
+            // earlier test. They can still exercise the real account API.
+            sessionToken = nil
+            profile = nil
+            isRestoring = false
+            return
+        }
 #endif
         let storedToken = AccountTokenStore.read()
         let cachedProfile = storedToken == nil ? nil : AccountProfileCache.read()

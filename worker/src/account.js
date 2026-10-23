@@ -58,7 +58,7 @@ async function signUp(request, env) {
   const limited = await rateLimit(request, env, "signup", 10);
   if (limited) return limited;
   const usernameModeration = await moderateCommunityText(env, username);
-  if (usernameModeration.unavailable) return responseJSON({ error: "Kullanıcı adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene." }, 503);
+  if (usernameModeration.unavailable) return responseJSON({ error: "Kullanıcı adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene.", diagnostic: usernameModeration.diagnostic }, 503);
   if (!usernameModeration.allowed) return responseJSON({ error: "Bu kullanıcı adı topluluk kurallarına uygun değil." }, 400);
   const idempotencyKey = /^[a-f0-9-]{20,64}$/.test(requestId)
     ? "account-signup-request:" + await sha256Hex(requestId)

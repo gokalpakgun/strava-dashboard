@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 final class TempoHealthUserFlowTests: XCTestCase {
@@ -39,6 +40,55 @@ final class TempoHealthUserFlowTests: XCTestCase {
 
         element("auth.passwordReset.close", in: app).tap()
         XCTAssertTrue(element("auth.forgotPassword", in: app).waitForExistence(timeout: 5), "Closing reset should return to sign-in")
+    }
+
+    @MainActor
+    func testRealAccountRegistrationOnboardingAndUsernameEmailSignIn() async throws {
+        // These credentials belong only to this run. Never use a person's
+        // account or send email; the teardown removes the generated account.
+        let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let username = "uitest" + String(suffix.prefix(12))
+        let email = "tempo.ui." + suffix + "@example.com"
+        let password = "Tu!9" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        addTeardownBlock {
+            try await Self.deleteDisposableAccount(email: email, password: password)
+        }
+
+        var app = launchApp()
+        let create = element("auth.createAccount", in: app)
+        XCTAssertTrue(create.waitForExistence(timeout: 15))
+        create.tap()
+        enter(email, into: "auth.email", in: app)
+        enter(username, into: "auth.username", in: app)
+        enter(password, into: "auth.password", in: app)
+        tapButton("auth.submit", in: app)
+
+        let onboarding = element("onboarding.profile.title", in: app)
+        XCTAssertTrue(onboarding.waitForExistence(timeout: 50), "Real registration did not reach onboarding. \(accountError(in: app))")
+        capture(app, named: "Live account created - onboarding")
+        tapButton("onboarding.profile.continue", in: app)
+        let sport = element("sport.selection.run", in: app)
+        XCTAssertTrue(sport.waitForExistence(timeout: 30), "Real profile save did not advance to sports")
+        sport.tap()
+        tapButton("onboarding.sports.continue", in: app)
+        XCTAssertTrue(element("onboarding.finish", in: app).waitForExistence(timeout: 30), "Real sports save did not advance to connections")
+        tapButton("onboarding.finish", in: app)
+        XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 30), "Onboarding should finish without requiring Strava or Apple Health")
+        capture(app, named: "Live account onboarding completed")
+
+        for (identifier, name) in [(username, "username"), (email, "email")] {
+            app.terminate()
+            app = launchApp()
+            let signIn = element("auth.signIn", in: app)
+            XCTAssertTrue(signIn.waitForExistence(timeout: 15), "UI test restart must begin independently of Keychain state")
+            signIn.tap()
+            enter(identifier, into: "auth.email", in: app)
+            enter(password, into: "auth.password", in: app)
+            tapButton("auth.submit", in: app)
+            XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 50), "Real \(name) sign-in failed. \(accountError(in: app))")
+            capture(app, named: "Live sign-in by " + name)
+        }
+        app.terminate()
     }
 
     func testAuthenticatedUserCanVisitEveryPrimaryTabAndSocialFriends() {
@@ -134,6 +184,63 @@ final class TempoHealthUserFlowTests: XCTestCase {
 
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    private func enter(_ text: String, into identifier: String, in app: XCUIApplication) {
+        let container = element(identifier, in: app)
+        XCTAssertTrue(container.waitForExistence(timeout: 8), "Missing input \(identifier)")
+        let field: XCUIElement
+        if container.elementType == .textField || container.elementType == .secureTextField {
+            field = container
+        } else if container.descendants(matching: .textField).firstMatch.exists {
+            field = container.descendants(matching: .textField).firstMatch
+        } else {
+            field = container.descendants(matching: .secureTextField).firstMatch
+        }
+        XCTAssertTrue(field.exists, "Input \(identifier) must contain a text field")
+        field.tap()
+        field.typeText(text)
+    }
+
+    private func tapButton(_ identifier: String, in app: XCUIApplication) {
+        let button = element(identifier, in: app)
+        for _ in 0..<6 where !button.isHittable { app.swipeUp() }
+        XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing action \(identifier)")
+        XCTAssertTrue(button.isEnabled, "Action \(identifier) should be enabled")
+        button.tap()
+    }
+
+    private func accountError(in app: XCUIApplication) -> String {
+        let error = element("auth.error", in: app)
+        return error.exists ? error.label : "No account error was shown."
+    }
+
+    private static func deleteDisposableAccount(email: String, password: String) async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = 30
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        var login = URLRequest(url: URL(string: "https://apitempo.com/api/account/login")!)
+        login.httpMethod = "POST"
+        login.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        login.httpBody = try JSONSerialization.data(withJSONObject: ["identifier": email, "password": password])
+        let (data, response) = try await session.data(for: login)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 { return } // Registration may have failed before creating a user.
+        guard status == 200,
+              let result = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = result["token"] as? String else {
+            throw NSError(domain: "TempoDisposableAccountCleanup", code: status, userInfo: [NSLocalizedDescriptionKey: "Could not authenticate the disposable UI test account for cleanup."])
+        }
+        var deletion = URLRequest(url: URL(string: "https://apitempo.com/api/account")!)
+        deletion.httpMethod = "DELETE"
+        deletion.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        let (_, deletionResponse) = try await session.data(for: deletion)
+        let deletionStatus = (deletionResponse as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(deletionStatus) else {
+            throw NSError(domain: "TempoDisposableAccountCleanup", code: deletionStatus, userInfo: [NSLocalizedDescriptionKey: "Could not delete the disposable UI test account."])
+        }
     }
 
     private func capture(_ app: XCUIApplication, named name: String) {

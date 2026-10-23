@@ -323,6 +323,7 @@ private struct AccountFormView: View {
                                 Image(systemName: "exclamationmark.circle.fill")
                                 Text(account.errorMessage.tempoLocalized)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityIdentifier("auth.error")
                             }
                             .font(.footnote)
                             .foregroundStyle(TempoTheme.orange)
@@ -586,6 +587,7 @@ struct AccountOnboardingView: View {
     private var profileStep: some View {
         VStack(alignment: .leading, spacing: 22) {
             OnboardingTitle(title: "Profilini oluşturalım", subtitle: "İnsanların seni nasıl göreceğini seç.")
+                .accessibilityIdentifier("onboarding.profile.title")
             VStack(spacing: 12) {
                 PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                     ZStack(alignment: .bottomTrailing) {
@@ -601,7 +603,9 @@ struct AccountOnboardingView: View {
             .frame(maxWidth: .infinity)
 
             AccountTextField(title: "Görünen ad", icon: "person.fill", text: $displayName, contentType: .name)
+                .accessibilityIdentifier("onboarding.displayName")
             AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
+                .accessibilityIdentifier("onboarding.username")
 
             accountError
 
@@ -619,6 +623,7 @@ struct AccountOnboardingView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(AccountPrimaryButtonStyle())
+            .accessibilityIdentifier("onboarding.profile.continue")
             .disabled(account.isBusy || isPreparingPhoto || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
@@ -641,6 +646,7 @@ struct AccountOnboardingView: View {
                     Text((account.isBusy ? "Kaydediliyor…" : "Devam et").tempoLocalized).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AccountPrimaryButtonStyle())
+                .accessibilityIdentifier("onboarding.sports.continue")
                 .disabled(account.isBusy || selectedSports.isEmpty)
             }
         }
@@ -685,6 +691,7 @@ struct AccountOnboardingView: View {
                     Text((account.isBusy ? "Hazırlanıyor…" : "Tempo’yu aç").tempoLocalized).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AccountPrimaryButtonStyle())
+                .accessibilityIdentifier("onboarding.finish")
                 .disabled(account.isBusy)
             }
         }
@@ -1619,6 +1626,7 @@ struct SportSelectionGrid: View {
                     .background(selected ? TempoTheme.green : TempoTheme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("sport.selection.\(sport.rawValue)")
             }
         }
     }

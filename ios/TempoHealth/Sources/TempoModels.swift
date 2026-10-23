@@ -703,7 +703,7 @@ struct TempoSleepAssessment: Equatable {
         }
 
         let restorativeMinutes = (metrics.sleepDeepMinutes ?? 0) + (metrics.sleepREMMinutes ?? 0)
-        if metrics.sleepDeepMinutes != nil || metrics.sleepREMMinutes != nil {
+        if metrics.sleepDeepMinutes != nil && metrics.sleepREMMinutes != nil {
             let ratio = restorativeMinutes / totalMinutes
             weighted.append((
                 TempoSleepFactor(
@@ -735,7 +735,7 @@ struct TempoSleepAssessment: Equatable {
         let totalWeight = weighted.reduce(0) { $0 + $1.1 }
         let score = bounded(weighted.reduce(0) { $0 + Double($1.0.score) * $1.1 } / totalWeight)
         let state: String
-        let summary: String
+        var summary: String
         switch score {
         case 88...:
             state = "Çok iyi uyku"
@@ -756,7 +756,10 @@ struct TempoSleepAssessment: Equatable {
 
         let stageCount = [metrics.sleepCoreMinutes, metrics.sleepDeepMinutes, metrics.sleepREMMinutes, metrics.sleepAwakeMinutes]
             .compactMap { $0 }.count
-        let confidence = stageCount >= 4 ? "Tüm evrelerle hesaplandı" : (stageCount >= 2 ? "Kısmi evre verisi" : "Yalnızca süre verisi")
+        if stageCount == 0 {
+            summary = "Bu değerlendirme yalnızca uyku sürene dayanıyor; uyku evreleri ölçülmemiş."
+        }
+        let confidence = stageCount >= 4 ? "Tüm evrelerle hesaplandı" : (stageCount >= 1 ? "Kısmi evre verisi" : "Yalnızca süre verisi")
         return TempoSleepAssessment(value: score, state: state, summary: summary, confidence: confidence, factors: weighted.map { $0.0 })
     }
 

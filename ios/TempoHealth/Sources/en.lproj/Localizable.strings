@@ -1273,3 +1273,4 @@
 "Strava aktivitelerini ve rotalarını isteğe bağlı görüntüle." = "Optionally view your Strava activities and routes.";
 "Bu ritim özeti Apple Sağlık hareket günlerini, Tempo GPS ve manuel kayıtlarını, ayrıca tamamlanan çevrimdışı planları kullanır. Strava verileri puana katılmaz." = "This rhythm summary uses Apple Health movement days, Tempo GPS and manual workouts, and completed offline plans. Strava data is not included in the score.";
 "Aktiviteleri tarihe göre görüntüle" = "View activities by date";
+"Bu değerlendirme yalnızca uyku sürene dayanıyor; uyku evreleri ölçülmemiş." = "This assessment uses sleep duration only; sleep stages were not measured.";

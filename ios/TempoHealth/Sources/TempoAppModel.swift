@@ -153,6 +153,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 return
             }
 
+            if http.statusCode == 409 {
+                SecureTokenStore.delete()
+                accessToken = nil
+                dashboard = nil
+                Self.clearCachedDashboard(accountId: accountId)
+                isRestoringConnection = false
+                status = result?.error ?? "Strava bağlantısı bu Tempo hesabına ait değil."
+                return
+            }
+
             throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
         } catch {
             guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
@@ -967,6 +977,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthStore.disableBackgroundDelivery()
         healthSyncEnabled = false
         healthDays = [:]
+        healthGeneration = UUID()
+        isHealthSyncing = false
         healthLastSync = nil
         todayWaterMl = 0
         isRestoringConnection = false
