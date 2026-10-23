@@ -16,6 +16,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  live-service-check:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify disposable live account and service flows
+        run: node worker/scripts/live-audit.mjs --live
+      - name: Keep live service verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-live-service-verification
+          path: outputs/live-audit.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   simulator-smoke:
     runs-on: macos-26
     timeout-minutes: 30
