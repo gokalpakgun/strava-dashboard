@@ -49,7 +49,9 @@ jobs:
             -configuration Debug \
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
             build
 
       - name: Install and launch on an iPhone simulator
@@ -83,7 +85,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
             -resultBundlePath "$RUNNER_TEMP/TempoUITests.xcresult" \
             -parallel-testing-enabled NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
             test
 
       - name: Keep simulator launch screenshot
