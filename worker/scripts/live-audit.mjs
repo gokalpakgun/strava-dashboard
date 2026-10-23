@@ -60,9 +60,16 @@ try {
     check('Health account isolation', { ...otherHealth, status: Object.keys(otherHealth.data?.days || {}).length ? 422 : otherHealth.status }, 200);
     check('Reject invalid Health input', await call('/api/account/health', { method: 'POST', token: a.token, body: { days: { [today]: { steps: -5 } } } }), 400);
     const friend = await call('/api/account/social/friends', { method: 'POST', token: a.token, body: { username: b.username } });
-    check('Send real friend request', friend, 200);
+    check('Send real friend request', friend, 201);
     const friends = await call('/api/account/social', { token: b.token });
     check('Load incoming friend request', friends, 200, { incomingCount: friends.data?.incoming?.length ?? null });
+    const incoming = friends.data?.incoming?.[0];
+    if (incoming?.id) {
+      check('Accept real friend request', await call('/api/account/social/requests', { method: 'POST', token: b.token,
+        body: { requestId: incoming.id, action: 'accept' } }), 200);
+      const connected = await call('/api/account/social', { token: a.token });
+      check('Friendship appears for sender', { ...connected, status: connected.data?.friends?.some(item => item.id === b.user.id) ? connected.status : 422 }, 200);
+    }
     const coach = await call('/api/account/sports-chat', { method: 'POST', token: a.token,
       body: { includeHealth: false, messages: [{ role: 'user', content: 'In English, suggest a brief five-minute warm-up for a recreational tennis session.' }] } });
     check('Live AI without Health consent', coach, 200, { answerCharacters: coach.data?.answer?.length ?? 0 });

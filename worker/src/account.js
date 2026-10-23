@@ -188,6 +188,7 @@ async function signIn(request, env) {
 }
 
 async function forgotPassword(request, env, url) {
+  const language = passwordResetLanguage(request);
   if (!env.RESEND_API_KEY) {
     return responseJSON({ error: "Şifre sıfırlama e-posta servisi henüz hazır değil." }, 503);
   }
@@ -200,7 +201,7 @@ async function forgotPassword(request, env, url) {
   const limited = await rateLimit(request, env, "password-reset", 5);
   if (limited) return limited;
 
-  const generic = { message: "Hesap eşleşirse şifre sıfırlama bağlantısı gönderildi." };
+  const generic = { message: resetText("Hesap eşleşirse şifre sıfırlama bağlantısı gönderildi.", language) };
   const emailLimited = await rateLimit(request, env, "password-reset-email", 5, await sha256Hex(email));
   if (emailLimited) return responseJSON(generic);
   const userId = await env.TOKEN_STORE.get("account-email:" + await sha256Hex(email));
@@ -211,10 +212,10 @@ async function forgotPassword(request, env, url) {
   await env.TOKEN_STORE.put("account-reset:" + tokenHash, userId, { expirationTtl: 1800 });
 
   // Never derive a credential-bearing link from the incoming Host header.
-  const resetLink = "https://apitempo.com/reset-password?token=" + token;
+  const resetLink = "https://apitempo.com/reset-password?token=" + token + "&lang=" + language;
   let sent = false;
   try {
-    sent = await sendPasswordResetEmail(env, email, resetLink);
+    sent = await sendPasswordResetEmail(env, email, resetLink, language);
   } catch {
     // Network exceptions must follow the same cleanup path as an HTTP error.
     console.error("Password reset email transport failed.");
@@ -226,7 +227,8 @@ async function forgotPassword(request, env, url) {
   return responseJSON(generic);
 }
 
-async function sendPasswordResetEmail(env, email, resetLink) {
+async function sendPasswordResetEmail(env, email, resetLink, language = "tr") {
+  const english = language === "en";
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     signal: AbortSignal.timeout(10000),
@@ -237,9 +239,9 @@ async function sendPasswordResetEmail(env, email, resetLink) {
     body: JSON.stringify({
       from: env.EMAIL_FROM || "Tempo <noreply@apitempo.com>",
       to: [email],
-      subject: "Tempo şifreni sıfırla",
-      html: "<div style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:560px;margin:auto;padding:28px;color:#132019\"><h1 style=\"font-size:26px\">Şifreni sıfırla</h1><p>Tempo hesabın için yeni bir şifre oluşturmak üzere aşağıdaki düğmeye dokun.</p><p style=\"margin:28px 0\"><a href=\"" + resetLink + "\" style=\"background:#45d978;color:#07120b;text-decoration:none;padding:14px 20px;border-radius:14px;font-weight:700\">Yeni şifre oluştur</a></p><p style=\"color:#66736b;font-size:13px\">Bu bağlantı 30 dakika geçerlidir. Bu isteği sen yapmadıysan e-postayı yok sayabilirsin.</p></div>",
-      text: "Tempo şifreni sıfırlamak için bu bağlantıyı aç: " + resetLink + " Bağlantı 30 dakika geçerlidir.",
+      subject: english ? "Reset your Tempo password" : "Tempo şifreni sıfırla",
+      html: "<div lang=\"" + language + "\" style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:560px;margin:auto;padding:28px;color:#132019\"><h1 style=\"font-size:26px\">" + (english ? "Reset your password" : "Şifreni sıfırla") + "</h1><p>" + (english ? "Tap the button below to create a new password for your Tempo account." : "Tempo hesabın için yeni bir şifre oluşturmak üzere aşağıdaki düğmeye dokun.") + "</p><p style=\"margin:28px 0\"><a href=\"" + escapeHTML(resetLink) + "\" style=\"background:#45d978;color:#07120b;text-decoration:none;padding:14px 20px;border-radius:14px;font-weight:700\">" + resetText("Yeni şifre oluştur", language) + "</a></p><p style=\"color:#66736b;font-size:13px\">" + (english ? "This link is valid for 30 minutes. If you did not request this, you can ignore this email." : "Bu bağlantı 30 dakika geçerlidir. Bu isteği sen yapmadıysan e-postayı yok sayabilirsin.") + "</p></div>",
+      text: (english ? "Open this link to reset your Tempo password: " : "Tempo şifreni sıfırlamak için bu bağlantıyı aç: ") + resetLink + (english ? " This link is valid for 30 minutes." : " Bağlantı 30 dakika geçerlidir."),
     }),
   });
   if (!response.ok) console.error("Password reset email failed:", response.status);
@@ -288,19 +290,23 @@ async function resetPasswordValues(tokenValue, passwordValue, env) {
   user.updatedAt = new Date().toISOString();
   await Promise.all([
     env.TOKEN_STORE.put("account-user:" + user.id, JSON.stringify(user)),
-    invalidatePasswordResetTokens(env, user.id),
+    // A recently issued token may not appear in a KV prefix listing yet.
+    // Always consume the token supplied by this request directly.
+    env.TOKEN_STORE.delete(resetKey),
+    invalidatePasswordResetTokens(env, user.id, resetKey),
   ]);
   return { ok: true, status: 200 };
 }
 
 export async function handlePasswordResetPage(request, env, url) {
-  if (!env.TOKEN_STORE) return passwordResetDocument("", "Hesap depolama bağlantısı hazır değil.", false);
+  let language = passwordResetLanguage(request, url.searchParams.get("lang"));
+  if (!env.TOKEN_STORE) return passwordResetDocument("", "Hesap depolama bağlantısı hazır değil.", false, language);
   if (request.method === "GET") {
     const token = url.searchParams.get("token") || "";
     if (!/^[a-f0-9]{64}$/i.test(token)) {
-      return passwordResetDocument("", "Sıfırlama bağlantısı geçersiz.", false);
+      return passwordResetDocument("", "Sıfırlama bağlantısı geçersiz.", false, language);
     }
-    return passwordResetDocument(token, "", false);
+    return passwordResetDocument(token, "", false, language);
   }
   if (request.method === "POST") {
     let form;
@@ -308,28 +314,30 @@ export async function handlePasswordResetPage(request, env, url) {
       const body = await readLimitedText(request, 4096);
       form = new URLSearchParams(body);
     } catch {
-      return passwordResetDocument("", "İstek çok büyük veya okunamadı.", false);
+      return passwordResetDocument("", "İstek çok büyük veya okunamadı.", false, language);
     }
+    language = passwordResetLanguage(request, form.get("lang") || url.searchParams.get("lang"));
     const password = String(form.get("password") || "");
     const confirmation = String(form.get("confirmation") || "");
     if (password !== confirmation) {
-      return passwordResetDocument(String(form.get("token") || ""), "Şifreler eşleşmiyor.", false);
+      return passwordResetDocument(String(form.get("token") || ""), "Şifreler eşleşmiyor.", false, language);
     }
     const result = await resetPasswordValues(form.get("token"), password, env);
-    return passwordResetDocument(result.retryable ? String(form.get("token") || "") : "", result.ok ? "Şifren güncellendi. Artık Tempo uygulamasından giriş yapabilirsin." : result.error, result.ok);
+    return passwordResetDocument(result.retryable ? String(form.get("token") || "") : "", result.ok ? "Şifren güncellendi. Artık Tempo uygulamasından giriş yapabilirsin." : result.error, result.ok, language);
   }
   return new Response("Method not allowed", { status: 405, headers: { "Allow": "GET, POST" } });
 }
 
-function passwordResetDocument(token, message, success) {
+function passwordResetDocument(token, message, success, language = "tr") {
   const safeToken = /^[a-f0-9]{64}$/i.test(token) ? token : "";
-  const safeMessage = escapeHTML(message || "");
+  const text = value => resetText(value, language);
+  const safeMessage = escapeHTML(text(message || ""));
   const content = success
-    ? "<div class=\"result ok\"><div class=\"icon\">✓</div><h1>Şifren hazır</h1><p>" + safeMessage + "</p></div>"
-    : "<h1>Yeni şifre oluştur</h1><p class=\"lead\">Tempo hesabın için güçlü bir şifre belirle.</p>" +
+    ? "<div class=\"result ok\"><div class=\"icon\">✓</div><h1>" + text("Şifren hazır") + "</h1><p>" + safeMessage + "</p></div>"
+    : "<h1>" + text("Yeni şifre oluştur") + "</h1><p class=\"lead\">" + text("Tempo hesabın için güçlü bir şifre belirle.") + "</p>" +
       (safeMessage ? "<div class=\"message\">" + safeMessage + "</div>" : "") +
-      (safeToken ? "<form method=\"post\" action=\"/reset-password\"><input type=\"hidden\" name=\"token\" value=\"" + safeToken + "\"><label>Yeni şifre</label><input name=\"password\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><label>Yeni şifre tekrar</label><input name=\"confirmation\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><button type=\"submit\">Şifreyi güncelle</button></form>" : "");
-  const html = "<!doctype html><html lang=\"tr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>Tempo şifre sıfırlama</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,#08171c,#07100c);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#f5fff7;padding:20px}.card{width:min(100%,440px);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:28px;padding:28px;box-shadow:0 22px 70px rgba(0,0,0,.35)}.brand{color:#64ef8e;font-weight:800;margin-bottom:28px}.brand span{color:#91a49a;font-weight:500;margin-left:8px}h1{font-size:30px;margin:0 0 8px}.lead,p{color:#a8b5ad;line-height:1.5}.message{color:#ff9b78;background:rgba(255,105,65,.1);padding:12px;border-radius:13px;margin:18px 0}label{display:block;font-size:13px;font-weight:650;margin:16px 0 7px}input{width:100%;height:54px;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:rgba(255,255,255,.06);color:white;padding:0 15px;font-size:16px}button{width:100%;height:56px;border:0;border-radius:16px;background:#64ef8e;color:#061109;font-size:16px;font-weight:750;margin-top:22px}.result{text-align:center}.icon{width:66px;height:66px;border-radius:50%;background:#64ef8e;color:#061109;display:grid;place-items:center;font-size:32px;font-weight:800;margin:0 auto 18px}</style></head><body><main class=\"card\"><div class=\"brand\">TEMPO <span>Sağlık ve spor</span></div>" + content + "</main></body></html>";
+      (safeToken ? "<form method=\"post\" action=\"/reset-password\"><input type=\"hidden\" name=\"token\" value=\"" + safeToken + "\"><input type=\"hidden\" name=\"lang\" value=\"" + language + "\"><label>" + text("Yeni şifre") + "</label><input name=\"password\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><label>" + text("Yeni şifre tekrar") + "</label><input name=\"confirmation\" type=\"password\" minlength=\"8\" maxlength=\"128\" required autocomplete=\"new-password\"><button type=\"submit\">" + text("Şifreyi güncelle") + "</button></form>" : "");
+  const html = "<!doctype html><html lang=\"" + language + "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>" + text("Tempo şifre sıfırlama") + "</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,#08171c,#07100c);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#f5fff7;padding:20px}.card{width:min(100%,440px);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:28px;padding:28px;box-shadow:0 22px 70px rgba(0,0,0,.35)}.brand{color:#64ef8e;font-weight:800;margin-bottom:28px}.brand span{color:#91a49a;font-weight:500;margin-left:8px}h1{font-size:30px;margin:0 0 8px}.lead,p{color:#a8b5ad;line-height:1.5}.message{color:#ff9b78;background:rgba(255,105,65,.1);padding:12px;border-radius:13px;margin:18px 0}label{display:block;font-size:13px;font-weight:650;margin:16px 0 7px}input{width:100%;height:54px;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:rgba(255,255,255,.06);color:white;padding:0 15px;font-size:16px}button{width:100%;height:56px;border:0;border-radius:16px;background:#64ef8e;color:#061109;font-size:16px;font-weight:750;margin-top:22px}.result{text-align:center}.icon{width:66px;height:66px;border-radius:50%;background:#64ef8e;color:#061109;display:grid;place-items:center;font-size:32px;font-weight:800;margin:0 auto 18px}</style></head><body><main class=\"card\"><div class=\"brand\">TEMPO <span>" + text("Sağlık ve spor") + "</span></div>" + content + "</main></body></html>";
   return new Response(html, {
     status: 200,
     headers: {
@@ -341,6 +349,42 @@ function passwordResetDocument(token, message, success) {
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     },
   });
+}
+
+function passwordResetLanguage(request, preferred) {
+  if (preferred === "en" || preferred === "tr") return preferred;
+  const header = request.headers.get("Accept-Language") || "";
+  const languages = header.split(",").map((part, index) => {
+    const [tag, ...parameters] = part.trim().toLowerCase().split(";");
+    const quality = parameters.find(value => value.trim().startsWith("q="));
+    return { tag: tag.split("-")[0], quality: quality ? Number(quality.trim().slice(2)) : 1, index };
+  }).filter(value => value.quality > 0 && Number.isFinite(value.quality))
+    .sort((left, right) => right.quality - left.quality || left.index - right.index);
+  return languages.find(value => value.tag === "en" || value.tag === "tr")?.tag || (header ? "en" : "tr");
+}
+
+function resetText(value, language) {
+  if (language !== "en") return value;
+  return ({
+    "Hesap eşleşirse şifre sıfırlama bağlantısı gönderildi.": "If an account matches, a password reset link has been sent.",
+    "Hesap depolama bağlantısı hazır değil.": "Account storage is currently unavailable.",
+    "Sıfırlama bağlantısı geçersiz.": "This reset link is invalid.",
+    "İstek çok büyük veya okunamadı.": "The request is too large or could not be read.",
+    "Şifreler eşleşmiyor.": "Passwords do not match.",
+    "Şifre 8–128 karakter olmalı.": "Password must contain 8–128 characters.",
+    "Hesap güvenliği ayarı tamamlanana kadar şifre değiştirilemiyor.": "Password reset is temporarily unavailable until account security is configured.",
+    "Sıfırlama bağlantısının süresi dolmuş veya bağlantı daha önce kullanılmış.": "This reset link has expired or has already been used.",
+    "Tempo hesabı bulunamadı.": "The Tempo account could not be found.",
+    "Şifren güncellendi. Artık Tempo uygulamasından giriş yapabilirsin.": "Your password has been updated. You can now sign in to the Tempo app.",
+    "Şifren hazır": "Your password is ready",
+    "Yeni şifre oluştur": "Create a new password",
+    "Tempo hesabın için güçlü bir şifre belirle.": "Choose a strong password for your Tempo account.",
+    "Yeni şifre": "New password",
+    "Yeni şifre tekrar": "Confirm new password",
+    "Şifreyi güncelle": "Update password",
+    "Tempo şifre sıfırlama": "Reset your Tempo password",
+    "Sağlık ve spor": "Health and fitness",
+  })[value] || value;
 }
 
 function escapeHTML(value) {
@@ -528,12 +572,12 @@ async function accountDataKeysForDeletion(env, userId) {
   return keysToDelete;
 }
 
-async function invalidatePasswordResetTokens(env, userId) {
+async function invalidatePasswordResetTokens(env, userId, consumedKey = "") {
   const keysToDelete = [];
   let cursor;
   do {
     const page = await env.TOKEN_STORE.list({ prefix: "account-reset:", limit: 1000, ...(cursor ? { cursor } : {}) });
-    const matches = await Promise.all(page.keys.map(async entry =>
+    const matches = await Promise.all(page.keys.filter(entry => entry.name !== consumedKey).map(async entry =>
       await env.TOKEN_STORE.get(entry.name) === userId ? entry.name : null));
     keysToDelete.push(...matches.filter(Boolean));
     cursor = page.list_complete ? undefined : page.cursor;
