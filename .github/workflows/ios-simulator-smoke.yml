@@ -90,6 +90,22 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             test
 
+      - name: Export UI test screenshots
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/TempoUITests.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/TempoUITests.xcresult" --output-path "$RUNNER_TEMP/TempoUITestScreenshots"
+          fi
+
+      - name: Keep UI test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-ios-ui-screenshots
+          path: ${{ runner.temp }}/TempoUITestScreenshots
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Keep simulator launch screenshot
         if: always()
         uses: actions/upload-artifact@v4
