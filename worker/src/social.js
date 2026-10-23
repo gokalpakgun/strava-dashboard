@@ -107,13 +107,16 @@ async function loadSnapshot(env, user) {
     Promise.all(state.outgoing.slice(0, MAX_PENDING).map(id => loadRequest(env, id))),
     Promise.all(state.challenges.slice(0, 40).map(id => loadChallenge(env, id))),
   ]);
-  const activeIds = challengeRecords.filter(challenge => challenge && Date.parse(challenge.endsAt) > Date.now()).map(challenge => challenge.id);
-  if (activeIds.length !== state.challenges.length) {
+  const activeIds = challengeRecords.filter(challenge => challenge && Date.parse(challenge.endsAt) > Date.now()
+    && challenge.participants.some(item => item.userId === user.id && item.status !== "declined")).map(challenge => challenge.id);
+  const pendingChanged = retainPendingRequests(state, user.id, [...incoming, ...outgoing]);
+  if (activeIds.length !== state.challenges.length || pendingChanged) {
     state.challenges = activeIds;
     await saveState(env, user.id, state);
   }
   const activeChallenges = (await Promise.all(challengeRecords.map(async challenge => {
-    if (!challenge || Date.parse(challenge.endsAt) <= Date.now() || !challenge.participants.some(item => item.userId === user.id)) return null;
+    if (!challenge || Date.parse(challenge.endsAt) <= Date.now()
+      || !challenge.participants.some(item => item.userId === user.id && item.status !== "declined")) return null;
     return presentChallenge(env, challenge, user.id);
   }))).filter(Boolean);
   return json({
@@ -145,6 +148,7 @@ async function sendFriendRequest(request, env, user) {
   const friend = friendId ? await env.TOKEN_STORE.get("account-user:" + friendId, "json") : null;
   if (!friend) return json({ error: "Bu kullanıcı adına sahip Tempo hesabı bulunamadı." }, 404);
   const [mine, theirs] = await Promise.all([readState(env, user.id), readState(env, friend.id)]);
+  await Promise.all([prunePendingRequests(env, user.id, mine), prunePendingRequests(env, friend.id, theirs)]);
   if (mine.blocked.includes(friend.id) || theirs.blocked.includes(user.id)) return json({ error: "Bu kullanıcıyla bağlantı kurulamıyor." }, 403);
   if (mine.friends.includes(friend.id)) return json({ error: "Bu kişi zaten arkadaş listende." }, 409);
   const existingRequests = await findRequestsBetween(env, mine, theirs, user.id, friend.id);
@@ -248,7 +252,12 @@ async function updateBlock(request, env, user) {
   await Promise.all(sharedChallenges.map(async id => {
     const challenge = await loadChallenge(env, id);
     if (!challenge || !challenge.participants.some(item => item.userId === user.id) || !challenge.participants.some(item => item.userId === userId)) return;
-    challenge.participants = challenge.participants.filter(item => item.userId !== userId);
+    // A member may leave a shared challenge by blocking someone, but cannot
+    // evict its creator or another member from a third person's challenge.
+    const removedId = challenge.creatorId === user.id ? userId : user.id;
+    challenge.participants = challenge.participants.filter(item => item.userId !== removedId);
+    if (removedId === user.id) mine.challenges = mine.challenges.filter(value => value !== id);
+    else theirs.challenges = theirs.challenges.filter(value => value !== id);
     await env.TOKEN_STORE.put("social-challenge:" + id, JSON.stringify(challenge), { expirationTtl: Math.max(60, Math.ceil((Date.parse(challenge.endsAt) - Date.now()) / 1000) + 60 * 60 * 24 * 14) });
   }));
   await Promise.all([saveState(env, user.id, mine), saveState(env, userId, theirs)]);
@@ -344,6 +353,7 @@ async function updateChallenge(request, env, user, id) {
   const key = "social-challenge:" + id;
   const challenge = await loadChallenge(env, id);
   if (!challenge) return json({ error: "Yarışma bulunamadı veya süresi doldu." }, 404);
+  if (Date.parse(challenge.endsAt) <= Date.now()) return json({ error: "Bu yarışmanın süresi doldu." }, 409);
   const participant = challenge.participants.find(item => item.userId === user.id);
   if (!participant) return json({ error: "Bu yarışmaya davetin yok." }, 403);
   const body = await readBody(request, 1024);
@@ -364,6 +374,7 @@ async function updateChallenge(request, env, user, id) {
 }
 
 async function presentChallenge(env, challenge, viewerId) {
+  const viewerAccepted = challenge.participants.some(item => item.userId === viewerId && item.status === "accepted");
   const participants = await Promise.all(challenge.participants.map(async participant => {
     const profile = await loadPublicUser(env, participant.userId);
     const result = {
@@ -373,7 +384,7 @@ async function presentChallenge(env, challenge, viewerId) {
       user: profile,
       score: null,
     };
-    if (profile && participant.status === "accepted" && participant.shareHealth === true) {
+    if (viewerAccepted && profile && participant.status === "accepted" && participant.shareHealth === true) {
       result.score = await challengeScore(env, participant.userId, challenge);
     }
     return result;
@@ -395,23 +406,24 @@ async function challengeScore(env, userId, challenge) {
   const health = await env.TOKEN_STORE.get("account-health:" + userId, "json");
   const startDay = challenge.startsAt.slice(0, 10);
   const endDayExclusive = challenge.endsAt.slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
   let total = 0;
   let hasMeasurement = false;
   for (const [day, values] of Object.entries(health?.days || {})) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < startDay || day >= endDayExclusive || Date.now() < Date.parse(challenge.startsAt)) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < startDay || day >= endDayExclusive || day > today || Date.now() < Date.parse(challenge.startsAt)) continue;
     if (challenge.metric === "movementDays") {
-      const steps = Number(values?.steps);
-      const minutes = Number(values?.exerciseMinutes);
-      const hasSteps = Number.isFinite(steps) && steps >= 0;
-      const hasMinutes = Number.isFinite(minutes) && minutes >= 0;
+      const steps = values?.steps;
+      const minutes = values?.exerciseMinutes;
+      const hasSteps = typeof steps === "number" && Number.isFinite(steps) && steps >= 0;
+      const hasMinutes = typeof minutes === "number" && Number.isFinite(minutes) && minutes >= 0;
       if (hasSteps || hasMinutes) {
         hasMeasurement = true;
         if ((hasSteps && steps >= 3_000) || (hasMinutes && minutes >= 10)) total += 1;
       }
       continue;
     }
-    const value = Number(values?.[challenge.metric]);
-    if (Number.isFinite(value) && value >= 0) { total += value; hasMeasurement = true; }
+    const value = values?.[challenge.metric];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) { total += value; hasMeasurement = true; }
   }
   return hasMeasurement ? Math.round(total) : null;
 }
@@ -420,6 +432,25 @@ async function findRequestsBetween(env, mine, theirs, from, to) {
   const ids = [...new Set([...mine.outgoing, ...mine.incoming, ...theirs.outgoing, ...theirs.incoming])];
   const records = await Promise.all(ids.map(id => loadRequest(env, id)));
   return records.filter(item => item?.status === "pending" && ((item.from === from && item.to === to) || (item.from === to && item.to === from)));
+}
+
+function retainPendingRequests(state, userId, records) {
+  const pending = new Map(records.filter(record => record?.status === "pending").map(record => [record.id, record]));
+  const incoming = state.incoming.filter(id => pending.get(id)?.to === userId);
+  const outgoing = state.outgoing.filter(id => pending.get(id)?.from === userId);
+  const changed = incoming.length !== state.incoming.length || outgoing.length !== state.outgoing.length;
+  state.incoming = incoming;
+  state.outgoing = outgoing;
+  return changed;
+}
+
+async function prunePendingRequests(env, userId, state) {
+  const ids = [...new Set([...state.incoming, ...state.outgoing])];
+  if (!ids.length) return;
+  const records = await Promise.all(ids.map(id => loadRequest(env, id)));
+  // The caller saves after its mutation; two writes to the same key here
+  // would hit Cloudflare KV's one-write-per-second limit.
+  retainPendingRequests(state, userId, records);
 }
 
 async function readState(env, userId) {

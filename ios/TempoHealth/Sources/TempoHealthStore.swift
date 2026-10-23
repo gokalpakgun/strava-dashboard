@@ -41,6 +41,8 @@ final class TempoHealthStore {
     func workoutHealthSignal(start: Date, durationMinutes: Int) async throws -> TempoWorkoutHealthSignal {
         guard isAvailable else { throw HealthStoreError.unavailable }
         let end = start.addingTimeInterval(Double(durationMinutes) * 60)
+        guard durationMinutes > 0, durationMinutes <= 24 * 60,
+              start.timeIntervalSince1970.isFinite, end <= Date() else { throw HealthStoreError.invalidWorkoutInterval }
         let baselineStart = start.addingTimeInterval(-20 * 60)
         try await store.requestAuthorization(toShare: [], read: [heartRateType, stepType, respiratoryRateType, energyType, exerciseTimeType, HKObjectType.workoutType()])
 
@@ -101,15 +103,20 @@ final class TempoHealthStore {
     }
 
     func saveWater(amountMl: Double) async throws {
+        guard isAvailable else { throw HealthStoreError.unavailable }
+        guard amountMl.isFinite, amountMl > 0 else { throw HealthStoreError.invalidWaterAmount }
+        let now = Date()
         let quantity = HKQuantity(unit: .literUnit(with: .milli), doubleValue: amountMl)
-        let sample = HKQuantitySample(type: waterType, quantity: quantity, start: Date(), end: Date())
+        let sample = HKQuantitySample(type: waterType, quantity: quantity, start: now, end: now)
         try await store.save(sample)
     }
 
     func readRecentDays(dayCount: Int = 90) async throws -> [String: TempoHealthMetrics] {
+        guard isAvailable else { throw HealthStoreError.unavailable }
+        guard dayCount > 0, dayCount <= 366 else { throw HealthStoreError.invalidHistoryRange }
         let calendar = Calendar.autoupdatingCurrent
         let end = Date()
-        let start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -dayCount, to: end) ?? end)
+        let start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -(dayCount - 1), to: end) ?? end)
 
         async let water = dailyStatistics(type: waterType, unit: .literUnit(with: .milli), option: .cumulativeSum, start: start, end: end)
         async let steps = dailyStatistics(type: stepType, unit: .count(), option: .cumulativeSum, start: start, end: end)
@@ -291,59 +298,37 @@ final class TempoHealthStore {
         }
     }
 
-    private func sleepBreakdown(start: Date, end: Date) async throws -> [String: SleepBreakdown] {
+    private func sleepBreakdown(start: Date, end: Date) async throws -> [String: TempoSleepBreakdown] {
         try await withCheckedThrowingContinuation { continuation in
-            let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+            // Include the preceding evening so the oldest wake date has a complete night.
+            let previousDay = Calendar.autoupdatingCurrent.date(byAdding: .day, value: -1, to: start) ?? start
+            let predicate = HKQuery.predicateForSamples(withStart: previousDay, end: end, options: [])
             let query = HKSampleQuery(sampleType: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
                 if let error { continuation.resume(throwing: error); return }
-                var intervalsByNight: [String: [Int: [DateInterval]]] = [:]
-                for sample in (samples as? [HKCategorySample]) ?? [] {
-                    guard Self.isAsleep(sample.value) || sample.value == HKCategoryValueSleepAnalysis.awake.rawValue else { continue }
-                    let night = Self.dayString(sample.endDate.addingTimeInterval(12 * 60 * 60))
-                    intervalsByNight[night, default: [:]][sample.value, default: []]
-                        .append(DateInterval(start: sample.startDate, end: sample.endDate))
-                }
-                let result = intervalsByNight.mapValues { stages in
-                    let asleep = stages
-                        .filter { Self.isAsleep($0.key) }
-                        .flatMap(\.value)
-                    return SleepBreakdown(
-                        totalMinutes: Self.minutes(asleep),
-                        coreMinutes: Self.minutes(stages[HKCategoryValueSleepAnalysis.asleepCore.rawValue] ?? []),
-                        deepMinutes: Self.minutes(stages[HKCategoryValueSleepAnalysis.asleepDeep.rawValue] ?? []),
-                        remMinutes: Self.minutes(stages[HKCategoryValueSleepAnalysis.asleepREM.rawValue] ?? []),
-                        awakeMinutes: Self.minutes(stages[HKCategoryValueSleepAnalysis.awake.rawValue] ?? [])
+                let intervals = ((samples as? [HKCategorySample]) ?? []).compactMap { sample -> TempoSleepInterval? in
+                    let stage: TempoSleepStage
+                    switch sample.value {
+                    case HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue: stage = .unspecified
+                    case HKCategoryValueSleepAnalysis.asleepCore.rawValue: stage = .core
+                    case HKCategoryValueSleepAnalysis.asleepDeep.rawValue: stage = .deep
+                    case HKCategoryValueSleepAnalysis.asleepREM.rawValue: stage = .rem
+                    case HKCategoryValueSleepAnalysis.awake.rawValue: stage = .awake
+                    default: return nil // In-bed time is not sleep time.
+                    }
+                    return TempoSleepInterval(
+                        start: sample.startDate, end: sample.endDate, stage: stage,
+                        source: sample.sourceRevision.source.bundleIdentifier + ":" + (sample.device?.localIdentifier ?? "")
                     )
                 }
-                continuation.resume(returning: result)
+                continuation.resume(returning: TempoSleepAggregation.dailyBreakdown(intervals, from: start, to: end))
             }
             store.execute(query)
         }
     }
 
-    private static func minutes(_ intervals: [DateInterval]) -> Double {
-        let sorted = intervals.sorted { $0.start < $1.start }
-        var merged: [DateInterval] = []
-        for interval in sorted {
-            if let last = merged.last, interval.start <= last.end {
-                merged[merged.count - 1] = DateInterval(start: last.start, end: max(last.end, interval.end))
-            } else {
-                merged.append(interval)
-            }
-        }
-        return round(merged.reduce(0) { $0 + $1.duration / 60 }, digits: 0)
-    }
-
-    private static func isAsleep(_ value: Int) -> Bool {
-        value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue ||
-        value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
-        value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue ||
-        value == HKCategoryValueSleepAnalysis.asleepREM.rawValue
-    }
-
     private static func dayString(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.calendar = .autoupdatingCurrent
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = .autoupdatingCurrent
         formatter.dateFormat = "yyyy-MM-dd"
@@ -354,17 +339,117 @@ final class TempoHealthStore {
         let factor = pow(10, Double(digits))
         return (value * factor).rounded() / factor
     }
-}
 
-private struct SleepBreakdown {
-    let totalMinutes: Double
-    let coreMinutes: Double
-    let deepMinutes: Double
-    let remMinutes: Double
-    let awakeMinutes: Double
+    #if DEBUG && targetEnvironment(simulator)
+    /// Exercises the real simulator HealthKit store, including the system permission sheet.
+    /// This method is absent from Release builds and every physical-device build.
+    func runSimulatorIntegrationCheck() async throws -> String {
+        guard isAvailable else { throw HealthStoreError.unavailable }
+        let writeTypes: Set<HKSampleType> = [waterType, sleepType, stepType]
+        try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
+        guard writeTypes.allSatisfy({ store.authorizationStatus(for: $0) == .sharingAuthorized }) else {
+            throw simulatorCheckError("HealthKit test write permission was not granted for water, sleep and steps.")
+        }
+
+        let calendar = Calendar.autoupdatingCurrent
+        let dayStart = calendar.date(byAdding: .day, value: -2, to: calendar.startOfDay(for: Date()))!
+        let key = Self.dayString(dayStart)
+        let runID = UUID().uuidString
+        let metadata: [String: Any] = ["TempoSimulatorIntegrationRun": runID]
+        let at: (TimeInterval) -> Date = { dayStart.addingTimeInterval($0 * 60) }
+        let samples: [HKSample] = [
+            HKQuantitySample(type: waterType, quantity: HKQuantity(unit: .literUnit(with: .milli), doubleValue: 321), start: at(600), end: at(600), metadata: metadata),
+            HKQuantitySample(type: stepType, quantity: HKQuantity(unit: .count(), doubleValue: 1234), start: at(600), end: at(610), metadata: metadata),
+            HKCategorySample(type: sleepType, value: HKCategoryValueSleepAnalysis.asleepCore.rawValue, start: at(0), end: at(60), metadata: metadata),
+            HKCategorySample(type: sleepType, value: HKCategoryValueSleepAnalysis.asleepDeep.rawValue, start: at(60), end: at(120), metadata: metadata),
+            HKCategorySample(type: sleepType, value: HKCategoryValueSleepAnalysis.awake.rawValue, start: at(120), end: at(130), metadata: metadata),
+            HKCategorySample(type: sleepType, value: HKCategoryValueSleepAnalysis.asleepREM.rawValue, start: at(130), end: at(190), metadata: metadata),
+        ]
+        let before = try await readRecentDays(dayCount: 7)[key]
+
+        // The callback continuation resumes only after deferred cleanup completes. The defer
+        // also runs when an assertion or HealthKit query fails, deleting only this run's UUIDs.
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            Task {
+                var outcome: Result<String, Error> = .failure(simulatorCheckError("HealthKit test did not complete."))
+                defer {
+                    let completed = outcome
+                    store.delete(samples) { success, error in
+                        if let error {
+                            continuation.resume(throwing: self.simulatorCheckError("HealthKit test cleanup failed: \(error.localizedDescription)"))
+                        } else if !success {
+                            continuation.resume(throwing: self.simulatorCheckError("HealthKit did not confirm test sample cleanup."))
+                        } else {
+                            continuation.resume(with: completed)
+                        }
+                    }
+                }
+                do {
+                    try await store.save(samples)
+                    for sample in samples {
+                        let count = try await simulatorSampleCount(sample)
+                        guard count == 1 else { throw simulatorCheckError("HealthKit did not return the test sample \(sample.sampleType.identifier).") }
+                    }
+                    guard let after = try await readRecentDays(dayCount: 7)[key] else {
+                        throw simulatorCheckError("Production Health history did not return the seeded day.")
+                    }
+                    guard abs((after.waterMl ?? 0) - (before?.waterMl ?? 0) - 321) < 0.2 else {
+                        throw simulatorCheckError("Production daily water query did not include the 321 ml sample.")
+                    }
+                    guard abs((after.steps ?? 0) - (before?.steps ?? 0) - 1234) < 0.2 else {
+                        throw simulatorCheckError("Production daily step query did not include the 1234 steps sample.")
+                    }
+                    // A clean simulator has no other sleep records. Existing overlapping sleep
+                    // must not be mistaken for this test's expected stage totals.
+                    guard before?.sleepMinutes == nil else {
+                        throw simulatorCheckError("Choose a clean simulator: this test date already contains sleep data.")
+                    }
+                    guard after.sleepMinutes == 180, after.sleepCoreMinutes == 60,
+                          after.sleepDeepMinutes == 60, after.sleepREMMinutes == 60,
+                          after.sleepAwakeMinutes == 10 else {
+                        throw simulatorCheckError("Production sleep aggregation did not return 180 minutes and the expected stage totals.")
+                    }
+                    // Read permission cannot be inferred: HealthKit may expose an app's own
+                    // samples even when access to samples from other apps is denied.
+                    outcome = .success("HEALTHKIT_PASS own_samples=6 water_ml=321 steps=1234 sleep_min=180 stages=4 cleanup=6")
+                } catch {
+                    outcome = .failure(error)
+                }
+            }
+        }
+    }
+
+    private func simulatorSampleCount(_ sample: HKSample) async throws -> Int {
+        try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: sample.sampleType, predicate: HKQuery.predicateForObject(with: sample.uuid),
+                limit: HKObjectQueryNoLimit, sortDescriptors: nil
+            ) { _, samples, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: samples?.count ?? 0) }
+            }
+            store.execute(query)
+        }
+    }
+
+    private func simulatorCheckError(_ message: String) -> NSError {
+        NSError(domain: "TempoSimulatorHealthIntegration", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+    #endif
 }
 
 private enum HealthStoreError: LocalizedError {
     case unavailable
-    var errorDescription: String? { "Apple Sağlık bu cihazda kullanılamıyor." }
+    case invalidWaterAmount
+    case invalidWorkoutInterval
+    case invalidHistoryRange
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: return "Apple Sağlık bu cihazda kullanılamıyor.".tempoLocalized
+        case .invalidWaterAmount: return NSLocalizedString("Water amount must be greater than zero.", comment: "Health validation")
+        case .invalidWorkoutInterval: return NSLocalizedString("Choose a completed workout lasting between 1 minute and 24 hours.", comment: "Health validation")
+        case .invalidHistoryRange: return NSLocalizedString("Health history must cover between 1 and 366 days.", comment: "Health validation")
+        }
+    }
 }

@@ -2684,6 +2684,11 @@ private struct HealthScreen: View {
     var body: some View {
         TempoPage {
             PageTitle(title: "Apple Sağlık", subtitle: "Günlük sağlık ve toparlanma görünümün")
+#if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing-healthkit") {
+                SimulatorHealthIntegrationPanel()
+            }
+#endif
             healthIntro
             if !model.healthAvailable {
                 TempoCard {
@@ -3971,4 +3976,28 @@ private func eddingtonNumber(_ workouts: [TempoManualWorkout]) -> Int {
 private extension Calendar {
     func isDateInCurrentWeek(_ date: Date) -> Bool { isDate(date, equalTo: Date(), toGranularity: .weekOfYear) }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+private struct SimulatorHealthIntegrationPanel: View {
+    @State private var result = "HEALTHKIT_READY"
+    @State private var running = false
+    var body: some View {
+        VStack {
+            Button("Run HealthKit integration") {
+                running = true
+                result = "HEALTHKIT_RUNNING"
+                Task { @MainActor in
+                    do { result = try await TempoHealthStore().runSimulatorIntegrationCheck() }
+                    catch { result = "HEALTHKIT_FAIL " + error.localizedDescription }
+                    running = false
+                }
+            }
+            .accessibilityIdentifier("healthkit.integration.start")
+            .disabled(running)
+            Text(result).font(.caption)
+                .accessibilityIdentifier("healthkit.integration.result")
+        }
+    }
+}
+#endif
 

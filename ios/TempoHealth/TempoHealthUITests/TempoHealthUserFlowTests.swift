@@ -87,6 +87,41 @@ final class TempoHealthUserFlowTests: XCTestCase {
         capture(app, named: "Social friends")
     }
 
+    func testRealHealthKitAuthorizationWriteReadAndCleanup() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-authenticated", "--ui-testing-healthkit", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        let healthTab = element("tab.3", in: app)
+        XCTAssertTrue(healthTab.waitForExistence(timeout: 15))
+        healthTab.tap()
+        let start = element("healthkit.integration.start", in: app)
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        start.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let result = element("healthkit.integration.result", in: app)
+        let deadline = Date().addingTimeInterval(100)
+        var capturedPermission = false
+        while Date() < deadline {
+            if result.exists && (result.label.hasPrefix("HEALTHKIT_PASS") || result.label.hasPrefix("HEALTHKIT_FAIL")) { break }
+            for host in [app, springboard] {
+                for label in ["Turn On All", "Allow All", "Turn On All Categories", "Tümünü Aç", "Tümüne İzin Ver"] {
+                    let control = host.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+                    if control.exists && control.isHittable {
+                        if !capturedPermission { capture(app, named: "Real HealthKit permission sheet"); capturedPermission = true }
+                        control.tap()
+                    }
+                }
+                for label in ["Allow", "İzin Ver"] {
+                    let control = host.buttons[label]
+                    if control.exists && control.isHittable && control.isEnabled { control.tap() }
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        capture(app, named: "Real HealthKit read-write result")
+        XCTAssertTrue(result.exists && result.label.hasPrefix("HEALTHKIT_PASS"), "Real HealthKit integration did not pass: \(result.exists ? result.label : app.debugDescription)")
+    }
+
     private func launchApp(authenticated: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]

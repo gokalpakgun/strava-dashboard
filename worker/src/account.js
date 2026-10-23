@@ -5,7 +5,6 @@ import { moderateCommunityText } from "./content-moderation.js";
 const ACCOUNT_SESSION_SECONDS = 60 * 60 * 24 * 30;
 // Cloudflare Workers production rejects PBKDF2 counts above 100,000.
 const PASSWORD_ITERATIONS = 100000;
-const PASSWORD_PEPPER_VERSION = 1;
 const MAX_PROFILE_BODY = 800000;
 const encoder = new TextEncoder();
 const allowedSports = new Set([
@@ -52,7 +51,8 @@ async function signUp(request, env) {
   const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
   const validation = validateCredentials(email, username, password);
   if (validation) return responseJSON({ error: validation }, 400);
-  if (typeof env.AUTH_PEPPER !== "string" || env.AUTH_PEPPER.length < 32) return responseJSON({ error: "Hesap güvenliği ayarı tamamlanana kadar yeni kayıt açılamıyor." }, 503);
+  const passwordConfiguration = activePasswordConfiguration(env);
+  if (!passwordConfiguration) return responseJSON({ error: "Hesap güvenliği ayarı tamamlanana kadar yeni kayıt açılamıyor." }, 503);
 
   const requestId = String(request.headers.get("X-Tempo-Request-ID") || "").trim().toLowerCase();
   const limited = await rateLimit(request, env, "signup", 10);
@@ -71,10 +71,14 @@ async function signUp(request, env) {
       const sameAccount = completedUser
         && completedUser.email === email
         && completedUser.username === username;
+      const storedPepper = pepperForUser(completedUser, env);
+      if (sameAccount && storedPepper === null) {
+        return responseJSON({ error: "Hesap güvenliği yapılandırması eksik." }, 503);
+      }
       const passwordMatches = sameAccount
         && completedUser.passwordHash
         && constantTimeEqual(
-          await derivePassword(password, completedUser.passwordSalt, storedPasswordIterations(completedUser), pepperForUser(completedUser, env)),
+          await derivePassword(password, completedUser.passwordSalt, storedPasswordIterations(completedUser), storedPepper),
           completedUser.passwordHash,
         );
       if (!passwordMatches) {
@@ -96,7 +100,7 @@ async function signUp(request, env) {
 
   const id = randomHex(20);
   const salt = randomBase64(16);
-  const passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS, env.AUTH_PEPPER);
+  const passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS, passwordConfiguration.pepper);
   const now = new Date().toISOString();
   const user = {
     id,
@@ -112,7 +116,7 @@ async function signUp(request, env) {
     passwordSalt: salt,
     passwordHash,
     passwordIterations: PASSWORD_ITERATIONS,
-    passwordPepperVersion: PASSWORD_PEPPER_VERSION,
+    passwordPepperVersion: passwordConfiguration.version,
   };
 
   await Promise.all([
@@ -156,23 +160,25 @@ async function signIn(request, env) {
     return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
-  if (user.passwordPepperVersion && user.passwordPepperVersion !== PASSWORD_PEPPER_VERSION) {
+  if (user.passwordPepperVersion && ![1, 2].includes(user.passwordPepperVersion)) {
     return responseJSON({ error: "Hesap güvenliği sürümü desteklenmiyor." }, 503);
   }
-  if (user.passwordPepperVersion && (typeof env.AUTH_PEPPER !== "string" || env.AUTH_PEPPER.length < 32)) {
+  const storedPepper = pepperForUser(user, env);
+  if (storedPepper === null) {
     return responseJSON({ error: "Hesap güvenliği yapılandırması eksik." }, 503);
   }
-  const candidate = await derivePassword(password, user.passwordSalt, storedPasswordIterations(user), pepperForUser(user, env));
+  const candidate = await derivePassword(password, user.passwordSalt, storedPasswordIterations(user), storedPepper);
   if (!constantTimeEqual(candidate, user.passwordHash)) {
     return responseJSON({ error: "E-posta, kullanıcı adı veya şifre hatalı." }, 401);
   }
 
-  // Upgrade older unpeppered hashes after a successful login. If the secret is
-  // absent, keep legacy accounts usable until production is configured.
-  if (!user.passwordPepperVersion && env.AUTH_PEPPER) {
-    user.passwordHash = await derivePassword(password, user.passwordSalt, PASSWORD_ITERATIONS, env.AUTH_PEPPER);
+  // Verify with the original secret first, then migrate to the newest strong
+  // version. Never replace AUTH_PEPPER in production: v1 accounts still need it.
+  const passwordConfiguration = activePasswordConfiguration(env);
+  if (passwordConfiguration && (user.passwordPepperVersion || 0) < passwordConfiguration.version) {
+    user.passwordHash = await derivePassword(password, user.passwordSalt, PASSWORD_ITERATIONS, passwordConfiguration.pepper);
     user.passwordIterations = PASSWORD_ITERATIONS;
-    user.passwordPepperVersion = PASSWORD_PEPPER_VERSION;
+    user.passwordPepperVersion = passwordConfiguration.version;
     user.updatedAt = new Date().toISOString();
     await env.TOKEN_STORE.put("account-user:" + user.id, JSON.stringify(user));
   }
@@ -206,7 +212,13 @@ async function forgotPassword(request, env, url) {
 
   // Never derive a credential-bearing link from the incoming Host header.
   const resetLink = "https://apitempo.com/reset-password?token=" + token;
-  const sent = await sendPasswordResetEmail(env, email, resetLink);
+  let sent = false;
+  try {
+    sent = await sendPasswordResetEmail(env, email, resetLink);
+  } catch {
+    // Network exceptions must follow the same cleanup path as an HTTP error.
+    console.error("Password reset email transport failed.");
+  }
   if (!sent) {
     await env.TOKEN_STORE.delete("account-reset:" + tokenHash);
     return responseJSON({ error: "Sıfırlama e-postası şu anda gönderilemedi. Biraz sonra tekrar dene." }, 502);
@@ -217,6 +229,7 @@ async function forgotPassword(request, env, url) {
 async function sendPasswordResetEmail(env, email, resetLink) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(10000),
     headers: {
       "Authorization": "Bearer " + env.RESEND_API_KEY,
       "Content-Type": "application/json",
@@ -249,9 +262,10 @@ async function resetPasswordValues(tokenValue, passwordValue, env) {
     return { ok: false, status: 400, error: "Sıfırlama bağlantısı geçersiz." };
   }
   if (password.length < 8 || password.length > 128) {
-    return { ok: false, status: 400, error: "Şifre 8–128 karakter olmalı." };
+    return { ok: false, status: 400, retryable: true, error: "Şifre 8–128 karakter olmalı." };
   }
-  if (typeof env.AUTH_PEPPER !== "string" || env.AUTH_PEPPER.length < 32) return { ok: false, status: 503, error: "Hesap güvenliği ayarı tamamlanana kadar şifre değiştirilemiyor." };
+  const passwordConfiguration = activePasswordConfiguration(env);
+  if (!passwordConfiguration) return { ok: false, status: 503, retryable: true, error: "Hesap güvenliği ayarı tamamlanana kadar şifre değiştirilemiyor." };
 
   const resetKey = "account-reset:" + await sha256Hex(token);
   const userId = await env.TOKEN_STORE.get(resetKey);
@@ -267,9 +281,9 @@ async function resetPasswordValues(tokenValue, passwordValue, env) {
 
   const salt = randomBase64(16);
   user.passwordSalt = salt;
-  user.passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS, env.AUTH_PEPPER);
+  user.passwordHash = await derivePassword(password, salt, PASSWORD_ITERATIONS, passwordConfiguration.pepper);
   user.passwordIterations = PASSWORD_ITERATIONS;
-  user.passwordPepperVersion = PASSWORD_PEPPER_VERSION;
+  user.passwordPepperVersion = passwordConfiguration.version;
   user.sessionVersion = (Number.isInteger(user.sessionVersion) && user.sessionVersion > 0 ? user.sessionVersion : 1) + 1;
   user.updatedAt = new Date().toISOString();
   await Promise.all([
@@ -302,7 +316,7 @@ export async function handlePasswordResetPage(request, env, url) {
       return passwordResetDocument(String(form.get("token") || ""), "Şifreler eşleşmiyor.", false);
     }
     const result = await resetPasswordValues(form.get("token"), password, env);
-    return passwordResetDocument("", result.ok ? "Şifren güncellendi. Artık Tempo uygulamasından giriş yapabilirsin." : result.error, result.ok);
+    return passwordResetDocument(result.retryable ? String(form.get("token") || "") : "", result.ok ? "Şifren güncellendi. Artık Tempo uygulamasından giriş yapabilirsin." : result.error, result.ok);
   }
   return new Response("Method not allowed", { status: 405, headers: { "Allow": "GET, POST" } });
 }
@@ -426,9 +440,9 @@ async function updateProfile(request, env) {
   user.updatedAt = new Date().toISOString();
   const writes = [
     env.TOKEN_STORE.put("account-user:" + user.id, JSON.stringify(user)),
-    env.TOKEN_STORE.put("account-username:" + user.username, user.id),
   ];
   if (oldUsername && oldUsername !== user.username) {
+    writes.push(env.TOKEN_STORE.put("account-username:" + user.username, user.id));
     writes.push(env.TOKEN_STORE.delete("account-username:" + oldUsername));
   }
   await Promise.all(writes);
@@ -693,7 +707,26 @@ function storedPasswordIterations(user) {
 }
 
 function pepperForUser(user, env) {
-  return user?.passwordPepperVersion === PASSWORD_PEPPER_VERSION ? env.AUTH_PEPPER || "" : "";
+  if (!user?.passwordPepperVersion) return "";
+  if (user.passwordPepperVersion === 1) {
+    // Historical releases allowed short v1 peppers during a legacy upgrade.
+    // They remain valid only for verifying those already stored hashes.
+    return typeof env.AUTH_PEPPER === "string" && env.AUTH_PEPPER.length > 0 ? env.AUTH_PEPPER : null;
+  }
+  if (user.passwordPepperVersion === 2) {
+    return typeof env.AUTH_PEPPER_V2 === "string" && env.AUTH_PEPPER_V2.length >= 32 ? env.AUTH_PEPPER_V2 : null;
+  }
+  return null;
+}
+
+function activePasswordConfiguration(env) {
+  if (typeof env.AUTH_PEPPER_V2 === "string" && env.AUTH_PEPPER_V2.length >= 32) {
+    return { version: 2, pepper: env.AUTH_PEPPER_V2 };
+  }
+  if (typeof env.AUTH_PEPPER === "string" && env.AUTH_PEPPER.length >= 32) {
+    return { version: 1, pepper: env.AUTH_PEPPER };
+  }
+  return null;
 }
 
 async function sha256Hex(value) {

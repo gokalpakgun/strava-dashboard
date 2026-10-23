@@ -323,9 +323,13 @@ final class TempoAccountStore: ObservableObject {
     }
 
     private func restoreSession() async {
+        let restoringToken = sessionToken
         defer { isRestoring = false }
         do {
             let envelope = try await request(path: "/api/account/me", method: "GET", body: Optional<EmptyPayload>.none, authenticated: true)
+            // A slower response from the old session must not replace the
+            // profile after the user signs out or signs in to another account.
+            guard sessionToken == restoringToken else { return }
             guard let user = envelope.user else { throw AccountError.server("Hesap bilgisi alınamadı.") }
             profile = user
             AccountProfileCache.save(user)
@@ -352,6 +356,7 @@ final class TempoAccountStore: ObservableObject {
         let (data, response) = try await Self.apiSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sosyal bölümden yanıt alınamadı.") }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 401, self.sessionToken == sessionToken { clearLocalSession() }
             let envelope = try? JSONDecoder().decode(AccountEnvelope.self, from: data)
             throw AccountError.server(envelope?.error ?? "Sosyal işlem tamamlanamadı.")
         }
@@ -396,38 +401,52 @@ final class TempoAccountStore: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
         }
+        let requestSessionToken = authenticated ? sessionToken : nil
         if authenticated {
             guard let sessionToken else { throw AccountError.server("Tempo oturumunun süresi doldu.") }
             request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         }
         let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000]
+        // Signup has a request ID and the other listed operations can safely
+        // be repeated. A lost response must not automatically send several
+        // reset emails or repeat an account deletion.
+        let canRetry = method == "GET" || ["/api/account/signup", "/api/account/login", "/api/account/logout"].contains(path)
         var lastError: Error = AccountError.server("Sunucudan yanıt alınamadı.")
 
         for attempt in retryDelays.indices {
+            try Task.checkCancellation()
             if retryDelays[attempt] > 0 {
-                try? await Task.sleep(nanoseconds: retryDelays[attempt])
+                try await Task.sleep(nanoseconds: retryDelays[attempt])
             }
             do {
                 let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     throw AccountError.server("Sunucudan yanıt alınamadı.")
                 }
-                let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil, stravaRevoked: nil)
+                let envelope = try? JSONDecoder().decode(AccountEnvelope.self, from: data)
                 guard (200..<300).contains(http.statusCode) else {
-                    if http.statusCode == 401 && authenticated { clearLocalSession() }
-                    let message = envelope.error ?? envelope.message ?? "İşlem tamamlanamadı."
+                    if http.statusCode == 401 && authenticated && sessionToken == requestSessionToken { clearLocalSession() }
+                    let message = envelope?.error ?? envelope?.message ?? "İşlem tamamlanamadı."
                     let retryable = http.statusCode == 408 || http.statusCode >= 500
-                    if retryable, attempt < retryDelays.count - 1 {
+                    let shortRetry = http.statusCode == 429 && http.value(forHTTPHeaderField: "Retry-After") == "1"
+                    if canRetry, retryable || shortRetry, attempt < retryDelays.count - 1 {
                         lastError = AccountError.server(message)
+                        if shortRetry { try await Task.sleep(nanoseconds: 1_000_000_000) }
                         continue
                     }
                     throw AccountError.server(message)
                 }
+                if http.statusCode == 204 {
+                    return AccountEnvelope(token: nil, user: nil, error: nil, message: nil, stravaRevoked: nil)
+                }
+                guard let envelope else { throw AccountError.server("Sunucudan yanıt alınamadı.") }
                 return envelope
             } catch {
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { throw error }
                 lastError = error
                 if error is AccountError { throw error }
-                if attempt < retryDelays.count - 1 { continue }
+                if canRetry, attempt < retryDelays.count - 1 { continue }
+                break
             }
         }
         if let urlError = lastError as? URLError {
@@ -534,15 +553,19 @@ private enum AccountTokenStore {
     }
 
     static func save(_ token: String) -> Bool {
-        delete()
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
             kSecValueData as String: Data(token.utf8),
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecSuccess { return true }
+        guard status == errSecItemNotFound else { return false }
+        return SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil) == errSecSuccess
     }
 
     static func delete() {
