@@ -380,7 +380,18 @@ final class TempoHealthStore {
                         } else if !success {
                             continuation.resume(throwing: self.simulatorCheckError("HealthKit did not confirm test sample cleanup."))
                         } else {
-                            continuation.resume(with: completed)
+                            Task {
+                                do {
+                                    for sample in samples {
+                                        guard try await self.simulatorSampleCount(sample) == 0 else {
+                                            throw self.simulatorCheckError("A test UUID was still readable after HealthKit cleanup.")
+                                        }
+                                    }
+                                    continuation.resume(with: completed)
+                                } catch {
+                                    continuation.resume(throwing: error)
+                                }
+                            }
                         }
                     }
                 }

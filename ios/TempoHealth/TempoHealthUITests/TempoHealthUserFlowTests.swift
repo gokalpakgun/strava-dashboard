@@ -76,6 +76,12 @@ final class TempoHealthUserFlowTests: XCTestCase {
         XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 30), "Onboarding should finish without requiring Strava or Apple Health")
         capture(app, named: "Live account onboarding completed")
 
+        app.terminate()
+        app = launchApp(preserveSession: true)
+        XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 30), "Relaunch should restore the real Keychain session without another login. \(accountError(in: app))")
+        XCTAssertFalse(element("auth.signIn", in: app).exists, "A stored real session must not return to the sign-in screen")
+        capture(app, named: "Live Keychain session preserved after relaunch")
+
         for (identifier, name) in [(username, "username"), (email, "email")] {
             app.terminate()
             app = launchApp()
@@ -172,11 +178,14 @@ final class TempoHealthUserFlowTests: XCTestCase {
         XCTAssertTrue(result.exists && result.label.hasPrefix("HEALTHKIT_PASS"), "Real HealthKit integration did not pass: \(result.exists ? result.label : app.debugDescription)")
     }
 
-    private func launchApp(authenticated: Bool = false) -> XCUIApplication {
+    private func launchApp(authenticated: Bool = false, preserveSession: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
         if authenticated {
             app.launchArguments.append("--ui-testing-authenticated")
+        }
+        if preserveSession {
+            app.launchArguments.append("--ui-testing-preserve-session")
         }
         app.launch()
         return app

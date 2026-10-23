@@ -175,9 +175,11 @@ final class TempoAccountStore: ObservableObject {
             isRestoring = false
             return
         }
-        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           !ProcessInfo.processInfo.arguments.contains("--ui-testing-preserve-session") {
             // UI tests start independently of any real session saved by an
-            // earlier test. They can still exercise the real account API.
+            // earlier test. The explicit preserve flag exercises normal
+            // Keychain/cache loading and session restoration after relaunch.
             sessionToken = nil
             profile = nil
             isRestoring = false
