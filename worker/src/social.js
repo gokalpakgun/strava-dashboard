@@ -14,9 +14,6 @@ export async function handleSocialRequest(request, env, url) {
   const userId = account.user.id;
   const root = "/api/account/social";
 
-  if (!hasModerationToken(env) && [root + "/friends", root + "/requests"].includes(url.pathname)) {
-    return json({ error: "Sosyal güvenlik ayarı tamamlanana kadar bu özellik kullanılamıyor." }, 503);
-  }
   if (!hasModerationToken(env) && url.pathname.startsWith(root + "/challenges")) {
     return json({ error: "Sosyal güvenlik ayarı tamamlanana kadar bu özellik kullanılamıyor." }, 503);
   }
@@ -110,13 +107,16 @@ async function loadSnapshot(env, user) {
     Promise.all(state.outgoing.slice(0, MAX_PENDING).map(id => loadRequest(env, id))),
     Promise.all(state.challenges.slice(0, 40).map(id => loadChallenge(env, id))),
   ]);
-  const activeIds = challengeRecords.filter(challenge => challenge && Date.parse(challenge.endsAt) > Date.now()).map(challenge => challenge.id);
-  if (activeIds.length !== state.challenges.length) {
+  const activeIds = challengeRecords.filter(challenge => challenge && Date.parse(challenge.endsAt) > Date.now()
+    && challenge.participants.some(item => item.userId === user.id && item.status !== "declined")).map(challenge => challenge.id);
+  const pendingChanged = retainPendingRequests(state, user.id, [...incoming, ...outgoing]);
+  if (activeIds.length !== state.challenges.length || pendingChanged) {
     state.challenges = activeIds;
     await saveState(env, user.id, state);
   }
   const activeChallenges = (await Promise.all(challengeRecords.map(async challenge => {
-    if (!challenge || Date.parse(challenge.endsAt) <= Date.now() || !challenge.participants.some(item => item.userId === user.id)) return null;
+    if (!challenge || Date.parse(challenge.endsAt) <= Date.now()
+      || !challenge.participants.some(item => item.userId === user.id && item.status !== "declined")) return null;
     return presentChallenge(env, challenge, user.id);
   }))).filter(Boolean);
   return json({
@@ -148,13 +148,36 @@ async function sendFriendRequest(request, env, user) {
   const friend = friendId ? await env.TOKEN_STORE.get("account-user:" + friendId, "json") : null;
   if (!friend) return json({ error: "Bu kullanıcı adına sahip Tempo hesabı bulunamadı." }, 404);
   const [mine, theirs] = await Promise.all([readState(env, user.id), readState(env, friend.id)]);
+  await Promise.all([prunePendingRequests(env, user.id, mine), prunePendingRequests(env, friend.id, theirs)]);
   if (mine.blocked.includes(friend.id) || theirs.blocked.includes(user.id)) return json({ error: "Bu kullanıcıyla bağlantı kurulamıyor." }, 403);
   if (mine.friends.includes(friend.id)) return json({ error: "Bu kişi zaten arkadaş listende." }, 409);
+  const existingRequests = await findRequestsBetween(env, mine, theirs, user.id, friend.id);
+  const incomingRequest = existingRequests.find(item => item.from === friend.id && item.to === user.id);
+  if (incomingRequest) {
+
+    // If both people send an invite before either sees the notification,
+    // treat the second invite as acceptance instead of trapping them in a 409.
+    if (mine.friends.length >= MAX_FRIENDS || theirs.friends.length >= MAX_FRIENDS) {
+      return json({ error: "Arkadaş listesi sınırına ulaşıldı." }, 409);
+    }
+    const requestIds = new Set(existingRequests.map(item => item.id));
+    mine.incoming = mine.incoming.filter(id => !requestIds.has(id));
+    mine.outgoing = mine.outgoing.filter(id => !requestIds.has(id));
+    theirs.incoming = theirs.incoming.filter(id => !requestIds.has(id));
+    theirs.outgoing = theirs.outgoing.filter(id => !requestIds.has(id));
+    mine.friends.unshift(friend.id);
+    theirs.friends.unshift(user.id);
+    await Promise.all([
+      ...existingRequests.map(item => env.TOKEN_STORE.delete("social-request:" + item.id)),
+      saveState(env, user.id, mine),
+      saveState(env, friend.id, theirs),
+    ]);
+    return json({ ok: true, accepted: true, user: publicProfile(friend) });
+  }
+  if (existingRequests.length) return json({ error: "Bu kişiye zaten bekleyen bir istek var." }, 409);
   if (mine.outgoing.length >= MAX_PENDING || theirs.incoming.length >= MAX_PENDING) {
     return json({ error: "Bekleyen arkadaşlık isteği sınırına ulaşıldı." }, 429);
   }
-  const existingRequest = await findRequestBetween(env, mine, theirs, user.id, friend.id);
-  if (existingRequest) return json({ error: "Bu kişiye zaten bekleyen bir istek var." }, 409);
   const id = crypto.randomUUID();
   const record = { id, from: user.id, to: friend.id, status: "pending", createdAt: new Date().toISOString() };
   mine.outgoing.unshift(id);
@@ -229,7 +252,12 @@ async function updateBlock(request, env, user) {
   await Promise.all(sharedChallenges.map(async id => {
     const challenge = await loadChallenge(env, id);
     if (!challenge || !challenge.participants.some(item => item.userId === user.id) || !challenge.participants.some(item => item.userId === userId)) return;
-    challenge.participants = challenge.participants.filter(item => item.userId !== userId);
+    // A member may leave a shared challenge by blocking someone, but cannot
+    // evict its creator or another member from a third person's challenge.
+    const removedId = challenge.creatorId === user.id ? userId : user.id;
+    challenge.participants = challenge.participants.filter(item => item.userId !== removedId);
+    if (removedId === user.id) mine.challenges = mine.challenges.filter(value => value !== id);
+    else theirs.challenges = theirs.challenges.filter(value => value !== id);
     await env.TOKEN_STORE.put("social-challenge:" + id, JSON.stringify(challenge), { expirationTtl: Math.max(60, Math.ceil((Date.parse(challenge.endsAt) - Date.now()) / 1000) + 60 * 60 * 24 * 14) });
   }));
   await Promise.all([saveState(env, user.id, mine), saveState(env, userId, theirs)]);
@@ -295,7 +323,7 @@ async function createChallenge(request, env, user) {
   const moderation = await moderateCommunityText(env, title);
   if (moderation.unavailable) return json({ error: "Yarışma adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene." }, 503);
   if (!moderation.allowed) return json({ error: "Bu yarışma adı topluluk kurallarına uygun değil." }, 400);
-  if (!["steps", "exerciseMinutes"].includes(metric)) return json({ error: "Yarışma yalnızca adım veya egzersiz dakikası üzerinden olabilir." }, 400);
+  if (!["steps", "exerciseMinutes", "movementDays"].includes(metric)) return json({ error: "Yarışma hedefi geçersiz." }, 400);
   if (friendIds.length < 1 || friendIds.length > MAX_CHALLENGE_MEMBERS - 1) return json({ error: "En az bir arkadaş seç; yarışmaya en fazla 20 arkadaş eklenebilir." }, 400);
   const state = await readState(env, user.id);
   await pruneExpiredChallenges(env, user.id, state);
@@ -325,6 +353,7 @@ async function updateChallenge(request, env, user, id) {
   const key = "social-challenge:" + id;
   const challenge = await loadChallenge(env, id);
   if (!challenge) return json({ error: "Yarışma bulunamadı veya süresi doldu." }, 404);
+  if (Date.parse(challenge.endsAt) <= Date.now()) return json({ error: "Bu yarışmanın süresi doldu." }, 409);
   const participant = challenge.participants.find(item => item.userId === user.id);
   if (!participant) return json({ error: "Bu yarışmaya davetin yok." }, 403);
   const body = await readBody(request, 1024);
@@ -345,6 +374,7 @@ async function updateChallenge(request, env, user, id) {
 }
 
 async function presentChallenge(env, challenge, viewerId) {
+  const viewerAccepted = challenge.participants.some(item => item.userId === viewerId && item.status === "accepted");
   const participants = await Promise.all(challenge.participants.map(async participant => {
     const profile = await loadPublicUser(env, participant.userId);
     const result = {
@@ -354,7 +384,7 @@ async function presentChallenge(env, challenge, viewerId) {
       user: profile,
       score: null,
     };
-    if (profile && participant.status === "accepted" && participant.shareHealth === true) {
+    if (viewerAccepted && profile && participant.status === "accepted" && participant.shareHealth === true) {
       result.score = await challengeScore(env, participant.userId, challenge);
     }
     return result;
@@ -376,20 +406,51 @@ async function challengeScore(env, userId, challenge) {
   const health = await env.TOKEN_STORE.get("account-health:" + userId, "json");
   const startDay = challenge.startsAt.slice(0, 10);
   const endDayExclusive = challenge.endsAt.slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
   let total = 0;
   let hasMeasurement = false;
   for (const [day, values] of Object.entries(health?.days || {})) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < startDay || day >= endDayExclusive || Date.now() < Date.parse(challenge.startsAt)) continue;
-    const value = Number(values?.[challenge.metric]);
-    if (Number.isFinite(value) && value >= 0) { total += value; hasMeasurement = true; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < startDay || day >= endDayExclusive || day > today || Date.now() < Date.parse(challenge.startsAt)) continue;
+    if (challenge.metric === "movementDays") {
+      const steps = values?.steps;
+      const minutes = values?.exerciseMinutes;
+      const hasSteps = typeof steps === "number" && Number.isFinite(steps) && steps >= 0;
+      const hasMinutes = typeof minutes === "number" && Number.isFinite(minutes) && minutes >= 0;
+      if (hasSteps || hasMinutes) {
+        hasMeasurement = true;
+        if ((hasSteps && steps >= 3_000) || (hasMinutes && minutes >= 10)) total += 1;
+      }
+      continue;
+    }
+    const value = values?.[challenge.metric];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) { total += value; hasMeasurement = true; }
   }
   return hasMeasurement ? Math.round(total) : null;
 }
 
-async function findRequestBetween(env, mine, theirs, from, to) {
+async function findRequestsBetween(env, mine, theirs, from, to) {
   const ids = [...new Set([...mine.outgoing, ...mine.incoming, ...theirs.outgoing, ...theirs.incoming])];
   const records = await Promise.all(ids.map(id => loadRequest(env, id)));
-  return records.find(item => item?.status === "pending" && ((item.from === from && item.to === to) || (item.from === to && item.to === from)));
+  return records.filter(item => item?.status === "pending" && ((item.from === from && item.to === to) || (item.from === to && item.to === from)));
+}
+
+function retainPendingRequests(state, userId, records) {
+  const pending = new Map(records.filter(record => record?.status === "pending").map(record => [record.id, record]));
+  const incoming = state.incoming.filter(id => pending.get(id)?.to === userId);
+  const outgoing = state.outgoing.filter(id => pending.get(id)?.from === userId);
+  const changed = incoming.length !== state.incoming.length || outgoing.length !== state.outgoing.length;
+  state.incoming = incoming;
+  state.outgoing = outgoing;
+  return changed;
+}
+
+async function prunePendingRequests(env, userId, state) {
+  const ids = [...new Set([...state.incoming, ...state.outgoing])];
+  if (!ids.length) return;
+  const records = await Promise.all(ids.map(id => loadRequest(env, id)));
+  // The caller saves after its mutation; two writes to the same key here
+  // would hit Cloudflare KV's one-write-per-second limit.
+  retainPendingRequests(state, userId, records);
 }
 
 async function readState(env, userId) {

@@ -2,6 +2,9 @@ import { accountContext } from "./account.js";
 import { claimCooldown, readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const HEALTH_TTL_SECONDS = 60 * 60 * 24 * 100;
+const USER_MESSAGE_LIMIT = 1_500;
+const ASSISTANT_MESSAGE_LIMIT = 6_000;
+const CHAT_HISTORY_LIMIT = 48_000;
 const HEALTH_LIMITS = {
   waterMl: [0, 20_000], sleepMinutes: [0, 1_440], sleepCoreMinutes: [0, 1_440], sleepDeepMinutes: [0, 1_440],
   sleepREMMinutes: [0, 1_440], sleepAwakeMinutes: [0, 1_440], steps: [0, 200_000], activeEnergyKcal: [0, 20_000],
@@ -49,7 +52,10 @@ export async function handleAccountHealth(request, env) {
     const row = {};
     for (const [field, [minimum, maximum]] of Object.entries(HEALTH_LIMITS)) {
       if (values[field] === undefined || values[field] === null) continue;
-      const number = Number(values[field]);
+      if (typeof values[field] !== "number") {
+        return json({ error: day + " tarihindeki " + field + " değeri geçersiz." }, 400);
+      }
+      const number = values[field];
       if (!Number.isFinite(number) || number < minimum || number > maximum) {
         return json({ error: day + " tarihindeki " + field + " değeri geçersiz." }, 400);
       }
@@ -77,7 +83,9 @@ export async function handleSportsChat(request, env) {
 
   let input;
   try {
-    const body = await readLimitedText(request, 16_000);
+    // A normal model answer can exceed the user composer limit. Retained
+    // assistant turns must remain valid when the user sends the next message.
+    const body = await readLimitedText(request, 196_608);
     input = JSON.parse(body);
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) return json({ error: "Sohbet çok uzun. Yeni bir sohbet başlat." }, 413);
@@ -93,9 +101,11 @@ export async function handleSportsChat(request, env) {
       return json({ error: "Sohbet mesajı geçersiz." }, 400);
     }
     const content = item.content.trim();
-    if (!content || content.length > 1_500) return json({ error: "Her mesaj 1.500 karakteri aşmamalı." }, 400);
+    const limit = item.role === "user" ? USER_MESSAGE_LIMIT : ASSISTANT_MESSAGE_LIMIT;
+    if (!content || content.length > limit) return json({ error: item.role === "user"
+      ? "Her mesaj 1.500 karakteri aşmamalı." : "Sohbet çok uzun. Yeni bir sohbet başlat." }, 400);
     totalLength += content.length;
-    if (totalLength > 10_000) return json({ error: "Sohbet çok uzun. Yeni bir sohbet başlat." }, 413);
+    if (totalLength > CHAT_HISTORY_LIMIT) return json({ error: "Sohbet çok uzun. Yeni bir sohbet başlat." }, 413);
     messages.push({ role: item.role, content });
   }
   if (messages[messages.length - 1].role !== "user") return json({ error: "Son mesajın bir soru olmalı." }, 400);
@@ -117,7 +127,9 @@ export async function handleSportsChat(request, env) {
   if (healthSummary) {
     aiMessages.push({
       role: "system",
-      content: "Kullanıcı bu sohbet isteği için Apple Sağlık özetinin kullanılmasını açıkça seçti. Yalnızca bu özet kişisel bağlam olarak kullanılabilir; Strava verisi yoktur. Özet: " + JSON.stringify(healthSummary),
+      content: (language === "en"
+        ? "The user explicitly opted in to use this Apple Health summary for this chat request. Only this summary is personal context; there is no Strava data. Summary: "
+        : "Kullanıcı bu sohbet isteği için Apple Sağlık özetinin kullanılmasını açıkça seçti. Yalnızca bu özet kişisel bağlam olarak kullanılabilir; Strava verisi yoktur. Özet: ") + JSON.stringify(healthSummary),
     });
   }
   aiMessages.push(...messages);
@@ -128,12 +140,13 @@ export async function handleSportsChat(request, env) {
       max_tokens: 900,
       temperature: 0.35,
     });
-    if (typeof result?.response !== "string" || !result.response.trim()) {
+    if (typeof result?.response !== "string" || !result.response.trim() || result.response.trim().length > ASSISTANT_MESSAGE_LIMIT) {
       return json({ error: "Koç şu anda yanıt veremedi. Biraz sonra yeniden dene." }, 502);
     }
     return json({ answer: result.response.trim() });
   } catch (error) {
-    console.error("Tempo sports chat failed:", error?.message || "unknown error");
+    // Provider exceptions can contain request details, including health context.
+    console.error("Tempo sports chat failed.");
     return json({ error: "Koç yanıtı alınamadı. Biraz sonra yeniden dene." }, 502);
   }
 }
@@ -141,22 +154,24 @@ export async function handleSportsChat(request, env) {
 function recentHealthSummary(days) {
   if (!days || typeof days !== "object" || Array.isArray(days)) return null;
   const threshold = new Date();
-  threshold.setUTCDate(threshold.getUTCDate() - 14);
+  threshold.setUTCDate(threshold.getUTCDate() - 13);
   const minDay = threshold.toISOString().slice(0, 10);
+  const maxDay = new Date().toISOString().slice(0, 10);
   const recent = Object.entries(days)
-    .filter(([day, row]) => isDate(day) && day >= minDay && row && typeof row === "object" && !Array.isArray(row))
+    .filter(([day, row]) => isDate(day) && day >= minDay && day <= maxDay && row && typeof row === "object" && !Array.isArray(row))
     .sort(([left], [right]) => right.localeCompare(left))
     .slice(0, 14);
-  if (!recent.length) return null;
-  return {
-    periodDays: 14,
-    dataDays: recent.length,
-    days: recent.map(([date, values]) => ({
+  const summaries = recent.map(([date, values]) => ({
       date,
       measurements: Object.fromEntries(Object.entries(values)
-        .filter(([field, value]) => Object.hasOwn(HEALTH_LIMITS, field) && Number.isFinite(Number(value)))
-        .map(([field, value]) => [field, Number(value)])),
-    })).filter(day => Object.keys(day.measurements).length),
+        .filter(([field, value]) => Object.hasOwn(HEALTH_LIMITS, field) && typeof value === "number"
+          && Number.isFinite(value) && value >= HEALTH_LIMITS[field][0] && value <= HEALTH_LIMITS[field][1])),
+    })).filter(day => Object.keys(day.measurements).length);
+  if (!summaries.length) return null;
+  return {
+    periodDays: 14,
+    dataDays: summaries.length,
+    days: summaries,
   };
 }
 
