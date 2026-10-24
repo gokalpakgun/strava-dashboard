@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "ios/**"
+      - "worker/**"
       - ".github/workflows/ios-simulator-smoke.yml"
   workflow_dispatch:
 

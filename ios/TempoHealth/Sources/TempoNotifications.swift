@@ -272,6 +272,7 @@ final class TempoNotifications: ObservableObject {
     private func api(path: String, method: String, token: String, body: [String: Any]? = nil) async throws -> Data {
         var request = URLRequest(url: URL(string: "https://apitempo.com" + path)!)
         request.httpMethod = method; request.timeoutInterval = 12
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }

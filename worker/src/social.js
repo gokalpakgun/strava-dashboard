@@ -173,8 +173,7 @@ async function sendFriendRequest(request, env, user, ctx) {
       saveState(env, user.id, mine),
       saveState(env, friend.id, theirs),
     ]);
-    const alert = queueSocialNotification(env, ctx, friend.id, "friend_accepted", incomingRequest.id);
-    if (!ctx?.waitUntil) await alert;
+    await queueSocialNotification(env, ctx, friend.id, "friend_accepted", incomingRequest.id);
     return json({ ok: true, accepted: true, user: publicProfile(friend) });
   }
   if (existingRequests.length) return json({ error: "Bu kişiye zaten bekleyen bir istek var." }, 409);
@@ -189,8 +188,7 @@ async function sendFriendRequest(request, env, user, ctx) {
     env.TOKEN_STORE.put("social-request:" + id, JSON.stringify(record), { expirationTtl: 60 * 60 * 24 * 90 }),
     saveState(env, user.id, mine), saveState(env, friend.id, theirs),
   ]);
-  const alert = queueSocialNotification(env, ctx, friend.id, "friend_request", id);
-  if (!ctx?.waitUntil) await alert;
+  await queueSocialNotification(env, ctx, friend.id, "friend_request", id);
   return json({ ok: true, requestId: id, user: publicProfile(friend) }, 201);
 }
 
@@ -217,8 +215,7 @@ async function respondToFriendRequest(request, env, user, ctx) {
   // Once both indexes have been updated, the request record is no longer needed.
   await Promise.all([env.TOKEN_STORE.delete(key), saveState(env, user.id, mine), saveState(env, record.from, theirs)]);
   if (action === "accept") {
-    const alert = queueSocialNotification(env, ctx, record.from, "friend_accepted", id);
-    if (!ctx?.waitUntil) await alert;
+    await queueSocialNotification(env, ctx, record.from, "friend_accepted", id);
   }
   return json({ ok: true });
 }
@@ -355,8 +352,7 @@ async function createChallenge(request, env, user, ctx) {
       await saveState(env, friendId, friendState);
     }),
   ]);
-  const alerts = friendIds.map(friendId => queueSocialNotification(env, ctx, friendId, "challenge_invite", id));
-  if (!ctx?.waitUntil) await Promise.all(alerts);
+  await Promise.all(friendIds.map(friendId => queueSocialNotification(env, ctx, friendId, "challenge_invite", id)));
   return json({ ok: true, challenge: await presentChallenge(env, challenge, user.id) }, 201);
 }
 

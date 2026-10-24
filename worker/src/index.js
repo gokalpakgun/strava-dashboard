@@ -1,3 +1,4 @@
+export { NotificationInbox } from "./notification-inbox.js";
 import { accountContext, handleAccountRequest, handlePasswordResetPage } from "./account.js";
 import { handleAccountHealth, handleSportsChat } from "./sports-chat.js";
 import { handleModerationRequest, handleSocialRequest } from "./social.js";

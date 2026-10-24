@@ -263,6 +263,7 @@ final class TempoHealthUserFlowTests: XCTestCase {
     private static func notificationAPI(_ path: String, method: String = "POST", token: String? = nil, body: [String: Any]? = nil) async throws -> [String: Any] {
         var request = URLRequest(url: URL(string: "https://apitempo.com" + path)!)
         request.httpMethod = method
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 25
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }

@@ -15,8 +15,16 @@ export async function handlePushRequest(request, env, context) {
   const path = new URL(request.url).pathname;
   const userId = context.user.id;
   if (path === "/api/account/notifications" && request.method === "GET") {
-    const entries = await listValues(env, `notification:${userId}:`, 50);
-    return json({ notifications: entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt)), pushAvailable: ready(env) });
+    let entries;
+    if (env.NOTIFICATION_INBOX) {
+      entries = (await inboxRequest(env, userId, "/list")).notifications;
+      // Preserve pre-migration inbox entries without relying on KV for new events.
+      if (!entries.length) {
+        const legacy = await listValues(env, `notification:${userId}:`, 50);
+        if (legacy.length) entries = (await inboxRequest(env, userId, "/import", legacy)).notifications;
+      }
+    } else { entries = await listValues(env, `notification:${userId}:`, 50); }
+    return json({ notifications: entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt)), pushAvailable: ready(env), inboxStorage: env.NOTIFICATION_INBOX ? "durable" : "kv" });
   }
   let body;
   try { body = JSON.parse(await readLimitedText(request, 4096)); }
@@ -24,6 +32,7 @@ export async function handlePushRequest(request, env, context) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "Geçersiz bildirim isteği." }, 400);
   if (path === "/api/account/notifications/read" && request.method === "POST") {
     if (!/^[a-f0-9-]{20,64}$/i.test(body.id || "")) return json({ error: "Geçersiz bildirim." }, 400);
+    if (env.NOTIFICATION_INBOX) { await inboxRequest(env,userId,"/read",{id:body.id}); return json({ok:true}); }
     const key = `notification:${userId}:${body.id}`;
     const record = await env.TOKEN_STORE.get(key, "json");
     if (record && !record.read) await env.TOKEN_STORE.put(key, JSON.stringify({ ...record, read: true }), { expirationTtl: Math.max(60, Math.ceil((Date.parse(record.createdAt) + TTL * 1000 - Date.now()) / 1000)) });
@@ -63,6 +72,7 @@ export async function handlePushRequest(request, env, context) {
 }
 
 export async function deletePushAccount(env, userId) {
+  if (env.NOTIFICATION_INBOX) await inboxRequest(env,userId,"/delete",{});
   const devices = await listValues(env, `push-user:${userId}:`, 100);
   await Promise.all(devices.map(async item => {
     const record = await env.TOKEN_STORE.get("push-device:" + item.id, "json");
@@ -81,23 +91,42 @@ export async function removeSessionDevices(env, userId, sessionHash) {
   }));
 }
 
-export function queueSocialNotification(env, ctx, userId, type, eventId) {
-  // Optional alert failures cannot fail an already saved social action.
-  const work = createNotification(env, userId, type, eventId).catch(() => console.warn("Tempo notification delivery unavailable"));
-  if (ctx?.waitUntil) ctx.waitUntil(work);
-  return work;
+export async function queueSocialNotification(env, ctx, userId, type, eventId) {
+  // Persist the inbox before acknowledging the social request. Only transport
+  // runs in the background, so a phone can immediately read its own inbox.
+  try {
+    const notice = await persistNotification(env,userId,type,eventId);
+    if (!notice) return;
+    const work = sendNotification(env,userId,type,notice.id).catch(()=>console.warn("Tempo notification delivery unavailable"));
+    if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
+  } catch { console.warn("Tempo notification inbox unavailable"); }
 }
-
-export async function createNotification(env, userId, type, eventId) {
-  if (!["friend_request", "friend_accepted", "challenge_invite"].includes(type)) return;
-  const id = await notificationID(type, eventId);
+export async function createNotification(env,userId,type,eventId) {
+  const notice = await persistNotification(env,userId,type,eventId);
+  if (notice) await sendNotification(env,userId,type,notice.id);
+}
+async function persistNotification(env,userId,type,eventId) {
+  if (!["friend_request","friend_accepted","challenge_invite"].includes(type)) return;
+  const id = await notificationID(type,eventId);
+  const notification = {id,type,createdAt:new Date().toISOString(),read:false,destination:"social"};
+  if (env.NOTIFICATION_INBOX) {
+    const saved = await inboxRequest(env,userId,"/create",notification);
+    return saved.created ? notification : null;
+  }
   const key = `notification:${userId}:${id}`;
   if (await env.TOKEN_STORE.get(key)) return;
-  const notification = { id, type, createdAt: new Date().toISOString(), read: false, destination: "social" };
-  await env.TOKEN_STORE.put(key, JSON.stringify(notification), { expirationTtl: TTL });
-  // An inbox event never contains health or location data.
-  const inbox = await listValues(env, `notification:${userId}:`, 100);
-  await Promise.all(inbox.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(50).map(item => env.TOKEN_STORE.delete(`notification:${userId}:${item.id}`)));
+  await env.TOKEN_STORE.put(key,JSON.stringify(notification),{expirationTtl:TTL});
+  const inbox = await listValues(env,`notification:${userId}:`,100);
+  await Promise.all(inbox.sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(50).map(item=>env.TOKEN_STORE.delete(`notification:${userId}:${item.id}`)));
+  return notification;
+}
+async function inboxRequest(env,userId,path,body) {
+  const stub=env.NOTIFICATION_INBOX.get(env.NOTIFICATION_INBOX.idFromName(userId));
+  const response=await stub.fetch("https://tempo-inbox.internal"+path,{method:body===undefined?"GET":"POST",headers:{"Content-Type":"application/json"},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  if (!response.ok) throw new Error("Inbox storage unavailable");
+  return response.json();
+}
+async function sendNotification(env,userId,type,id) {
   if (!ready(env)) return;
   const user = await env.TOKEN_STORE.get("account-user:" + userId, "json");
   if (!user) return;
