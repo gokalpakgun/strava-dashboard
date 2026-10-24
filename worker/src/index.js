@@ -1,6 +1,7 @@
 import { accountContext, handleAccountRequest, handlePasswordResetPage } from "./account.js";
 import { handleAccountHealth, handleSportsChat } from "./sports-chat.js";
 import { handleModerationRequest, handleSocialRequest } from "./social.js";
+import { handlePushRequest } from "./push.js";
 import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 
 const SESSION_COOKIE = "tempo_session";
@@ -19,6 +20,9 @@ export default {
         const accountResponse = await handleAccountRequest(request, env, url);
         if (accountResponse) return accountResponse;
       }
+      if (["/api/account/push/devices", "/api/account/notifications", "/api/account/notifications/read"].includes(url.pathname)) {
+        return handlePushRequest(request, env, await accountContext(request, env));
+      }
       if (url.pathname === "/api/account/health" && ["GET", "POST", "DELETE"].includes(request.method)) {
         return handleAccountHealth(request, env);
       }
@@ -26,7 +30,7 @@ export default {
         return handleSportsChat(request, env);
       }
       if (url.pathname === "/api/account/social" || url.pathname.startsWith("/api/account/social/")) {
-        const socialResponse = await handleSocialRequest(request, env, url);
+        const socialResponse = await handleSocialRequest(request, env, url, ctx);
         if (socialResponse) return socialResponse;
       }
       if (url.pathname === "/api/moderation/reports" || url.pathname.startsWith("/api/moderation/reports/")) {

@@ -146,6 +146,43 @@ final class TempoHealthUserFlowTests: XCTestCase {
         capture(app, named: "Social friends")
     }
 
+
+    func testNotificationsInboxPreferencesAndPermission() {
+        let app = launchApp(authenticated: true)
+        XCTAssertTrue(element("home.notifications", in: app).waitForExistence(timeout: 15))
+        element("home.notifications", in: app).tap()
+        XCTAssertTrue(element("notifications.settings", in: app).waitForExistence(timeout: 8))
+        capture(app, named: "Notifications inbox")
+        element("notifications.settings", in: app).tap()
+        let friends = element("notifications.friends", in: app)
+        XCTAssertTrue(friends.waitForExistence(timeout: 8))
+        XCTAssertTrue(element("notifications.challenges", in: app).exists)
+        friends.tap()
+        capture(app, named: "Notification preferences")
+        let enable = element("notifications.enable", in: app)
+        if enable.exists {
+            enable.tap()
+            let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]
+            if allow.waitForExistence(timeout: 5) { allow.tap() }
+            XCTAssertTrue(enable.waitForNonExistence(timeout: 8), "The permission request should resolve")
+        }
+        app.swipeUp()
+        XCTAssertTrue(element("notifications.daily", in: app).waitForExistence(timeout: 5))
+        capture(app, named: "Notification reminder options")
+    }
+
+    func testRepeatedPrimaryTabSwitchesKeepNavigationVisible() {
+        let app = launchApp(authenticated: true)
+        XCTAssertTrue(element("tab.0", in: app).waitForExistence(timeout: 15))
+        for index in [1, 2, 3, 4, 0, 3, 1, 4, 2, 0] {
+            element("tab.\(index)", in: app).tap()
+            XCTAssertTrue(element("tab.0", in: app).isHittable)
+            XCTAssertTrue(element("tab.4", in: app).isHittable)
+        }
+        XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 8))
+        capture(app, named: "Stable shell after repeated tab transitions")
+    }
+
     func testRealHealthKitAuthorizationWriteReadAndCleanup() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-testing-authenticated", "--ui-testing-healthkit", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]

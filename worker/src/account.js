@@ -1,3 +1,4 @@
+import { deletePushAccount, removeSessionDevices } from "./push.js";
 import { deleteSocialAccount } from "./social.js";
 import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 import { moderateCommunityText } from "./content-moderation.js";
@@ -494,6 +495,8 @@ async function updateProfile(request, env) {
 }
 
 async function signOut(request, env) {
+  const context = await accountContext(request, env);
+  if (!context.response) await removeSessionDevices(env, context.user.id, context.sessionHash);
   const token = bearerToken(request);
   if (token) await env.TOKEN_STORE.delete("account-session:" + await sha256Hex(token));
   return new Response(null, { status: 204, headers: securityHeaders() });
@@ -506,6 +509,7 @@ async function deleteAccount(request, env) {
   const strava = athleteId ? await env.TOKEN_STORE.get("mobile-strava:" + athleteId, "json") : null;
   const stravaRevoked = !strava?.refresh_token || await revokeStravaRefreshToken(env, strava.refresh_token);
   await deleteSocialAccount(env, context.user.id);
+  await deletePushAccount(env, context.user.id);
   const accountKeys = await accountDataKeysForDeletion(env, context.user.id);
   const linkedHash = athleteId ? await env.TOKEN_STORE.get("mobile-link-for:" + athleteId) : null;
   const webSessionIds = athleteId ? await webSessionsForAthlete(env, athleteId) : [];

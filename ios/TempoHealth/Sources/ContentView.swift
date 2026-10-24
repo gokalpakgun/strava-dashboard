@@ -22,6 +22,7 @@ struct ContentView: View {
     @EnvironmentObject private var account: TempoAccountStore
     @State private var selectedTab = 0
     @State private var minimumLaunchFinished = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -35,10 +36,11 @@ struct ContentView: View {
                 TempoMainShell(selectedTab: $selectedTab)
             }
         }
+        .background(TempoTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .task {
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            withAnimation(.easeOut(duration: 0.28)) {
+            try? await Task.sleep(nanoseconds: 1_050_000_000)
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
                 minimumLaunchFinished = true
             }
         }
@@ -73,6 +75,10 @@ private struct TempoMainTab: Identifiable {
 
 private struct TempoMainShell: View {
     @Binding var selectedTab: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var notifications = TempoNotifications.shared
+    @State private var presentedRoute: NotificationRoute?
+    private struct NotificationRoute: Identifiable { let id: String }
 
     @ViewBuilder
     private var selectedScreen: some View {
@@ -92,23 +98,47 @@ private struct TempoMainShell: View {
 
     var body: some View {
         ZStack {
+            // Full-bleed background stays outside the tab animation.
+            TempoAmbientBackground()
             selectedScreen
                 .id(selectedTab)
-                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                .transition(reduceMotion ? .identity : .opacity)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: selectedTab)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeInOut(duration: 0.24), value: selectedTab)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 TempoGlassTabBar(selectedTab: $selectedTab)
                     .padding(.horizontal, 12)
                     .padding(.top, 10)
                     .padding(.bottom, 6)
             }
+        .task(id: notifications.route) {
+            guard let route = notifications.route else { return }
+            notifications.route = nil
+            switch route {
+            case "summary": selectedTab = 0
+            case "sports": selectedTab = 2
+            default: presentedRoute = NotificationRoute(id: route)
+            }
+        }
+        .sheet(item: $presentedRoute) { route in
+            NavigationStack {
+                Group {
+                    switch route.id {
+                    case "social": SocialScreen()
+                    case "achievements": AchievementsScreen()
+                    default: TempoNotificationsScreen()
+                    }
+                }
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Kapat") { presentedRoute = nil } } }
+            }.preferredColorScheme(.dark)
+        }
     }
 }
 
 private struct TempoGlassTabBar: View {
     @Binding var selectedTab: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var liquidGlassNamespace
 
     var body: some View {
@@ -144,7 +174,8 @@ private struct TempoGlassTabBar: View {
                     )
             }
         }
-        .shadow(color: .black.opacity(0.34), radius: 22, y: 12)
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88), value: selectedTab)
     }
 
     private func tabItems(usesNativeGlass: Bool) -> some View {
@@ -152,9 +183,7 @@ private struct TempoGlassTabBar: View {
             ForEach(TempoMainTab.all) { tab in
                 let isSelected = selectedTab == tab.id
                 Button {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.80)) {
-                        selectedTab = tab.id
-                    }
+                    selectedTab = tab.id
                 } label: {
                     VStack(spacing: 5) {
                         Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
@@ -2599,6 +2628,9 @@ private struct MoreScreen: View {
             TempoPage {
                 PageTitle(title: "Profil ve araçlar", subtitle: "TEMPO ALANIN")
                 AccountProfileCard()
+                NavigationLink(destination: TempoNotificationsScreen()) {
+                    Label("Bildirimler", systemImage: "bell.badge").frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(TempoSecondaryButtonStyle()).accessibilityIdentifier("more.notifications")
                 NavigationLink(destination: TempoProfileShareScreen()) {
                     HStack(spacing: 12) {
                         Image(systemName: "square.and.arrow.up.fill")
@@ -3644,6 +3676,7 @@ struct TempoPage<Content: View>: View {
 }
 
 private struct HomeHeader: View {
+    @ObservedObject private var notifications = TempoNotifications.shared
     private var dateText: String {
         Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide))
     }
@@ -3660,6 +3693,12 @@ private struct HomeHeader: View {
                     .font(.title3.bold())
             }
             Spacer()
+            Button { notifications.open(destination: "notifications") } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell").font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44)
+                    if notifications.unreadCount > 0 { Circle().fill(TempoTheme.green).frame(width: 7, height: 7).offset(x: -7, y: 6) }
+                }.foregroundStyle(.white.opacity(0.88)).background(.ultraThinMaterial, in: Circle())
+            }.buttonStyle(.plain).accessibilityLabel("Bildirimler".tempoLocalized).accessibilityIdentifier("home.notifications")
         }
     }
 }

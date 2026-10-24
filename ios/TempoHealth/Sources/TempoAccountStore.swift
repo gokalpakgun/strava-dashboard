@@ -268,6 +268,7 @@ final class TempoAccountStore: ObservableObject {
     }
 
     func signOut() async {
+        TempoNotifications.shared.detach()
         if sessionToken != nil {
             _ = try? await request(path: "/api/account/logout", method: "POST", body: EmptyPayload(), authenticated: true)
         }
@@ -328,6 +329,7 @@ final class TempoAccountStore: ObservableObject {
         do {
             let envelope = try await request(path: "/api/account", method: "DELETE", body: EmptyPayload(), authenticated: true)
             stravaRevocationFailed = envelope.stravaRevoked == false
+            TempoNotifications.shared.detach()
             clearLocalSession()
             return true
         } catch {

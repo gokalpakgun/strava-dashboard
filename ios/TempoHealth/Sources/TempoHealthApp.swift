@@ -1,7 +1,9 @@
 import SwiftUI
 
 @main
+@MainActor
 struct TempoHealthApp: App {
+    @UIApplicationDelegateAdaptor(TempoNotificationDelegate.self) private var notificationDelegate
     @StateObject private var model = TempoAppModel()
     @StateObject private var account = TempoAccountStore()
     @Environment(\.scenePhase) private var scenePhase
@@ -12,6 +14,15 @@ struct TempoHealthApp: App {
                 .environmentObject(model)
                 .environmentObject(account)
                 .onOpenURL(perform: model.handleCallback)
+                .task(id: (account.profile?.id ?? "") + (account.authorizationToken ?? "")) {
+#if DEBUG
+                    guard !ProcessInfo.processInfo.arguments.contains("--ui-testing-authenticated") else { return }
+#endif
+                    await TempoNotifications.shared.bind(account: account)
+                }
+                .task(id: model.tempoAchievement.unlockedBadges.map(\.id)) {
+                    await TempoNotifications.shared.recordAchievement(ids: model.tempoAchievement.unlockedBadges.map(\.id))
+                }
                 .onChange(of: scenePhase) { _, phase in
 #if DEBUG
                     guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
@@ -19,6 +30,7 @@ struct TempoHealthApp: App {
                     if phase == .active {
                         account.restoreSessionIfNeeded()
                         model.syncWhenActive()
+                        Task { await TempoNotifications.shared.bind(account: account) }
                     }
                 }
         }
