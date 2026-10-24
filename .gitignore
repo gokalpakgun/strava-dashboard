@@ -8,6 +8,7 @@ work/
 .tmp-testflight/
 /remote-main/
 .artifact-check/
+/outputs/
 *.ipa
 *.mobileprovision
 *.p12
