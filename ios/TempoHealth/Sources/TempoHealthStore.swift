@@ -29,13 +29,45 @@ final class TempoHealthStore {
         [
             waterType, sleepType, stepType, energyType, exerciseTimeType, restingHeartRateType, hrvType,
             respiratoryRateType, oxygenSaturationType, vo2MaxType, walkingHeartRateType,
-            heartRateRecoveryType, wristTemperatureType, bodyMassType,
+            heartRateRecoveryType, wristTemperatureType, bodyMassType, HKObjectType.workoutType(),
         ]
     }
 
     func requestAuthorization() async throws {
         guard isAvailable else { throw HealthStoreError.unavailable }
         try await store.requestAuthorization(toShare: [waterType], read: readTypes)
+    }
+
+    func readRecentWorkouts(dayCount: Int = 90) async throws -> [TempoManualWorkout] {
+        let now = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -min(max(dayCount, 1), 365), to: now) ?? now
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: HKQuery.predicateForSamples(withStart: start, end: now, options: .strictStartDate), limit: HKObjectQueryNoLimit, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) { _, samples, error in
+                if let error { continuation.resume(throwing: error); return }
+                let records = ((samples as? [HKWorkout]) ?? []).filter { $0.endDate <= now && $0.duration > 0 }.map { workout in
+                    let choice: TempoSportChoice?
+                    switch workout.workoutActivityType {
+                    case .running: choice = .run
+                    case .cycling: choice = .cycling
+                    case .walking: choice = .walking
+                    case .hiking: choice = .hiking
+                    case .swimming: choice = .swimming
+                    case .tennis: choice = .tennis
+                    case .basketball: choice = .basketball
+                    case .soccer, .americanFootball: choice = .football
+                    case .volleyball: choice = .volleyball
+                    case .badminton: choice = .badminton
+                    case .yoga: choice = .yoga
+                    case .traditionalStrengthTraining, .functionalStrengthTraining, .highIntensityIntervalTraining, .crossTraining, .mixedCardio, .coreTraining: choice = .fitness
+                    default: choice = nil
+                    }
+                    let title = choice?.title ?? "Diğer".tempoLocalized
+                    return TempoManualWorkout(id: workout.uuid, sportId: choice?.rawValue ?? "other", sportTitle: title, title: title, startedAt: workout.startDate, durationMinutes: max(1, Int((workout.duration / 60).rounded())), notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: Int(workout.duration.rounded()), distanceKm: workout.totalDistance.map { $0.doubleValue(for: .meter()) / 1000 }, routeCoordinates: nil, recordSource: "apple-health", perceivedEffort: nil, enjoyment: nil)
+                }
+                continuation.resume(returning: records)
+            }
+            store.execute(query)
+        }
     }
 
     func workoutHealthSignal(start: Date, durationMinutes: Int) async throws -> TempoWorkoutHealthSignal {
@@ -345,10 +377,10 @@ final class TempoHealthStore {
     /// This method is absent from Release builds and every physical-device build.
     func runSimulatorIntegrationCheck() async throws -> String {
         guard isAvailable else { throw HealthStoreError.unavailable }
-        let writeTypes: Set<HKSampleType> = [waterType, sleepType, stepType]
+        let writeTypes: Set<HKSampleType> = [waterType, sleepType, stepType, HKObjectType.workoutType()]
         try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
         guard writeTypes.allSatisfy({ store.authorizationStatus(for: $0) == .sharingAuthorized }) else {
-            throw simulatorCheckError("HealthKit test write permission was not granted for water, sleep and steps.")
+            throw simulatorCheckError("HealthKit test write permission was not granted for water, sleep, steps and workouts.")
         }
 
         let calendar = Calendar.autoupdatingCurrent
@@ -357,7 +389,9 @@ final class TempoHealthStore {
         let runID = UUID().uuidString
         let metadata: [String: Any] = ["TempoSimulatorIntegrationRun": runID]
         let at: (TimeInterval) -> Date = { dayStart.addingTimeInterval($0 * 60) }
+        let workout = HKWorkout(activityType: .tennis, start: at(720), end: at(750), duration: 1_800, totalEnergyBurned: nil, totalDistance: HKQuantity(unit: .meter(), doubleValue: 1_200), metadata: metadata)
         let samples: [HKSample] = [
+            workout,
             HKQuantitySample(type: waterType, quantity: HKQuantity(unit: .literUnit(with: .milli), doubleValue: 321), start: at(600), end: at(600), metadata: metadata),
             HKQuantitySample(type: stepType, quantity: HKQuantity(unit: .count(), doubleValue: 1234), start: at(600), end: at(610), metadata: metadata),
             HKCategorySample(type: sleepType, value: HKCategoryValueSleepAnalysis.asleepCore.rawValue, start: at(0), end: at(60), metadata: metadata),
@@ -420,9 +454,14 @@ final class TempoHealthStore {
                           after.sleepAwakeMinutes == 10 else {
                         throw simulatorCheckError("Production sleep aggregation did not return 180 minutes and the expected stage totals.")
                     }
+                    guard let imported = try await readRecentWorkouts(dayCount: 7).first(where: { $0.id == workout.uuid }),
+                          imported.sportId == "tennis", imported.durationSeconds == 1_800,
+                          abs((imported.distanceKm ?? 0) - 1.2) < 0.001, imported.recordSource == "apple-health" else {
+                        throw simulatorCheckError("Production workout import did not return the tennis workout with its duration, distance and source.")
+                    }
                     // Read permission cannot be inferred: HealthKit may expose an app's own
                     // samples even when access to samples from other apps is denied.
-                    outcome = .success("HEALTHKIT_PASS own_samples=6 water_ml=321 steps=1234 sleep_min=180 stages=4 cleanup=6")
+                    outcome = .success("HEALTHKIT_PASS own_samples=7 water_ml=321 steps=1234 sleep_min=180 stages=4 tennis_workouts=1 cleanup=7")
                 } catch {
                     outcome = .failure(error)
                 }

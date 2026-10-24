@@ -2,7 +2,7 @@
 const fs=require('fs');
 const path=require('path');
 let sharp;
-try { sharp=require('sharp'); } catch { sharp=require(process.env.TEMPO_SHARP_PATH || 'C:/Users/gokal/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/sharp'); }
+try { sharp=require('sharp'); } catch { if(!process.env.TEMPO_SHARP_PATH) throw new Error('Install sharp or set TEMPO_SHARP_PATH to its package directory.'); sharp=require(process.env.TEMPO_SHARP_PATH); }
 const root=path.resolve(__dirname,'../..');
 const mark=fs.readFileSync(path.join(__dirname,'mark.svg'),'utf8');
 const icon=mark.replace('fill="none">','fill="none"><rect width="1254" height="1254" fill="#071B38"/>').replace('  <path fill="url(#blue)"','  <g transform="translate(62.7 62.7) scale(.9)"><path fill="url(#blue)"').replace('</svg>','</g></svg>');

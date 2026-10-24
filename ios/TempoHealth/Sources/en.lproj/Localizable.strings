@@ -1310,3 +1310,22 @@
 "Hatırlatma saati" = "Reminder time";
 "Haftalık değerlendirme" = "Weekly review";
 "Haftalık hatırlatma pazar günü 18.00’de gelir. Hatırlatmalar internet olmadan da çalışır." = "The weekly reminder arrives on Sundays at 18:00. Reminders also work offline.";
+
+/* Workout history and notification permission */
+"TEMPO + APPLE SAĞLIK" = "TEMPO + APPLE HEALTH";
+"Tempo + Apple Sağlık" = "Tempo + Apple Health";
+"Son antrenmanların" = "Your recent workouts";
+"Antrenman geçmişi" = "Workout history";
+"Antrenmanların" = "Your workouts";
+"Toplamlar Tempo ve Apple Sağlık kayıtlarını içerir. Aynı antrenmanın farklı kaynaklardaki kopyaları birleştirilir." = "Totals include Tempo and Apple Health records. Copies of the same workout from different sources are counted once.";
+"Bu filtrede Tempo veya Apple Sağlık antrenmanı yok." = "No Tempo or Apple Health workouts match this filter.";
+"Strava aktiviteleri" = "Strava activities";
+"Bu filtreye uygun Strava aktivitesi yok." = "No Strava activities match this filter.";
+"Bağladığında Strava kayıtlarını burada ayrı kaynak etiketiyle görebilirsin." = "Connect to view your Strava records here with their own source label.";
+"Apple Sağlık antrenmanları" = "Apple Health workouts";
+"Son 90 günün antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır." = "Import workouts from the last 90 days. Workout details stay on your device.";
+"Antrenman izinlerini güncelle ve eşitle" = "Update workout permissions and sync";
+"Apple Sağlık antrenmanları okunamadı. İzinlerini kontrol edip yeniden eşitle." = "Could not read Apple Health workouts. Check your permissions and sync again.";
+"Henüz antrenman kaydı yok." = "No workouts recorded yet.";
+"Hedef bu sporun Tempo ve Apple Sağlık kayıtlarını sayar; dilediğinde değiştirebilirsin." = "This goal counts Tempo and Apple Health workouts for this sport. You can change it at any time.";
+"Bildirim izni ver" = "Allow notifications";

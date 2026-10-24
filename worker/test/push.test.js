@@ -8,9 +8,9 @@ globalThis.crypto ||= webcrypto;
 const pair=generateKeyPairSync('ec',{namedCurve:'P-256'});
 const pem=pair.privateKey.export({type:'pkcs8',format:'pem'});
 class KV {
-  values=new Map();
+  values=new Map(); writes=[];
   async get(key,type){const v=this.values.get(key);return v===undefined?null:type==='json'?JSON.parse(v):v;}
-  async put(k,v){this.values.set(k,String(v));}
+  async put(k,v){this.writes.push(k);this.values.set(k,String(v));}
   async delete(k){this.values.delete(k);}
   async list({prefix,limit=1000}){return {keys:[...this.values.keys()].filter(k=>k.startsWith(prefix)).slice(0,limit).map(name=>({name})),list_complete:true};}
 }
@@ -90,3 +90,14 @@ test('a saved friend request succeeds even when push transport fails and a dupli
   await mockFetch(async()=>{calls++;throw Error('Provider unavailable');},async()=>{let r=request();assert.equal((await handleSocialRequest(r,env,new URL(r.url))).status,201);await env.TOKEN_STORE.delete('social-request-cooldown:'+a.user.id);r=request();assert.equal((await handleSocialRequest(r,env,new URL(r.url))).status,409);});assert.equal(calls,1);assert.equal(keys(env,'notification:').length,1);
 });
 test('provider JWT is reused within its allowed lifetime',async()=>{const {env}=await fixture();assert.equal(await providerToken(env),await providerToken(env));});
+
+test('repeated identical device registration does not rewrite hot KV keys',async()=>{
+  const {env,contexts:[a]}=await fixture();await register(env,a);const writes=env.TOKEN_STORE.writes.length;await register(env,a);assert.equal(env.TOKEN_STORE.writes.length,writes);
+});
+test('notification JSON null and arrays are rejected safely',async()=>{
+  const {env,contexts:[a]}=await fixture();for(const body of [null,[]])assert.equal((await register(env,a,body)).status,400);
+});
+
+test('concurrent devices share the same newly issued provider JWT',async()=>{
+  const {env}=await fixture();env.APNS_KEY_ID='NEWKEY1234';const tokens=await Promise.all(Array.from({length:10},()=>providerToken(env)));assert.equal(new Set(tokens).size,1);
+});

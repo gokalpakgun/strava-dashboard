@@ -187,6 +187,14 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
     let perceivedEffort: Int?
     let enjoyment: Int?
 
+    var isLocalRecord: Bool { recordSource != "apple-health" }
+    var sourceTitle: String {
+        switch recordSource {
+        case "apple-health": return "Apple Sağlık".tempoLocalized
+        case "phone-gps": return "iPhone GPS kaydı".tempoLocalized
+        default: return healthSignal == nil ? "Elle eklendi".tempoLocalized : "Elle eklendi · Sağlık sinyali".tempoLocalized
+        }
+    }
     var endedAt: Date { startedAt.addingTimeInterval(Double(durationSeconds ?? durationMinutes * 60)) }
 }
 
@@ -203,7 +211,7 @@ enum TempoSport: Hashable {
         if value.contains("run") { self = .run }
         else if value.contains("ride") || value.contains("cycl") || value.contains("bike") { self = .ride }
         else if value.contains("walk") { self = .walk }
-        else if value.contains("hike") { self = .hike }
+        else if value.contains("hik") { self = .hike }
         else if value.contains("swim") { self = .swim }
         else if value.contains("tennis") { self = .tennis }
         else if value.contains("basketball") { self = .basketball }
@@ -212,7 +220,7 @@ enum TempoSport: Hashable {
         else if value.contains("padel") { self = .padel }
         else if value.contains("badminton") { self = .badminton }
         else if value.contains("yoga") { self = .yoga }
-        else if value.contains("workout") || value.contains("weight") || value.contains("crossfit") { self = .workout }
+        else if value.contains("workout") || value.contains("weight") || value.contains("crossfit") || value.contains("fitness") { self = .workout }
         else { self = .other }
     }
 

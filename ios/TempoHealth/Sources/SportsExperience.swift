@@ -9,7 +9,10 @@ struct SportsHubScreen: View {
     @EnvironmentObject private var model: TempoAppModel
 
     private var selectedSports: [TempoSportChoice] {
-        account.profile?.sports.compactMap(TempoSportChoice.init(rawValue:)) ?? []
+        let chosen = account.profile?.sports.compactMap(TempoSportChoice.init(rawValue:)) ?? []
+        let performed = Set(model.activityWorkouts.map(\.sportId))
+        let stravaSports = TempoSportChoice.allCases.filter { sport in (model.dashboard?.activities ?? []).contains { sport.matches(activityType: $0.type) } }
+        return chosen + TempoSportChoice.allCases.filter { (performed.contains($0.rawValue) || stravaSports.contains($0)) && !chosen.contains($0) }
     }
 
     var body: some View {
@@ -19,6 +22,7 @@ struct SportsHubScreen: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         sportsHeader
+                        HealthWorkoutsSyncCard()
 
                         if selectedSports.isEmpty {
                             Text("Profilinden ilgilendiğin sporları seçerek bu alanı kişiselleştirebilirsin.")
@@ -26,11 +30,12 @@ struct SportsHubScreen: View {
                                 .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                         } else {
                             ForEach(selectedSports) { sport in
-                                NavigationLink(destination: SportDetailScreen(sport: sport, manualWorkouts: model.manualWorkouts)) {
-                                    SportSummaryCard(sport: sport, manualWorkouts: model.manualWorkouts)
+                                NavigationLink(destination: SportDetailScreen(sport: sport)) {
+                                    SportSummaryCard(sport: sport, manualWorkouts: model.activityWorkouts)
                                 }
                                 .buttonStyle(.plain)
                                 .simultaneousGesture(TapGesture().onEnded { TempoHaptics.selection() })
+                                .accessibilityIdentifier("sport.open.\(sport.id)")
                             }
                         }
 
@@ -105,7 +110,7 @@ private struct SportSummaryCard: View {
                     .frame(width: 50, height: 50).background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sport.title).font(.title3.bold())
-                    Text("%d Tempo kaydı".tempoFormatted(matchingManual.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Text("%d antrenman".tempoFormatted(matchingManual.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
@@ -537,8 +542,8 @@ private enum SportDetailSection: String, CaseIterable, Identifiable {
 
 private struct SportDetailScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
+    @EnvironmentObject private var model: TempoAppModel
     let sport: TempoSportChoice
-    let manualWorkouts: [TempoManualWorkout]
     @State private var section: SportDetailSection = .overview
     @State private var weeklyTarget = 3
     @Namespace private var sectionAnimation
@@ -546,7 +551,7 @@ private struct SportDetailScreen: View {
     private var weeklyTargetKey: String { "tempo.sport.weekly-target.\(account.profile?.id ?? "guest").\(sport.rawValue)" }
 
     private var matchingManual: [TempoManualWorkout] {
-        manualWorkouts.filter { $0.sportId == sport.rawValue }
+        model.activityWorkouts.filter { $0.sportId == sport.rawValue }
     }
 
     private var guide: SportOfflineGuide { sport.offlineGuide }
@@ -686,20 +691,35 @@ private struct SportOverviewSection: View {
                 title: workout.title,
                 date: workout.startedAt,
                 durationSeconds: Double(workout.durationSeconds ?? workout.durationMinutes * 60),
-                source: workout.recordSource == "phone-gps" ? "iPhone GPS kaydı" : (workout.healthSignal == nil ? "Elle eklendi" : "Elle eklendi · Sağlık sinyali")
+                source: workout.sourceTitle
             )
         }
         return local.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
 
+    @EnvironmentObject private var model: TempoAppModel
+    private var stravaEntries: [TempoActivity] { (model.dashboard?.activities ?? []).filter { sport.matches(activityType: $0.type) } }
     var body: some View {
         VStack(spacing: 15) {
             HStack(spacing: 8) {
-                SportMetric(value: "\(manualWorkouts.count)", label: "Tempo kaydı")
+                SportMetric(value: "\(manualWorkouts.count)", label: "Antrenman")
+                    .accessibilityElement(children: .ignore).accessibilityLabel("Antrenman".tempoLocalized).accessibilityValue("\(manualWorkouts.count)").accessibilityIdentifier("sport.total.workouts")
                 SportMetric(value: TempoFormat.duration(seconds), label: "Toplam süre")
                 SportMetric(value: "\(weekCount)", label: "Bu hafta")
             }
 
+            Text("Tempo + Apple Sağlık".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            if !stravaEntries.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Strava aktiviteleri".tempoLocalized).font(.subheadline.weight(.semibold))
+                    ForEach(Array(stravaEntries.prefix(5))) { activity in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(activity.name ?? activity.sport.title).font(.subheadline)
+                            Text("Strava · %@ · %@".tempoFormatted(activity.date?.formatted(date: .abbreviated, time: .omitted) ?? "—", TempoFormat.duration(activity.movingSeconds))).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(16).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
+            }
             weeklyGoalCard
 
             if manualWorkouts.isEmpty {
@@ -767,7 +787,7 @@ private struct SportOverviewSection: View {
                 }
             }
             .frame(height: 7)
-            Text("Hedef yalnızca bu spor için Tempo’da kaydettiğin antrenmanları sayar; dilediğinde değiştirebilirsin.")
+            Text("Hedef bu sporun Tempo ve Apple Sağlık kayıtlarını sayar; dilediğinde değiştirebilirsin.")
                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
         }
         .padding(15)

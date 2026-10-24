@@ -54,6 +54,11 @@ struct TempoNotice: Codable, Identifiable, Equatable {
         default: return "Kısa bir yürüyüş veya esneme de iyi bir başlangıç.".tempoLocalized
         }
     }
+    var date: Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: createdAt) ?? ISO8601DateFormatter().date(from: createdAt)
+    }
     var icon: String {
         switch type {
         case "friend_request", "friend_accepted": return "person.2.fill"
@@ -89,6 +94,8 @@ final class TempoNotifications: ObservableObject {
     private var accountToken: String?
     private var lastRegistration = ""
     private var loading = false
+    private var registering = false
+    private var registerAgain = false
     private let center = UNUserNotificationCenter.current()
     var unreadCount: Int { notices.filter { !$0.read }.count }
     var allowed: Bool { authorization == .authorized || authorization == .provisional || authorization == .ephemeral }
@@ -187,7 +194,12 @@ final class TempoNotifications: ObservableObject {
     func open(destination: String) {
         route = ["social", "sports", "achievements", "summary", "notifications"].contains(destination) ? destination : "notifications"
     }
-    func detach() {
+    func detach(eraseAccountData: Bool = false) {
+        if eraseAccountData, let userId {
+            UserDefaults.standard.removeObject(forKey: preferenceKey)
+            UserDefaults.standard.removeObject(forKey: inboxKey)
+            UserDefaults.standard.removeObject(forKey: "tempo.notification.earned." + userId)
+        }
         center.removePendingNotificationRequests(withIdentifiers: ["tempo.daily", "tempo.weekly"])
         center.removeAllDeliveredNotifications()
         accountToken = nil
@@ -216,6 +228,18 @@ final class TempoNotifications: ObservableObject {
     }
     private func registerDevice(force: Bool = false) async {
         guard allowed, let token = deviceToken, let auth = accountToken, let owner = userId else { return }
+        if registering { registerAgain = true; return }
+        registering = true
+        defer {
+            registering = false
+            if registerAgain {
+                registerAgain = false
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_100_000_000)
+                    await registerDevice(force: true)
+                }
+            }
+        }
         let language = Locale.preferredLanguages.first?.hasPrefix("tr") == true ? "tr" : "en"
         let fingerprint = owner + auth + token + language + String(preferences.friends) + String(preferences.challenges)
         guard force || fingerprint != lastRegistration else { return }
@@ -285,12 +309,12 @@ struct TempoNotificationsScreen: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(notice.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                                 Text(notice.message).font(.caption).foregroundStyle(TempoTheme.secondary)
-                                if let date = ISO8601DateFormatter().date(from: notice.createdAt) { Text(date, style: .relative).font(.caption2).foregroundStyle(TempoTheme.secondary) }
+                                if let date = notice.date { Text(date, style: .relative).font(.caption2).foregroundStyle(TempoTheme.secondary) }
                             }
                             Spacer(minLength: 2)
                             if !notice.read { Circle().fill(TempoTheme.green).frame(width: 7, height: 7) }
                         }.padding(15).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.plain).accessibilityIdentifier("notification.\(notice.type)")
                 }
             }
             if !notifications.message.isEmpty { Text(notifications.message).font(.caption).foregroundStyle(TempoTheme.secondary) }
@@ -318,7 +342,7 @@ struct TempoNotificationSettingsScreen: View {
                     Label(notifications.allowed ? "Bildirimler açık".tempoLocalized : "Bildirimleri aç".tempoLocalized, systemImage: notifications.allowed ? "bell.badge.fill" : "bell.slash").font(.headline)
                     Text("Sosyal davetler ve seçtiğin hatırlatmalar için kullanılır. Sağlık ölçümlerin bildirim metnine eklenmez.").font(.caption).foregroundStyle(TempoTheme.secondary)
                     if !notifications.allowed {
-                        Button(notifications.authorization == .denied ? "iPhone Ayarları’nı aç".tempoLocalized : "İzin ver".tempoLocalized) {
+                        Button(notifications.authorization == .denied ? "iPhone Ayarları’nı aç".tempoLocalized : "Bildirim izni ver".tempoLocalized) {
                             if notifications.authorization == .denied, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                             else { Task { await notifications.enable() } }
                         }.buttonStyle(TempoPrimaryButtonStyle()).disabled(notifications.busy).accessibilityIdentifier("notifications.enable")

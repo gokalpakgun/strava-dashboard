@@ -16,6 +16,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var healthSyncEnabled = false
     @Published private(set) var isHealthSyncing = false
     @Published private(set) var healthDays: [String: TempoHealthMetrics] = [:]
+    @Published private(set) var healthWorkouts: [TempoManualWorkout] = []
+    @Published private(set) var healthWorkoutError: String?
     @Published private(set) var manualWorkouts: [TempoManualWorkout] = []
     @Published private(set) var healthLastSync: Date?
     @Published private(set) var healthError: String?
@@ -192,6 +194,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         hasAttemptedAccountRestore = false
         dashboard = nil
         healthDays = [:]
+        healthWorkouts = []
+        healthWorkoutError = nil
         healthLastSync = nil
         todayWaterMl = 0
         healthSyncEnabled = false
@@ -218,7 +222,45 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             }
         }
         manualWorkouts = accountId.map(Self.loadManualWorkouts) ?? []
+#if DEBUG && targetEnvironment(simulator)
+        if accountId == "ui-test-account", ProcessInfo.processInfo.arguments.contains("--ui-testing-workout-ledger") { seedWorkoutLedgerForUITesting() }
+#endif
     }
+
+    /// This display ledger stays on the device and is not used as Strava-derived
+    /// input for coaching, competition, goals or achievement scoring.
+    var activityWorkouts: [TempoManualWorkout] {
+        let all = manualWorkouts + healthWorkouts
+        let records = all.map { TempoWorkoutLedger.Record(id: $0.id, sportID: $0.sportId, startedAt: $0.startedAt, seconds: Double($0.durationSeconds ?? $0.durationMinutes * 60), distanceKm: $0.distanceKm, source: $0.recordSource ?? "manual") }
+        var byID: [UUID: TempoManualWorkout] = [:]
+        for workout in all where byID[workout.id] == nil { byID[workout.id] = workout }
+        return TempoWorkoutLedger.merge(records).compactMap { byID[$0.id] }
+    }
+
+    var weekActivityWorkouts: [TempoManualWorkout] {
+        let workouts = activityWorkouts
+        let records = workouts.map { TempoWorkoutLedger.Record(id: $0.id, sportID: $0.sportId, startedAt: $0.startedAt, seconds: Double($0.durationSeconds ?? $0.durationMinutes * 60), distanceKm: $0.distanceKm, source: $0.recordSource ?? "manual") }
+        let ids = Set(TempoWorkoutLedger.currentWeek(records).map(\.id))
+        return workouts.filter { ids.contains($0.id) }
+    }
+
+    #if DEBUG && targetEnvironment(simulator)
+    /// Deterministic view fixture only; no writes to HealthKit, disk or the API.
+    private func seedWorkoutLedgerForUITesting() {
+        let now = Date()
+        let weekStart = Calendar.current.dateInterval(of: .weekOfYear, for: now)!.start
+        let start = max(weekStart.addingTimeInterval(1), now.addingTimeInterval(-10_800))
+        func record(_ id: String, _ sport: String, _ title: String, _ minutes: Int, _ km: Double?, _ source: String, _ offset: Double) -> TempoManualWorkout {
+            TempoManualWorkout(id: UUID(uuidString: id)!, sportId: sport, sportTitle: TempoSportChoice(rawValue: sport)?.title ?? sport, title: title, startedAt: start.addingTimeInterval(offset), durationMinutes: minutes, notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: minutes * 60, distanceKm: km, routeCoordinates: nil, recordSource: source, perceivedEffort: nil, enjoyment: nil)
+        }
+        manualWorkouts = [record("10000000-0000-0000-0000-000000000001", "run", "Fixture phone run", 20, 2, "phone-gps", 0)]
+        healthWorkouts = [
+            record("20000000-0000-0000-0000-000000000001", "run", "Fixture Health copy", 20, 2, "apple-health", 5),
+            record("20000000-0000-0000-0000-000000000002", "tennis", "Fixture Health tennis", 30, 1.2, "apple-health", 1_800),
+            record("20000000-0000-0000-0000-000000000003", "basketball", "Fixture Health basketball", 40, nil, "apple-health", 4_000),
+        ]
+    }
+    #endif
 
     func manualWorkoutPhotoURL(for workout: TempoManualWorkout) -> URL? {
         guard let accountId = activeTempoAccountId, let filename = workout.photoFilename else { return nil }
@@ -781,9 +823,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         let generation = healthGeneration
         defer { if healthGeneration == generation { isHealthSyncing = false } }
         do {
-            let days = try await healthStore.readRecentDays()
+            async let dailyRead = healthStore.readRecentDays()
+            async let workoutRead = healthStore.readRecentWorkouts()
+            let days = try await dailyRead
+            let workouts = try? await workoutRead
             guard healthGeneration == generation, healthSyncEnabled,
                   activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+            healthWorkouts = workouts ?? []
+            healthWorkoutError = workouts == nil ? "Apple Sağlık antrenmanları okunamadı. İzinlerini kontrol edip yeniden eşitle.".tempoLocalized : nil
             healthDays = days
             healthLastSync = Date()
             Self.saveCachedHealthDays(days, accountId: accountId)
@@ -832,6 +879,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             UserDefaults.standard.removeObject(forKey: Self.healthLastSyncKey(accountId: accountId))
         }
         healthDays = [:]
+        healthWorkouts = []
+        healthWorkoutError = nil
         healthLastSync = nil
         todayWaterMl = 0
         healthDisconnectTask = Task {
@@ -977,6 +1026,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthStore.disableBackgroundDelivery()
         healthSyncEnabled = false
         healthDays = [:]
+        healthWorkouts = []
+        healthWorkoutError = nil
         healthGeneration = UUID()
         isHealthSyncing = false
         healthLastSync = nil

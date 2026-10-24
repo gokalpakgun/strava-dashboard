@@ -4,6 +4,7 @@ const TTL = 60 * 60 * 24 * 35;
 const TOPIC = "com.apitempo.tempohealth";
 const encoder = new TextEncoder();
 let cachedJWT;
+let pendingJWT;
 const json = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const digest = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)))].map(x => x.toString(16).padStart(2, "0")).join("");
 const indexKey = (userId, id) => `push-user:${userId}:${id}`;
@@ -25,11 +26,11 @@ export async function handlePushRequest(request, env, context) {
     if (!/^[a-f0-9-]{20,64}$/i.test(body.id || "")) return json({ error: "Geçersiz bildirim." }, 400);
     const key = `notification:${userId}:${body.id}`;
     const record = await env.TOKEN_STORE.get(key, "json");
-    if (record && !record.read) await env.TOKEN_STORE.put(key, JSON.stringify({ ...record, read: true }), { expirationTtl: TTL });
+    if (record && !record.read) await env.TOKEN_STORE.put(key, JSON.stringify({ ...record, read: true }), { expirationTtl: Math.max(60, Math.ceil((Date.parse(record.createdAt) + TTL * 1000 - Date.now()) / 1000)) });
     return json({ ok: true });
   }
   if (path !== "/api/account/push/devices" || !["POST", "DELETE"].includes(request.method)) return json({ error: "Method not allowed." }, 405);
-  if (!/^[a-f0-9]{64,512}$/i.test(body.token || "") || !["production", "development"].includes(body.environment)) return json({ error: "Geçersiz cihaz kaydı." }, 400);
+  if (!/^(?:[a-f0-9]{2}){1,256}$/i.test(body.token || "") || !["production", "development"].includes(body.environment)) return json({ error: "Geçersiz cihaz kaydı." }, 400);
   if (["friends", "challenges"].some(key => body[key] !== undefined && typeof body[key] !== "boolean")) return json({ error: "Geçersiz bildirim tercihi." }, 400);
   const token = body.token.toLowerCase();
   const id = await digest(TOPIC + body.environment + token);
@@ -46,6 +47,8 @@ export async function handlePushRequest(request, env, context) {
     token, environment: body.environment, language: body.language === "tr" ? "tr" : "en",
     friends: body.friends !== false, challenges: body.challenges !== false, updatedAt: new Date().toISOString(),
   };
+  if (previous && ["userId", "sessionHash", "token", "environment", "language", "friends", "challenges"].every(key => previous[key] === record[key])
+      && Date.now() - Date.parse(previous.updatedAt) < 86400000) return json({ ok: true, pushAvailable: ready(env) });
   const devices = await listValues(env, `push-user:${userId}:`, 30);
   const oldest = devices.filter(x => x.id !== id).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(9);
   await Promise.all(oldest.map(async item => {
@@ -137,6 +140,8 @@ export async function providerToken(env) {
   const now = Math.floor(Date.now() / 1000);
   const signatureID = env.APNS_KEY_ID + ":" + env.APNS_TEAM_ID + ":" + await digest(env.APNS_PRIVATE_KEY);
   if (cachedJWT?.signatureID === signatureID && now - cachedJWT.issuedAt < 2400) return cachedJWT.value;
+  if (pendingJWT?.signatureID === signatureID) return pendingJWT.promise;
+  const signing = { signatureID, promise: (async () => {
   const b64 = bytes => btoa(String.fromCharCode(...bytes)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
   const part = value => b64(encoder.encode(JSON.stringify(value)));
   const raw = env.APNS_PRIVATE_KEY.replace(/\\n/g, "\n").replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
@@ -146,6 +151,10 @@ export async function providerToken(env) {
   const value = unsigned + "." + b64(new Uint8Array(signature));
   cachedJWT = { signatureID, issuedAt: now, value };
   return value;
+  })() };
+  pendingJWT = signing;
+  try { return await signing.promise; }
+  finally { if (pendingJWT === signing) pendingJWT = undefined; }
 }
 async function notificationID(type, eventId) {
   const hash = await digest(type + ":" + eventId);

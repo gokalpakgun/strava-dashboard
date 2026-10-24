@@ -448,7 +448,7 @@ private struct HomeScreen: View {
     @EnvironmentObject private var model: TempoAppModel
 
     private var weekManualWorkouts: [TempoManualWorkout] {
-        model.manualWorkouts.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }
+        model.weekActivityWorkouts
     }
     private var weekDistance: Double {
         weekManualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
@@ -473,8 +473,13 @@ private struct HomeScreen: View {
                         message: "Strava’yı bağlamadan da spor alanlarını keşfedebilir ve Apple Sağlık verilerini cihazında görüntüleyebilirsin."
                     )
                 }
-                SectionHeading(title: "Bu hafta", caption: "TEMPO KAYITLARI", padding: false)
+                SectionHeading(title: "Bu hafta", caption: "TEMPO + APPLE SAĞLIK", padding: false)
                 weeklyMetrics
+                if !model.activityWorkouts.isEmpty {
+                    SectionHeading(title: "Son antrenmanların", caption: "TEMPO + APPLE SAĞLIK", padding: false)
+                    ForEach(Array(model.activityWorkouts.prefix(3))) { workout in ManualWorkoutRow(workout: workout) }
+                    NavigationLink(destination: TempoWorkoutHistoryScreen()) { Label("Antrenman geçmişi", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity) }.buttonStyle(TempoSecondaryButtonStyle())
+                }
                 HomeSocialCard()
                 if let dashboard = model.dashboard {
                     RecentActivitiesPanel(activities: dashboard.activities)
@@ -504,8 +509,11 @@ private struct HomeScreen: View {
     private var weeklyMetrics: some View {
         HStack(spacing: 10) {
             MetricCard(value: "\(weekManualWorkouts.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
+                .accessibilityElement(children: .ignore).accessibilityLabel("Antrenman".tempoLocalized).accessibilityValue("\(weekManualWorkouts.count)").accessibilityIdentifier("home.week.workouts")
             MetricCard(value: TempoFormat.duration(weekSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
+                .accessibilityElement(children: .ignore).accessibilityLabel("Süre".tempoLocalized).accessibilityValue(TempoFormat.duration(weekSeconds)).accessibilityIdentifier("home.week.duration")
             MetricCard(value: TempoFormat.distance(weekDistance), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.purple)
+                .accessibilityElement(children: .ignore).accessibilityLabel("Mesafe".tempoLocalized).accessibilityValue(TempoFormat.distance(weekDistance)).accessibilityIdentifier("home.week.distance")
         }
     }
 
@@ -775,146 +783,96 @@ private struct ActivitiesScreen: View {
     @State private var selectedFilter = ActivityTimelineFilter.all
     @State private var isShowingManualWorkoutForm = false
     @State private var isShowingPhoneTracker = false
-
     private var filterOptions: [ActivityTimelineFilter] {
-        let featuredSports: [TempoSport] = [.run, .ride, .walk, .tennis, .basketball, .football, .swim]
-        let presentSports = Set(allActivities.map(\.sport))
-        let additionalSports = presentSports.subtracting(Set(featuredSports))
-            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        return [.all]
-            + featuredSports.map(ActivityTimelineFilter.sport)
-            + additionalSports.map(ActivityTimelineFilter.sport)
-            + [.other]
+        let featured: [TempoSport] = [.run, .ride, .walk, .tennis, .basketball, .football, .swim]
+        let present = Set(model.activityWorkouts.map { TempoSport(rawValue: $0.sportId) } + (model.dashboard?.activities ?? []).map(\.sport))
+        let other = present.subtracting(Set(featured + [.other])).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        return [.all] + featured.map(ActivityTimelineFilter.sport) + other.map(ActivityTimelineFilter.sport) + [.other]
     }
-
-    private var filtered: [TempoActivity] {
-        (model.dashboard?.activities ?? []).filter { activity in
-            let matchesSearch = search.isEmpty
-                || (activity.name ?? "").localizedCaseInsensitiveContains(search)
-                || activity.sport.title.localizedCaseInsensitiveContains(search)
-            return matchesSearch && selectedFilter.matches(activity)
+    private var localRecords: [TempoManualWorkout] {
+        model.activityWorkouts.filter { workout in
+            let sport = TempoSport(rawValue: workout.sportId)
+            return selectedFilter.matchesSport(sport) && (search.isEmpty || workout.title.localizedCaseInsensitiveContains(search) || workout.sportTitle.localizedCaseInsensitiveContains(search) || workout.sourceTitle.localizedCaseInsensitiveContains(search))
         }
     }
-
-    private var allActivities: [TempoActivity] { model.dashboard?.activities ?? [] }
-    private var totalDistance: Double {
-        model.manualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
+    private var stravaRecords: [TempoActivity] {
+        (model.dashboard?.activities ?? []).filter { selectedFilter.matches($0) && (search.isEmpty || ($0.name ?? "").localizedCaseInsensitiveContains(search) || $0.sport.title.localizedCaseInsensitiveContains(search)) }
     }
-    private var totalTime: Double {
-        model.manualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
-    }
-    private var totalWorkoutCount: Int { model.manualWorkouts.count }
-
     var body: some View {
         NavigationStack {
             TempoPage {
                 PageTitle(title: "Aktiviteler", subtitle: "Tüm antrenman geçmişin")
                 HStack(spacing: 9) {
-                    Button { isShowingPhoneTracker = true } label: {
-                        Label("Koşu / yürüyüş kaydet", systemImage: "location.north.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(TempoPrimaryButtonStyle())
-                    Button { isShowingManualWorkoutForm = true } label: {
-                        Label("Manuel kayıt", systemImage: "plus.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(TempoSecondaryButtonStyle())
-                    .accessibilityIdentifier("activity.manual.add")
+                    Button { isShowingPhoneTracker = true } label: { Label("Koşu / yürüyüş kaydet", systemImage: "location.north.circle.fill").frame(maxWidth: .infinity) }.buttonStyle(TempoPrimaryButtonStyle())
+                    Button { isShowingManualWorkoutForm = true } label: { Label("Manuel kayıt", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }.buttonStyle(TempoSecondaryButtonStyle()).accessibilityIdentifier("activity.manual.add")
                 }
-                if !model.manualWorkouts.isEmpty {
-                    VStack(alignment: .leading, spacing: 11) {
-                        HStack {
-                            Text("MANUEL KAYITLAR").font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                            Spacer()
-                            Text("%d antrenman".tempoFormatted(model.manualWorkouts.count)).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
-                        }
-                        LazyVStack(spacing: 10) {
-                            ForEach(model.manualWorkouts) { workout in
-                                ManualWorkoutRow(workout: workout)
-                                    .contextMenu {
-                                        Button(role: .destructive) { model.deleteManualWorkout(workout) } label: {
-                                            Label("Antrenmanı sil", systemImage: "trash")
-                                        }
-                                    }
-                            }
+                HealthWorkoutsSyncCard()
+                if !model.activityWorkouts.isEmpty {
+                    HStack(spacing: 10) {
+                        MetricCard(value: "\(model.activityWorkouts.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
+                        MetricCard(value: TempoFormat.duration(model.activityWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }), label: "Süre", icon: "clock", color: TempoTheme.blue)
+                        MetricCard(value: TempoFormat.distance(model.activityWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.purple)
+                    }
+                    Text("Toplamlar Tempo ve Apple Sağlık kayıtlarını içerir. Aynı antrenmanın farklı kaynaklardaki kopyaları birleştirilir.").font(.caption2).foregroundStyle(TempoTheme.secondary)
+                }
+                SearchField(text: $search, placeholder: "Aktivite ara")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(filterOptions) { option in
+                            Button { selectedFilter = option } label: {
+                                Text(option.title.tempoLocalized).font(.caption.weight(.semibold)).foregroundStyle(selectedFilter.id == option.id ? .black : .white.opacity(0.8)).padding(.horizontal, 14).padding(.vertical, 10).background(selectedFilter.id == option.id ? TempoTheme.green : TempoTheme.card, in: Capsule())
+                            }.buttonStyle(.plain).accessibilityIdentifier("activity.filter.\(option.id)")
                         }
                     }
-                }
-                if !model.manualWorkouts.isEmpty {
-                    activitySnapshot
-                }
-                if !model.isConnected {
-                    StravaOptionalCard(
-                        title: "Aktivitelerin burada görünsün",
-                        message: "Strava aktivitelerini ve rotalarını görmek istersen hesabını istediğin zaman bağlayabilirsin."
-                    )
-                } else if model.dashboard == nil {
-                    LoadingDashboardCard()
-                } else {
-                    SearchField(text: $search, placeholder: "Aktivite ara")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(filterOptions) { filter in
-                                Button {
-                                    withAnimation(.snappy(duration: 0.2)) { selectedFilter = filter }
-                                } label: {
-                                    Text(filter.title.tempoLocalized)
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(selectedFilter.id == filter.id ? .black : .white.opacity(0.78))
-                                        .padding(.horizontal, 14).padding(.vertical, 10)
-                                        .background(selectedFilter.id == filter.id ? TempoTheme.green : .white.opacity(0.045), in: Capsule())
-                                        .overlay(Capsule().stroke(selectedFilter.id == filter.id ? .clear : .white.opacity(0.08), lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                }.accessibilityIdentifier("activity.filters")
+                SectionHeading(title: "Antrenmanların", caption: "TEMPO + APPLE SAĞLIK", padding: false)
+                ForEach(localRecords) { workout in
+                    ManualWorkoutRow(workout: workout).accessibilityIdentifier("workout.record.\(workout.sportId)").contextMenu {
+                        if workout.isLocalRecord { Button(role: .destructive) { model.deleteManualWorkout(workout) } label: { Label("Antrenmanı sil", systemImage: "trash") } }
                     }
-                    HStack {
-                        Text("SON HAREKETLER".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                        Spacer()
-                    }
-                    LazyVStack(spacing: 10) {
-                        ForEach(filtered) { activity in
-                            NavigationLink(destination: ActivityDetailScreen(activity: activity)) { ActivityRow(activity: activity) }
-                                .buttonStyle(.plain)
-                        }
-                    }
-                    if filtered.isEmpty { EmptyCard(icon: "magnifyingglass", text: "Bu filtreye uygun aktivite yok.") }
                 }
-            }
-            .refreshable { await model.refreshDashboard() }
+                if localRecords.isEmpty { EmptyCard(icon: "figure.run", text: "Bu filtrede Tempo veya Apple Sağlık antrenmanı yok.") }
+                if model.isConnected {
+                    SectionHeading(title: "Strava aktiviteleri", caption: "STRAVA", padding: false)
+                    Text("Strava kayıtları burada doğrudan görüntülenir; Tempo puanlarına ve hedeflerine katılmaz.").font(.caption2).foregroundStyle(TempoTheme.secondary)
+                    if model.dashboard == nil { LoadingDashboardCard() }
+                    else {
+                        ForEach(stravaRecords) { activity in NavigationLink(destination: ActivityDetailScreen(activity: activity)) { ActivityRow(activity: activity) }.buttonStyle(.plain) }
+                        if stravaRecords.isEmpty { EmptyCard(icon: "magnifyingglass", text: "Bu filtreye uygun Strava aktivitesi yok.") }
+                    }
+                } else { StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Bağladığında Strava kayıtlarını burada ayrı kaynak etiketiyle görebilirsin.") }
+            }.refreshable { await model.reloadAll() }
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $isShowingManualWorkoutForm) {
-                ManualWorkoutForm()
-            }
-            .sheet(isPresented: $isShowingPhoneTracker) {
-                TempoPhoneTrackerScreen()
+            .sheet(isPresented: $isShowingManualWorkoutForm) { ManualWorkoutForm() }
+            .sheet(isPresented: $isShowingPhoneTracker) { TempoPhoneTrackerScreen() }
+        }
+    }
+}
+
+struct HealthWorkoutsSyncCard: View {
+    @EnvironmentObject private var model: TempoAppModel
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Apple Sağlık antrenmanları", systemImage: "heart.text.square.fill").font(.subheadline.weight(.semibold))
+                Text("Son 90 günün antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                Button { model.connectAppleHealth() } label: {
+                    HStack { Text("Antrenman izinlerini güncelle ve eşitle".tempoLocalized); if model.isHealthSyncing { ProgressView().tint(TempoTheme.green) } }
+                }.buttonStyle(TempoSecondaryButtonStyle()).disabled(model.isHealthSyncing).accessibilityIdentifier("workouts.health.sync")
+                if let error = model.healthWorkoutError ?? model.healthError { Text(error).font(.caption).foregroundStyle(TempoTheme.secondary) }
             }
         }
     }
+}
 
-    private var activitySnapshot: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("HAREKET ÖZETİ".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                Text("%d antrenman".tempoFormatted(totalWorkoutCount))
-                    .font(.title3.bold())
-                Text("Yalnızca Tempo kayıtların".tempoLocalized)
-                    .font(.caption).foregroundStyle(TempoTheme.secondary)
-            }
-            Spacer(minLength: 10)
-            VStack(alignment: .trailing, spacing: 6) {
-                Text(TempoFormat.distance(totalDistance)).font(.title3.bold().monospacedDigit()).foregroundStyle(.white)
-                Text(TempoFormat.duration(totalTime)).font(.caption.weight(.medium).monospacedDigit()).foregroundStyle(TempoTheme.blue)
-            }
-        }
-        .padding(17)
-        .background(
-            LinearGradient(colors: [TempoTheme.green.opacity(0.12), TempoTheme.card, TempoTheme.blue.opacity(0.07)], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 23, style: .continuous)
-        )
-        .overlay(RoundedRectangle(cornerRadius: 23, style: .continuous).stroke(.white.opacity(0.10), lineWidth: 1))
+private struct TempoWorkoutHistoryScreen: View {
+    @EnvironmentObject private var model: TempoAppModel
+    var body: some View {
+        TempoPage {
+            PageTitle(title: "Antrenman geçmişi", subtitle: "TEMPO + APPLE SAĞLIK")
+            ForEach(model.activityWorkouts) { workout in ManualWorkoutRow(workout: workout) }
+            if model.activityWorkouts.isEmpty { EmptyCard(icon: "figure.run", text: "Henüz antrenman kaydı yok.") }
+        }.navigationTitle("Antrenman geçmişi").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
     }
 }
 
@@ -1002,13 +960,7 @@ private struct ManualWorkoutRow: View {
         }
     }
 
-    private var sourceTitle: String {
-        switch workout.recordSource {
-        case "phone-gps": return "iPhone GPS kaydı".tempoLocalized
-        case "health-supported-manual": return "Elle eklendi · Sağlık sinyali".tempoLocalized
-        default: return workout.healthSignal == nil ? "Elle eklendi".tempoLocalized : "Elle eklendi · Sağlık sinyali".tempoLocalized
-        }
-    }
+    private var sourceTitle: String { workout.sourceTitle }
 
     private var sourceSymbol: String { workout.recordSource == "phone-gps" ? "location.fill" : "heart.text.square.fill" }
 
@@ -1550,15 +1502,17 @@ private struct ActivityTimelineFilter: Identifiable {
         ActivityTimelineFilter(id: "sport:\(sport)", title: sport.title, sport: sport)
     }
 
-    func matches(_ activity: TempoActivity) -> Bool {
+    func matches(_ activity: TempoActivity) -> Bool { matchesSport(activity.sport) }
+
+    func matchesSport(_ value: TempoSport) -> Bool {
         switch id {
         case Self.all.id:
             return true
         case Self.other.id:
-            return activity.sport != .run && activity.sport != .ride && activity.sport != .walk
+            return value != .run && value != .ride && value != .walk
         default:
             guard let sport else { return false }
-            return activity.sport == sport
+            return value == sport
         }
     }
 }

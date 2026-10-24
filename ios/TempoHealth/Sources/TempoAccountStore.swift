@@ -329,7 +329,7 @@ final class TempoAccountStore: ObservableObject {
         do {
             let envelope = try await request(path: "/api/account", method: "DELETE", body: EmptyPayload(), authenticated: true)
             stravaRevocationFailed = envelope.stravaRevoked == false
-            TempoNotifications.shared.detach()
+            TempoNotifications.shared.detach(eraseAccountData: true)
             clearLocalSession()
             return true
         } catch {

@@ -784,3 +784,23 @@
 "Hatırlatma saati" = "Hatırlatma saati";
 "Haftalık değerlendirme" = "Haftalık değerlendirme";
 "Haftalık hatırlatma pazar günü 18.00’de gelir. Hatırlatmalar internet olmadan da çalışır." = "Haftalık hatırlatma pazar günü 18.00’de gelir. Hatırlatmalar internet olmadan da çalışır.";
+
+/* Workout history and notification permission */
+"TEMPO + APPLE SAĞLIK" = "TEMPO + APPLE SAĞLIK";
+"Tempo + Apple Sağlık" = "Tempo + Apple Sağlık";
+"Son antrenmanların" = "Son antrenmanların";
+"Antrenman geçmişi" = "Antrenman geçmişi";
+"Antrenmanların" = "Antrenmanların";
+"Toplamlar Tempo ve Apple Sağlık kayıtlarını içerir. Aynı antrenmanın farklı kaynaklardaki kopyaları birleştirilir." = "Toplamlar Tempo ve Apple Sağlık kayıtlarını içerir. Aynı antrenmanın farklı kaynaklardaki kopyaları birleştirilir.";
+"Bu filtrede Tempo veya Apple Sağlık antrenmanı yok." = "Bu filtrede Tempo veya Apple Sağlık antrenmanı yok.";
+"Strava aktiviteleri" = "Strava aktiviteleri";
+"Strava kayıtları burada doğrudan görüntülenir; Tempo puanlarına ve hedeflerine katılmaz." = "Strava kayıtları burada doğrudan görüntülenir; Tempo puanlarına ve hedeflerine katılmaz.";
+"Bu filtreye uygun Strava aktivitesi yok." = "Bu filtreye uygun Strava aktivitesi yok.";
+"Bağladığında Strava kayıtlarını burada ayrı kaynak etiketiyle görebilirsin." = "Bağladığında Strava kayıtlarını burada ayrı kaynak etiketiyle görebilirsin.";
+"Apple Sağlık antrenmanları" = "Apple Sağlık antrenmanları";
+"Son 90 günün antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır." = "Son 90 günün antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır.";
+"Antrenman izinlerini güncelle ve eşitle" = "Antrenman izinlerini güncelle ve eşitle";
+"Apple Sağlık antrenmanları okunamadı. İzinlerini kontrol edip yeniden eşitle." = "Apple Sağlık antrenmanları okunamadı. İzinlerini kontrol edip yeniden eşitle.";
+"Henüz antrenman kaydı yok." = "Henüz antrenman kaydı yok.";
+"Hedef bu sporun Tempo ve Apple Sağlık kayıtlarını sayar; dilediğinde değiştirebilirsin." = "Hedef bu sporun Tempo ve Apple Sağlık kayıtlarını sayar; dilediğinde değiştirebilirsin.";
+"Bildirim izni ver" = "Bildirim izni ver";
