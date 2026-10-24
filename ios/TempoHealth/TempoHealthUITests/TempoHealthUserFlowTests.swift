@@ -65,6 +65,7 @@ final class TempoHealthUserFlowTests: XCTestCase {
 
         let onboarding = element("onboarding.profile.title", in: app)
         try require(onboarding.waitForExistence(timeout: 50), "Real registration did not reach onboarding. \(accountError(in: app))", in: app)
+        dismissPasswordSavePrompt(in: app, timeout: 5)
         capture(app, named: "Live account created - onboarding")
         try tapButton("onboarding.profile.continue", in: app)
         let sport = element("sport.selection.run", in: app)
@@ -92,6 +93,7 @@ final class TempoHealthUserFlowTests: XCTestCase {
             try enter(password, into: "auth.password", in: app)
             try tapButton("auth.submit", in: app)
             try require(element("screen.summary", in: app).waitForExistence(timeout: 50), "Real \(name) sign-in failed. \(accountError(in: app))", in: app)
+            dismissPasswordSavePrompt(in: app, timeout: 5)
             capture(app, named: "Live sign-in by " + name)
         }
         app.terminate()
@@ -180,7 +182,7 @@ final class TempoHealthUserFlowTests: XCTestCase {
 
     private func launchApp(authenticated: Bool = false, preserveSession: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing"]
+        app.launchArguments = ["--ui-testing", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         if authenticated {
             app.launchArguments.append("--ui-testing-authenticated")
         }
@@ -230,11 +232,21 @@ final class TempoHealthUserFlowTests: XCTestCase {
     private func tapButton(_ identifier: String, in app: XCUIApplication) throws {
         let button = app.buttons.matching(identifier: identifier).firstMatch
         try require(button.waitForExistence(timeout: 8), "Missing action \(identifier)", in: app)
+        if !button.isHittable { dismissPasswordSavePrompt(in: app, timeout: 2) }
         for _ in 0..<6 where !button.isHittable { app.swipeUp() }
         try require(button.isEnabled, "Action \(identifier) should be enabled", in: app)
+        try require(button.isHittable, "Action \(identifier) should be reachable", in: app)
         button.tap()
     }
 
+    private func dismissPasswordSavePrompt(in app: XCUIApplication, timeout: TimeInterval) {
+        // Password AutoFill presents its own sheet after successful credentials.
+        // Exercise the normal system UI without storing disposable test passwords.
+        let prompt = app.sheets.matching(NSPredicate(format: "label == %@", "Save Password?")).firstMatch
+        guard prompt.waitForExistence(timeout: timeout) else { return }
+        let notNow = prompt.buttons["Not Now"]
+        if notNow.waitForExistence(timeout: 3), notNow.isHittable { notNow.tap() }
+    }
     private func require(_ condition: Bool, _ message: String, in app: XCUIApplication) throws {
         guard !condition else { return }
         capture(app, named: "Account flow failure")
