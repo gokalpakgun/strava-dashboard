@@ -95,6 +95,17 @@ jobs:
           ARCHIVED_BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$RUNNER_TEMP/Tempo.xcarchive/Products/Applications/Tempo.app/Info.plist")
           echo "Archived TestFlight build number: $ARCHIVED_BUILD_NUMBER"
           test "$ARCHIVED_BUILD_NUMBER" = "$BUILD_NUMBER"
+          # Verify the capabilities of the actual signed application, not just source settings.
+          SIGNED_APP="$RUNNER_TEMP/Tempo.xcarchive/Products/Applications/Tempo.app"
+          codesign -d --entitlements :- "$SIGNED_APP" > "$RUNNER_TEMP/Tempo-signed-entitlements.plist"
+          SIGNED_PUSH=$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$RUNNER_TEMP/Tempo-signed-entitlements.plist")
+          SIGNED_HEALTH=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.healthkit' "$RUNNER_TEMP/Tempo-signed-entitlements.plist")
+          SIGNED_TEAM=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$RUNNER_TEMP/Tempo-signed-entitlements.plist")
+          test "$SIGNED_PUSH" = "production"
+          test "$SIGNED_HEALTH" = "true"
+          test "$SIGNED_TEAM" = "DV675SBH9Q"
+          echo "Verified signed capabilities: production APNs, HealthKit, expected Tempo team."
+
 
       - name: TestFlight IPA dosyasını dışa aktar
         run: |
