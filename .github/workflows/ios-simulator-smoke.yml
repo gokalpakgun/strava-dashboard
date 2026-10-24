@@ -57,6 +57,12 @@ jobs:
           swiftc ios/TempoHealth/Sources/TempoSleepAggregation.swift ios/HealthRegressionTests/main.swift -o "$RUNNER_TEMP/health-regressions"
           "$RUNNER_TEMP/health-regressions"
 
+      - name: Run production workout ledger regressions
+        run: |
+          set -euo pipefail
+          swiftc ios/TempoHealth/Sources/TempoWorkoutLedger.swift ios/WorkoutLedgerRegressionTests/main.swift -o "$RUNNER_TEMP/workout-regressions"
+          "$RUNNER_TEMP/workout-regressions"
+
       - name: Select an iPhone simulator
         run: |
           set -euo pipefail

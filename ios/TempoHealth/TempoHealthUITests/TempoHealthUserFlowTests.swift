@@ -146,6 +146,133 @@ final class TempoHealthUserFlowTests: XCTestCase {
         capture(app, named: "Social friends")
     }
 
+
+    func testNotificationsInboxPreferencesAndPermission() {
+        let app = launchApp(authenticated: true)
+        XCTAssertTrue(element("home.notifications", in: app).waitForExistence(timeout: 15))
+        element("home.notifications", in: app).tap()
+        XCTAssertTrue(element("notifications.settings", in: app).waitForExistence(timeout: 8))
+        capture(app, named: "Notifications inbox")
+        element("notifications.settings", in: app).tap()
+        let friends = element("notifications.friends", in: app)
+        XCTAssertTrue(friends.waitForExistence(timeout: 8))
+        XCTAssertTrue(element("notifications.challenges", in: app).exists)
+        friends.tap()
+        capture(app, named: "Notification preferences")
+        let enable = element("notifications.enable", in: app)
+        if enable.exists {
+            enable.tap()
+            let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]
+            if allow.waitForExistence(timeout: 5) { allow.tap() }
+            XCTAssertTrue(enable.waitForNonExistence(timeout: 8), "The permission request should resolve")
+        }
+        app.swipeUp()
+        XCTAssertTrue(element("notifications.daily", in: app).waitForExistence(timeout: 5))
+        capture(app, named: "Notification reminder options")
+    }
+
+    func testRepeatedPrimaryTabSwitchesKeepNavigationVisible() {
+        let app = launchApp(authenticated: true)
+        XCTAssertTrue(element("tab.0", in: app).waitForExistence(timeout: 15))
+        for index in [1, 2, 3, 4, 0, 3, 1, 4, 2, 0] {
+            element("tab.\(index)", in: app).tap()
+            XCTAssertTrue(element("tab.0", in: app).isHittable)
+            XCTAssertTrue(element("tab.4", in: app).isHittable)
+        }
+        XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 8))
+        capture(app, named: "Stable shell after repeated tab transitions")
+    }
+
+
+    func testWorkoutLedgerTotalsSportsAndActivityFiltersAgree() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-authenticated", "--ui-testing-workout-ledger", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 15))
+        func reveal(_ id: String) -> XCUIElement {
+            let target = element(id, in: app)
+            for _ in 0..<7 where !target.isHittable { app.swipeUp() }
+            XCTAssertTrue(target.exists && target.isHittable, "Missing workout control \(id)")
+            return target
+        }
+        XCTAssertEqual(reveal("home.week.workouts").value as? String, "3", "Phone + Health copies must count once")
+        XCTAssertEqual(element("home.week.duration", in: app).value as? String, "1 hr 30 min")
+        XCTAssertEqual(element("home.week.distance", in: app).value as? String, "3.2 km")
+        capture(app, named: "Workout ledger - consistent weekly totals")
+        element("tab.1", in: app).tap()
+        let tennis = element("activity.filter.sport:tennis", in: app)
+        for _ in 0..<5 where !element("activity.filter.all", in: app).isHittable { app.swipeUp() }
+        let bar = element("activity.filters", in: app)
+        for _ in 0..<4 where !tennis.isHittable { bar.swipeLeft() }
+        XCTAssertTrue(tennis.isHittable)
+        tennis.tap()
+        _ = reveal("workout.record.tennis")
+        XCTAssertTrue(app.staticTexts["Fixture Health tennis"].exists)
+        XCTAssertFalse(element("workout.record.run", in: app).exists)
+        capture(app, named: "Workout ledger - Apple Health tennis filter")
+        element("tab.2", in: app).tap()
+        reveal("sport.open.basketball").tap()
+        XCTAssertEqual(reveal("sport.total.workouts").value as? String, "1", "A performed sport must appear even if it was not selected in profile")
+        capture(app, named: "Workout ledger - basketball imported into Sports")
+    }
+
+    @MainActor
+    func testRealFriendRequestAppearsInNotificationInbox() async throws {
+        let suffix = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)).lowercased()
+        let password = "Tu!9" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let email = "tempo.notice.a." + suffix + "@example.com"
+        let secondEmail = "tempo.notice.b." + suffix + "@example.com"
+        let username = "uitestna" + suffix
+        let secondUsername = "uitestnb" + suffix
+        addTeardownBlock {
+            var firstError: Error?
+            for address in [email, secondEmail] {
+                do { try await Self.deleteDisposableAccount(email: address, password: password) }
+                catch { if firstError == nil { firstError = error } }
+            }
+            if let firstError { throw firstError }
+        }
+        let alice = try await Self.notificationAPI("/api/account/signup", body: ["email": email, "username": username, "password": password])
+        let bob = try await Self.notificationAPI("/api/account/signup", body: ["email": secondEmail, "username": secondUsername, "password": password])
+        guard let aliceToken = alice["token"] as? String, let bobToken = bob["token"] as? String else { XCTFail("Disposable notification accounts were not created"); return }
+        _ = try await Self.notificationAPI("/api/account/profile", method: "PATCH", token: aliceToken, body: ["onboardingComplete": true, "sports": ["walking"]])
+        _ = try await Self.notificationAPI("/api/account/social/friends", token: bobToken, body: ["username": username])
+        var ready = false
+        for _ in 0..<15 {
+            let inbox = try await Self.notificationAPI("/api/account/notifications", method: "GET", token: aliceToken)
+            if let notices = inbox["notifications"] as? [[String: Any]], notices.contains(where: { $0["type"] as? String == "friend_request" }) { ready = true; break }
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+        XCTAssertTrue(ready, "A real saved friend request must create an account-scoped inbox entry")
+        let app = launchApp()
+        try tapButton("auth.signIn", in: app)
+        try enter(email, into: "auth.email", in: app)
+        try enter(password, into: "auth.password", in: app)
+        try tapButton("auth.submit", in: app)
+        try require(element("home.notifications", in: app).waitForExistence(timeout: 40), "Real notification recipient could not sign in", in: app)
+        dismissPasswordSavePrompt(in: app, timeout: 3)
+        element("home.notifications", in: app).tap()
+        let request = element("notification.friend_request", in: app)
+        try require(request.waitForExistence(timeout: 25), "Real friend request did not appear in native notification inbox", in: app)
+        capture(app, named: "Real friend request notification inbox")
+        request.tap()
+        try require(element("social.sections", in: app).waitForExistence(timeout: 10), "Notification should open Social", in: app)
+        capture(app, named: "Notification opened social destination")
+    }
+
+    private static func notificationAPI(_ path: String, method: String = "POST", token: String? = nil, body: [String: Any]? = nil) async throws -> [String: Any] {
+        var request = URLRequest(url: URL(string: "https://apitempo.com" + path)!)
+        request.httpMethod = method
+        request.timeoutInterval = 25
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
+        if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw NSError(domain: "TempoNotificationLiveTest", code: status, userInfo: [NSLocalizedDescriptionKey: "Notification test request failed: " + path]) }
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
     func testRealHealthKitAuthorizationWriteReadAndCleanup() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-testing-authenticated", "--ui-testing-healthkit", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]

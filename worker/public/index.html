@@ -13,13 +13,14 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="app.js" defer></script>
+<style>.tempo-brand-logo{object-fit:contain;background:transparent!important;box-shadow:none!important;padding:0!important}</style>
 </head>
 <body>
   <div class="layout">
     <button class="sidebar-backdrop" type="button" aria-label="Menüyü kapat"></button>
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-close" type="button" aria-label="Menüyü kapat">×</button>
-      <a class="brand" href="#top" aria-label="Tempo ana sayfa"><span class="brand-mark">t</span><span>tempo<span class="brand-dot">.</span></span></a>
+      <a class="brand" href="#top" aria-label="Tempo ana sayfa"><img class="brand-mark tempo-brand-logo" src="/tempo-mark.svg" alt="Tempo" /><span>tempo<span class="brand-dot">.</span></span></a>
       <div class="profile"><div class="avatar">S</div><div><strong>Strava hesabın</strong><span>Henüz bağlanmadı</span></div><span class="chevron">⌄</span></div>
       <nav aria-label="Ana menü">
         <p class="nav-label">MENÜ</p>
@@ -41,7 +42,7 @@
 
 
     <main id="top">
-      <header class="topbar"><button class="menu-toggle" type="button" aria-label="Menüyü aç" aria-controls="sidebar" aria-expanded="false">☰</button><div class="mobile-brand"><span class="brand-mark">t</span> tempo<span class="brand-dot">.</span></div><div class="breadcrumb">Panel <span>/</span> Genel Bakış</div><div class="top-actions"><button class="icon-button" aria-label="Bildirimler">♧</button><div class="mini-avatar">GK</div></div></header>
+      <header class="topbar"><button class="menu-toggle" type="button" aria-label="Menüyü aç" aria-controls="sidebar" aria-expanded="false">☰</button><div class="mobile-brand"><img class="brand-mark tempo-brand-logo" src="/tempo-mark.svg" alt="Tempo" /> tempo<span class="brand-dot">.</span></div><div class="breadcrumb">Panel <span>/</span> Genel Bakış</div><div class="top-actions"><button class="icon-button" aria-label="Bildirimler">♧</button><div class="mini-avatar">GK</div></div></header>
       <section class="content" id="overview">
         <div class="welcome"><div><p class="eyebrow">HAFTALIK ANTRENMAN PANON</p><h1>Selam! <span>✳</span></h1><p class="subhead">İstikrar, büyük hedeflerin gizli yakıtıdır.</p></div></div>
         <p class="strava-consent">Strava’ya bağlanarak Tempo’nun OAuth/API üzerinden profil ayrıntılarını (konum, kilo ve takipçi bilgileri dâhil), aktivitelerini (izin verdiğin gizli aktiviteler de dâhil), ekipmanını, favori segmentlerini, fotoğrafları ve GPS rotalarını almasına izin verirsin. Veriler yalnızca senin Tempo panelinde gösterilir; Koç’a veya arkadaşlara aktarılmaz. Bağlantıyı buradan veya <a href="https://www.strava.com/settings/apps" target="_blank" rel="noopener noreferrer">Strava ayarlarından</a> kaldırabilir, Tempo hesabını Hesap ve Güvenlik’ten silerek Tempo verilerini silebilirsin. Tamamlanan silme uygulamada onaylanır. <a href="/privacy">Gizlilik</a> · <a href="/terms">Koşullar</a> · <a href="https://github.com/gokalpakgun/strava-dashboard/issues" target="_blank" rel="noopener noreferrer">Destek</a></p>

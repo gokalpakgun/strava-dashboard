@@ -17,6 +17,7 @@ class MemoryKV {
   }
   async put(key, value) { this.writes.push(key); this.values.set(key, String(value)); }
   async delete(key) { this.values.delete(key); }
+  async list({ prefix, limit = 1000 }) { return { keys: [...this.values.keys()].filter(key => key.startsWith(prefix)).slice(0, limit).map(name => ({ name })), list_complete: true }; }
 }
 
 async function fixture() {

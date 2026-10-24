@@ -12,3 +12,5 @@ work/
 *.ipa
 *.mobileprovision
 *.p12
+
+*.p8

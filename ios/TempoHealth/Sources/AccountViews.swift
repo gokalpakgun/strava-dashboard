@@ -5,6 +5,7 @@ import UIKit
 
 struct TempoLaunchView: View {
     @State private var hasAppeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -13,8 +14,11 @@ struct TempoLaunchView: View {
                 Image("TempoLaunchMark")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 112, height: 112)
-                    .scaleEffect(hasAppeared ? 1 : 0.92)
+                    .frame(width: 140, height: 140)
+                    .accessibilityIdentifier("launch.brand")
+                    .offset(y: hasAppeared || reduceMotion ? 0 : 8)
+                    .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.94)
+                    .blur(radius: hasAppeared || reduceMotion ? 0 : 2)
                     .opacity(hasAppeared ? 1 : 0)
 
                 Text("TEMPO")
@@ -25,7 +29,7 @@ struct TempoLaunchView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeOut(duration: 0.48)) {
+            withAnimation(reduceMotion ? nil : .spring(response: 0.65, dampingFraction: 0.9)) {
                 hasAppeared = true
             }
         }

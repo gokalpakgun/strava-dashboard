@@ -17,7 +17,7 @@
   <main>
     <p><a href="/">Back to Tempo</a></p>
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: October 18, 2026</p>
+    <p class="updated">Last updated: October 24, 2026</p>
     <p>Tempo is a personal sports and wellness app centered on Apple Health. Connecting Strava is optional. You can use your Tempo account, Apple Health screens, Tempo Coach and social features without Strava. Data is not used for advertising, marketing or sale.</p>
 
     <h2>Tempo account and profile</h2>
@@ -35,6 +35,9 @@
     <p>If you connect Strava, Tempo uses Strava OAuth/API to receive profile details (including location, weight and follower information), activities you authorize (including private activities), equipment, starred segments, activity photos and GPS routes. Data from your Strava account is shown only in your Tempo dashboard. It is not sent to Tempo Coach or shared through social features.</p>
     <p>The server dashboard cache expires after at most 10 minutes. The iPhone dashboard cache expires after at most 24 hours; Tempo does not maintain a permanent archive of Strava activities. Strava refresh tokens are stored in Cloudflare KV while the connection remains active. Your iPhone stores the Tempo mobile access token in iOS Keychain; the server stores only its SHA-256 hash.</p>
     <p>You can disconnect Strava in Tempo or revoke access in <a href="https://www.strava.com/settings/apps" rel="noopener noreferrer">Strava's connected-app settings</a>. Disconnecting removes Tempo's stored refresh token, server dashboard cache and water-sync link. If Strava revocation fails, the app tells you and links to Strava settings; Tempo's local token and data are still deleted. A Strava deletion or revocation webhook clears the server cache; any short-lived iPhone dashboard cache expires within 24 hours.</p>
+
+    <h2>Notifications</h2>
+    <p>If you allow notifications, Tempo associates an Apple Push Notification service (APNs) device token and notification-type preferences with your active account session. Cloudflare stores these for up to 35 days since registration; device registration is refreshed while you use the app. Tokens are sent only to Apple APNs to deliver generic friend and challenge alerts, without health measurements, precise location or Strava data. Signing out removes that session’s device registration; deleting your account removes device registrations and the inbox. In-app social notifications are kept for up to 35 days and the latest 50 are shown. Daily and weekly reminders and milestone alerts are optional, scheduled on your iPhone, and can be changed in Notification preferences or iPhone Settings.</p>
 
     <h2>Tempo Coach</h2>
     <p>Tempo Coach is a sports and healthy-living chat available with a Tempo account. It does not require Strava or a month selection. Your messages are sent to Cloudflare Workers AI to generate a response and are not stored by Tempo's server. An Apple Health summary is included only when you explicitly enable sharing for that request. Strava data is not sent to the Coach. The Coach does not provide medical diagnosis or treatment.</p>

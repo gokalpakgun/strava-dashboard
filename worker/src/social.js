@@ -1,3 +1,4 @@
+import { queueSocialNotification } from "./push.js";
 import { accountContext } from "./account.js";
 import { claimCooldown, readLimitedText, RequestBodyTooLargeError } from "./http.js";
 import { moderateCommunityText } from "./content-moderation.js";
@@ -7,7 +8,7 @@ const MAX_PENDING = 50;
 const MAX_CHALLENGE_MEMBERS = 21;
 const CHALLENGE_SECONDS = 60 * 60 * 24 * 7;
 
-export async function handleSocialRequest(request, env, url) {
+export async function handleSocialRequest(request, env, url, ctx) {
   if (!env.TOKEN_STORE) return json({ error: "Hesap depolama bağlantısı hazır değil." }, 503);
   const account = await accountContext(request, env);
   if (account.response) return account.response;
@@ -19,11 +20,11 @@ export async function handleSocialRequest(request, env, url) {
   }
 
   if (url.pathname === root && request.method === "GET") return loadSnapshot(env, account.user);
-  if (url.pathname === root + "/friends" && request.method === "POST") return sendFriendRequest(request, env, account.user);
-  if (url.pathname === root + "/requests" && request.method === "POST") return respondToFriendRequest(request, env, account.user);
+  if (url.pathname === root + "/friends" && request.method === "POST") return sendFriendRequest(request, env, account.user, ctx);
+  if (url.pathname === root + "/requests" && request.method === "POST") return respondToFriendRequest(request, env, account.user, ctx);
   if (url.pathname === root + "/blocks" && request.method === "POST") return updateBlock(request, env, account.user);
   if (url.pathname === root + "/reports" && request.method === "POST") return createReport(request, env, account.user);
-  if (url.pathname === root + "/challenges" && request.method === "POST") return createChallenge(request, env, account.user);
+  if (url.pathname === root + "/challenges" && request.method === "POST") return createChallenge(request, env, account.user, ctx);
   const match = url.pathname.match(/^\/api\/account\/social\/challenges\/([a-f0-9-]{20,64})$/i);
   if (match && request.method === "POST") return updateChallenge(request, env, account.user, match[1]);
   if (url.pathname === root && request.method !== "GET") return json({ error: "Bu sosyal işlem desteklenmiyor." }, 405);
@@ -133,7 +134,7 @@ async function loadSnapshot(env, user) {
   });
 }
 
-async function sendFriendRequest(request, env, user) {
+async function sendFriendRequest(request, env, user, ctx) {
   const body = await readBody(request, 512);
   if (body.error) return body.error;
   const username = normalizeUsername(body.value.username);
@@ -172,6 +173,8 @@ async function sendFriendRequest(request, env, user) {
       saveState(env, user.id, mine),
       saveState(env, friend.id, theirs),
     ]);
+    const alert = queueSocialNotification(env, ctx, friend.id, "friend_accepted", incomingRequest.id);
+    if (!ctx?.waitUntil) await alert;
     return json({ ok: true, accepted: true, user: publicProfile(friend) });
   }
   if (existingRequests.length) return json({ error: "Bu kişiye zaten bekleyen bir istek var." }, 409);
@@ -186,10 +189,12 @@ async function sendFriendRequest(request, env, user) {
     env.TOKEN_STORE.put("social-request:" + id, JSON.stringify(record), { expirationTtl: 60 * 60 * 24 * 90 }),
     saveState(env, user.id, mine), saveState(env, friend.id, theirs),
   ]);
+  const alert = queueSocialNotification(env, ctx, friend.id, "friend_request", id);
+  if (!ctx?.waitUntil) await alert;
   return json({ ok: true, requestId: id, user: publicProfile(friend) }, 201);
 }
 
-async function respondToFriendRequest(request, env, user) {
+async function respondToFriendRequest(request, env, user, ctx) {
   const body = await readBody(request, 1024);
   if (body.error) return body.error;
   const id = typeof body.value.requestId === "string" ? body.value.requestId : "";
@@ -211,6 +216,10 @@ async function respondToFriendRequest(request, env, user) {
   }
   // Once both indexes have been updated, the request record is no longer needed.
   await Promise.all([env.TOKEN_STORE.delete(key), saveState(env, user.id, mine), saveState(env, record.from, theirs)]);
+  if (action === "accept") {
+    const alert = queueSocialNotification(env, ctx, record.from, "friend_accepted", id);
+    if (!ctx?.waitUntil) await alert;
+  }
   return json({ ok: true });
 }
 
@@ -308,7 +317,7 @@ async function createReport(request, env, user) {
   return json({ ok: true, message: "Bildirim alındı." }, 201);
 }
 
-async function createChallenge(request, env, user) {
+async function createChallenge(request, env, user, ctx) {
   const body = await readBody(request, 4096);
   if (body.error) return body.error;
   const title = typeof body.value.title === "string" ? body.value.title.trim().slice(0, 60) : "";
@@ -346,6 +355,8 @@ async function createChallenge(request, env, user) {
       await saveState(env, friendId, friendState);
     }),
   ]);
+  const alerts = friendIds.map(friendId => queueSocialNotification(env, ctx, friendId, "challenge_invite", id));
+  if (!ctx?.waitUntil) await Promise.all(alerts);
   return json({ ok: true, challenge: await presentChallenge(env, challenge, user.id) }, 201);
 }
 
