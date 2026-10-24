@@ -96,6 +96,7 @@ final class TempoHealthUserFlowTests: XCTestCase {
             dismissPasswordSavePrompt(in: app, timeout: 5)
             capture(app, named: "Live sign-in by " + name)
         }
+        try await connectAndVerifyNativeHealth(in: app, email: email, password: password)
         app.terminate()
     }
 
@@ -180,6 +181,50 @@ final class TempoHealthUserFlowTests: XCTestCase {
         XCTAssertTrue(result.exists && result.label.hasPrefix("HEALTHKIT_PASS"), "Real HealthKit integration did not pass: \(result.exists ? result.label : app.debugDescription)")
     }
 
+    @MainActor
+    private func connectAndVerifyNativeHealth(in app: XCUIApplication, email: String, password: String) async throws {
+        try tapButton("tab.3", in: app)
+        let connect = app.buttons["Connect Apple Health"]
+        try require(connect.waitForExistence(timeout: 10), "The real account should offer Apple Health connection", in: app)
+        connect.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let emptyRead = app.staticTexts["Apple Health is connected, but no shared data was found. Check your Health permissions."]
+        let synced = app.staticTexts["Your Apple Health data is up to date."]
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline && !emptyRead.exists && !synced.exists {
+            for host in [app, springboard] {
+                let all = host.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Turn On All")).firstMatch
+                if all.exists && all.isHittable { all.tap() }
+                let allow = host.buttons["Allow"]
+                if allow.exists && allow.isHittable && allow.isEnabled { allow.tap() }
+            }
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+        try require(emptyRead.exists || synced.exists, "Production Apple Health connection and sync did not complete", in: app)
+        capture(app, named: "Real account production Apple Health connection")
+
+        // A non-null server timestamp proves the production UI sent its native
+        // Health snapshot with this real account's bearer token, even on a clean
+        // simulator with no shared measurements. Do not invent missing values.
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        var login = URLRequest(url: URL(string: "https://apitempo.com/api/account/login")!)
+        login.httpMethod = "POST"
+        login.timeoutInterval = 20
+        login.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        login.httpBody = try JSONSerialization.data(withJSONObject: ["identifier": email, "password": password])
+        let (loginData, loginResponse) = try await session.data(for: login)
+        let loginObject = try JSONSerialization.jsonObject(with: loginData) as? [String: Any]
+        guard (loginResponse as? HTTPURLResponse)?.statusCode == 200, let token = loginObject?["token"] as? String else {
+            throw NSError(domain: "TempoNativeHealthSync", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not verify the disposable native Health session."])
+        }
+        var read = URLRequest(url: URL(string: "https://apitempo.com/api/account/health")!)
+        read.timeoutInterval = 20
+        read.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        let (healthData, healthResponse) = try await session.data(for: read)
+        let snapshot = try JSONSerialization.jsonObject(with: healthData) as? [String: Any]
+        try require((healthResponse as? HTTPURLResponse)?.statusCode == 200 && snapshot?["updatedAt"] is String && snapshot?["days"] is [String: Any], "Native Health sync must reach the real account's server snapshot", in: app)
+    }
     private func launchApp(authenticated: Bool = false, preserveSession: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
