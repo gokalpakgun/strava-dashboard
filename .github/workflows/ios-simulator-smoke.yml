@@ -114,6 +114,22 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             test-without-building
 
+      - name: Export safe account network diagnostics
+        if: always()
+        run: |
+          if [ -n "${TEMPO_SIMULATOR_ID:-}" ]; then
+            xcrun simctl spawn "$TEMPO_SIMULATOR_ID" log show --info --style compact --last 30m --predicate 'subsystem == "com.apitempo.tempohealth.account-network"' > "$RUNNER_TEMP/Tempo-account-network.log" || true
+          fi
+
+      - name: Keep safe account network diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-account-network-diagnostics
+          path: ${{ runner.temp }}/Tempo-account-network.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Export UI test screenshots
         if: always()
         run: |

@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Security
+import OSLog
 
 struct TempoUserProfile: Codable, Equatable {
     let id: String
@@ -145,11 +146,14 @@ final class TempoAccountStore: ObservableObject {
 
     private let baseURL = URL(string: "https://apitempo.com")!
     private var sessionToken: String?
+#if DEBUG
+    private static let networkLog = Logger(subsystem: "com.apitempo.tempohealth.account-network", category: "requests")
+#endif
     private static let apiSession: URLSession = {
         let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 18
-        configuration.timeoutIntervalForResource = 25
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 12
+        configuration.timeoutIntervalForResource = 20
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpAdditionalHeaders = ["Accept": "application/json"]
         return URLSession(configuration: configuration)
@@ -404,7 +408,7 @@ final class TempoAccountStore: ObservableObject {
     ) async throws -> AccountEnvelope {
         var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
         request.httpMethod = method
-        request.timeoutInterval = 18
+        request.timeoutInterval = 12
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Tempo-Request-ID")
@@ -417,7 +421,8 @@ final class TempoAccountStore: ObservableObject {
             guard let sessionToken else { throw AccountError.server("Tempo oturumunun süresi doldu.") }
             request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         }
-        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000]
+        // Two bounded attempts keep the account UI responsive on a stalled route.
+        let retryDelays: [UInt64] = [0, 350_000_000]
         // Signup has a request ID and the other listed operations can safely
         // be repeated. A lost response must not automatically send several
         // reset emails or repeat an account deletion.
@@ -430,10 +435,16 @@ final class TempoAccountStore: ObservableObject {
                 try await Task.sleep(nanoseconds: retryDelays[attempt])
             }
             do {
+#if DEBUG
+                Self.networkLog.info("begin \(method, privacy: .public) \(path, privacy: .public) attempt=\(attempt + 1)")
+#endif
                 let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     throw AccountError.server("Sunucudan yanıt alınamadı.")
                 }
+#if DEBUG
+                Self.networkLog.info("response \(method, privacy: .public) \(path, privacy: .public) status=\(http.statusCode)")
+#endif
                 let envelope = try? JSONDecoder().decode(AccountEnvelope.self, from: data)
                 guard (200..<300).contains(http.statusCode) else {
                     if http.statusCode == 401 && authenticated && sessionToken == requestSessionToken { clearLocalSession() }
@@ -454,6 +465,9 @@ final class TempoAccountStore: ObservableObject {
                 return envelope
             } catch {
                 if error is CancellationError || (error as? URLError)?.code == .cancelled { throw error }
+#if DEBUG
+                Self.networkLog.info("failure \(method, privacy: .public) \(path, privacy: .public) code=\((error as NSError).code)")
+#endif
                 lastError = error
                 if error is AccountError { throw error }
                 if canRetry, attempt < retryDelays.count - 1 { continue }
