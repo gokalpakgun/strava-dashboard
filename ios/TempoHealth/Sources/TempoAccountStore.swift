@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Security
+import OSLog
 
 struct TempoUserProfile: Codable, Equatable {
     let id: String
@@ -145,11 +146,14 @@ final class TempoAccountStore: ObservableObject {
 
     private let baseURL = URL(string: "https://apitempo.com")!
     private var sessionToken: String?
+#if DEBUG
+    private static let networkLog = Logger(subsystem: "com.apitempo.tempohealth.account-network", category: "requests")
+#endif
     private static let apiSession: URLSession = {
         let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 18
-        configuration.timeoutIntervalForResource = 25
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 12
+        configuration.timeoutIntervalForResource = 20
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpAdditionalHeaders = ["Accept": "application/json"]
         return URLSession(configuration: configuration)
@@ -159,6 +163,33 @@ final class TempoAccountStore: ObservableObject {
     var authorizationToken: String? { sessionToken }
 
     init() {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing-authenticated") {
+            sessionToken = "ui-test-session"
+            profile = TempoUserProfile(
+                id: "ui-test-account",
+                email: "tester@example.com",
+                username: "tempo_tester",
+                displayName: "Tempo Tester",
+                avatarBase64: nil,
+                sports: ["run", "tennis"],
+                onboardingComplete: true,
+                createdAt: nil
+            )
+            isRestoring = false
+            return
+        }
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           !ProcessInfo.processInfo.arguments.contains("--ui-testing-preserve-session") {
+            // UI tests start independently of any real session saved by an
+            // earlier test. The explicit preserve flag exercises normal
+            // Keychain/cache loading and session restoration after relaunch.
+            sessionToken = nil
+            profile = nil
+            isRestoring = false
+            return
+        }
+#endif
         let storedToken = AccountTokenStore.read()
         let cachedProfile = storedToken == nil ? nil : AccountProfileCache.read()
         sessionToken = storedToken
@@ -248,8 +279,9 @@ final class TempoAccountStore: ObservableObject {
         return try JSONDecoder().decode(TempoSocialSnapshot.self, from: data)
     }
 
-    func sendFriendRequest(username: String) async throws {
-        _ = try await socialRequest(path: "/api/account/social/friends", method: "POST", body: SocialFriendRequest(username: username))
+    func sendFriendRequest(username: String) async throws -> Bool {
+        let data = try await socialRequest(path: "/api/account/social/friends", method: "POST", body: SocialFriendRequest(username: username))
+        return (try? JSONDecoder().decode(SocialFriendRequestResult.self, from: data).accepted) ?? false
     }
 
     func respondToFriendRequest(id: String, accept: Bool) async throws {
@@ -305,9 +337,13 @@ final class TempoAccountStore: ObservableObject {
     }
 
     private func restoreSession() async {
+        let restoringToken = sessionToken
         defer { isRestoring = false }
         do {
             let envelope = try await request(path: "/api/account/me", method: "GET", body: Optional<EmptyPayload>.none, authenticated: true)
+            // A slower response from the old session must not replace the
+            // profile after the user signs out or signs in to another account.
+            guard sessionToken == restoringToken else { return }
             guard let user = envelope.user else { throw AccountError.server("Hesap bilgisi alınamadı.") }
             profile = user
             AccountProfileCache.save(user)
@@ -334,6 +370,7 @@ final class TempoAccountStore: ObservableObject {
         let (data, response) = try await Self.apiSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sosyal bölümden yanıt alınamadı.") }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 401, self.sessionToken == sessionToken { clearLocalSession() }
             let envelope = try? JSONDecoder().decode(AccountEnvelope.self, from: data)
             throw AccountError.server(envelope?.error ?? "Sosyal işlem tamamlanamadı.")
         }
@@ -371,45 +408,70 @@ final class TempoAccountStore: ObservableObject {
     ) async throws -> AccountEnvelope {
         var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
         request.httpMethod = method
-        request.timeoutInterval = 18
+        request.timeoutInterval = 12
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Tempo-Request-ID")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
         }
+        let requestSessionToken = authenticated ? sessionToken : nil
         if authenticated {
             guard let sessionToken else { throw AccountError.server("Tempo oturumunun süresi doldu.") }
             request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         }
-        let retryDelays: [UInt64] = [0, 350_000_000, 900_000_000]
+        // Two bounded attempts keep the account UI responsive on a stalled route.
+        let retryDelays: [UInt64] = [0, 350_000_000]
+        // Signup has a request ID and the other listed operations can safely
+        // be repeated. A lost response must not automatically send several
+        // reset emails or repeat an account deletion.
+        let canRetry = method == "GET" || ["/api/account/signup", "/api/account/login", "/api/account/logout"].contains(path)
         var lastError: Error = AccountError.server("Sunucudan yanıt alınamadı.")
 
         for attempt in retryDelays.indices {
+            try Task.checkCancellation()
             if retryDelays[attempt] > 0 {
-                try? await Task.sleep(nanoseconds: retryDelays[attempt])
+                try await Task.sleep(nanoseconds: retryDelays[attempt])
             }
             do {
+#if DEBUG
+                Self.networkLog.info("begin \(method, privacy: .public) \(path, privacy: .public) attempt=\(attempt + 1)")
+#endif
                 let (data, response) = try await Self.apiSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     throw AccountError.server("Sunucudan yanıt alınamadı.")
                 }
-                let envelope = (try? JSONDecoder().decode(AccountEnvelope.self, from: data)) ?? AccountEnvelope(token: nil, user: nil, error: nil, message: nil, stravaRevoked: nil)
+#if DEBUG
+                Self.networkLog.info("response \(method, privacy: .public) \(path, privacy: .public) status=\(http.statusCode)")
+#endif
+                let envelope = try? JSONDecoder().decode(AccountEnvelope.self, from: data)
                 guard (200..<300).contains(http.statusCode) else {
-                    if http.statusCode == 401 && authenticated { clearLocalSession() }
-                    let message = envelope.error ?? envelope.message ?? "İşlem tamamlanamadı."
+                    if http.statusCode == 401 && authenticated && sessionToken == requestSessionToken { clearLocalSession() }
+                    let message = envelope?.error ?? envelope?.message ?? "İşlem tamamlanamadı."
                     let retryable = http.statusCode == 408 || http.statusCode >= 500
-                    if retryable, attempt < retryDelays.count - 1 {
+                    let shortRetry = http.statusCode == 429 && http.value(forHTTPHeaderField: "Retry-After") == "1"
+                    if canRetry, retryable || shortRetry, attempt < retryDelays.count - 1 {
                         lastError = AccountError.server(message)
+                        if shortRetry { try await Task.sleep(nanoseconds: 1_000_000_000) }
                         continue
                     }
                     throw AccountError.server(message)
                 }
+                if http.statusCode == 204 {
+                    return AccountEnvelope(token: nil, user: nil, error: nil, message: nil, stravaRevoked: nil)
+                }
+                guard let envelope else { throw AccountError.server("Sunucudan yanıt alınamadı.") }
                 return envelope
             } catch {
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { throw error }
+#if DEBUG
+                Self.networkLog.info("failure \(method, privacy: .public) \(path, privacy: .public) code=\((error as NSError).code)")
+#endif
                 lastError = error
                 if error is AccountError { throw error }
-                if attempt < retryDelays.count - 1 { continue }
+                if canRetry, attempt < retryDelays.count - 1 { continue }
+                break
             }
         }
         if let urlError = lastError as? URLError {
@@ -474,6 +536,7 @@ private struct ProfileUpdate: Encodable {
 
 private struct EmptyPayload: Encodable {}
 private struct SocialFriendRequest: Encodable { let username: String }
+private struct SocialFriendRequestResult: Decodable { let accepted: Bool? }
 private struct SocialFriendResponse: Encodable { let requestId: String; let action: String }
 private struct SocialBlockAction: Encodable { let userId: String; let action: String }
 private struct SocialReportRequest: Encodable { let userId: String?; let challengeId: String?; let category: String }
@@ -515,15 +578,19 @@ private enum AccountTokenStore {
     }
 
     static func save(_ token: String) -> Bool {
-        delete()
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
             kSecValueData as String: Data(token.utf8),
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecSuccess { return true }
+        guard status == errSecItemNotFound else { return false }
+        return SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil) == errSecSuccess
     }
 
     static func delete() {

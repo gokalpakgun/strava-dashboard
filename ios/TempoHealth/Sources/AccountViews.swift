@@ -4,13 +4,29 @@ import SwiftUI
 import UIKit
 
 struct TempoLaunchView: View {
+    @State private var hasAppeared = false
+
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
-            VStack(spacing: 18) {
-                TempoBrandMark(size: 82)
-                Text("TEMPO").font(.headline.bold()).tracking(4).foregroundStyle(TempoTheme.green)
-                ProgressView().tint(TempoTheme.green)
+            VStack(spacing: 17) {
+                Image("TempoLaunchMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 112, height: 112)
+                    .scaleEffect(hasAppeared ? 1 : 0.92)
+                    .opacity(hasAppeared ? 1 : 0)
+
+                Text("TEMPO")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .tracking(5)
+                    .foregroundStyle(.white.opacity(0.92))
+                    .opacity(hasAppeared ? 1 : 0)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.48)) {
+                hasAppeared = true
             }
         }
     }
@@ -20,16 +36,10 @@ struct TempoBrandMark: View {
     var size: CGFloat = 76
 
     var body: some View {
-        Image("TempoLogo")
+        Image("TempoLaunchMark")
             .resizable()
             .scaledToFit()
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.30, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: size * 0.30, style: .continuous)
-                .stroke(.white.opacity(0.09), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 20, y: 12)
+            .frame(width: size, height: size)
     }
 }
 
@@ -112,6 +122,7 @@ struct AccountWelcomeView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(AccountPrimaryButtonStyle())
+                            .accessibilityIdentifier("auth.createAccount")
 
                             NavigationLink(destination: AccountFormView(mode: .signIn)) {
                                 HStack {
@@ -122,6 +133,7 @@ struct AccountWelcomeView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(AccountOutlineButtonStyle())
+                            .accessibilityIdentifier("auth.signIn")
                         }
 
                         Text("Tempo, hareketini günlük bir ritme dönüştürür.")
@@ -254,6 +266,7 @@ private struct AccountFormView: View {
                         Text(mode.title.tempoLocalized)
                             .font(.system(size: 33, weight: .bold, design: .rounded))
                             .tracking(-0.7)
+                            .accessibilityIdentifier("auth.form.title")
                         Text(mode.subtitle.tempoLocalized)
                             .font(.subheadline)
                             .foregroundStyle(TempoTheme.secondary)
@@ -269,17 +282,20 @@ private struct AccountFormView: View {
                                 text: $email,
                                 contentType: mode == .signUp ? .emailAddress : .username
                             )
+                            .accessibilityIdentifier("auth.email")
                             .keyboardType(mode == .signUp ? .emailAddress : .default)
                         }
 
                         if mode == .signUp {
                             AccountFormFieldLabel(title: "Kullanıcı adı") {
                                 AccountTextField(title: "kullaniciadi", icon: "at", text: $username, contentType: .username)
+                                        .accessibilityIdentifier("auth.username")
                             }
                         }
 
                         AccountFormFieldLabel(title: "Şifre") {
                             AccountSecureField(title: mode == .signUp ? "En az 8 karakter" : "Şifren", text: $password)
+                                .accessibilityIdentifier("auth.password")
                         }
 
                         if mode == .signIn {
@@ -291,6 +307,7 @@ private struct AccountFormView: View {
                                 }
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(TempoTheme.green)
+                                .accessibilityIdentifier("auth.forgotPassword")
                             }
                         }
 
@@ -306,6 +323,7 @@ private struct AccountFormView: View {
                                 Image(systemName: "exclamationmark.circle.fill")
                                 Text(account.errorMessage.tempoLocalized)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityIdentifier("auth.error")
                             }
                             .font(.footnote)
                             .foregroundStyle(TempoTheme.orange)
@@ -336,6 +354,7 @@ private struct AccountFormView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(AccountPrimaryButtonStyle())
+                        .accessibilityIdentifier("auth.submit")
                         .disabled(account.isBusy || !canSubmit)
                         .opacity(canSubmit ? 1 : 0.56)
                     }
@@ -359,6 +378,7 @@ private struct AccountFormView: View {
                                 .fontWeight(.semibold)
                                 .foregroundStyle(TempoTheme.green)
                         }
+                        .accessibilityIdentifier("auth.switchMode")
                     }
                     .font(.subheadline)
 
@@ -423,6 +443,7 @@ private struct PasswordResetSheet: View {
                                 .lineSpacing(3)
                             Button("Tamam") { dismiss() }
                                 .buttonStyle(AccountPrimaryButtonStyle())
+                                .accessibilityIdentifier("auth.passwordReset.done")
                         }
                         .frame(maxWidth: .infinity)
                     } else {
@@ -438,6 +459,7 @@ private struct PasswordResetSheet: View {
                         AccountFormFieldLabel(title: "E-posta") {
                             AccountTextField(title: "ornek@eposta.com", icon: "envelope", text: $email, contentType: .emailAddress)
                                 .keyboardType(.emailAddress)
+                                .accessibilityIdentifier("auth.passwordReset.email")
                         }
 
                         if !account.errorMessage.isEmpty {
@@ -463,6 +485,7 @@ private struct PasswordResetSheet: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(AccountPrimaryButtonStyle())
+                        .accessibilityIdentifier("auth.passwordReset.submit")
                         .disabled(account.isBusy || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     Spacer()
@@ -473,6 +496,7 @@ private struct PasswordResetSheet: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Kapat") { dismiss() }
                         .foregroundStyle(TempoTheme.secondary)
+                        .accessibilityIdentifier("auth.passwordReset.close")
                 }
             }
         }
@@ -563,6 +587,7 @@ struct AccountOnboardingView: View {
     private var profileStep: some View {
         VStack(alignment: .leading, spacing: 22) {
             OnboardingTitle(title: "Profilini oluşturalım", subtitle: "İnsanların seni nasıl göreceğini seç.")
+                .accessibilityIdentifier("onboarding.profile.title")
             VStack(spacing: 12) {
                 PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                     ZStack(alignment: .bottomTrailing) {
@@ -578,7 +603,9 @@ struct AccountOnboardingView: View {
             .frame(maxWidth: .infinity)
 
             AccountTextField(title: "Görünen ad", icon: "person.fill", text: $displayName, contentType: .name)
+                .accessibilityIdentifier("onboarding.displayName")
             AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
+                .accessibilityIdentifier("onboarding.username")
 
             accountError
 
@@ -596,6 +623,7 @@ struct AccountOnboardingView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(AccountPrimaryButtonStyle())
+            .accessibilityIdentifier("onboarding.profile.continue")
             .disabled(account.isBusy || isPreparingPhoto || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
@@ -618,6 +646,7 @@ struct AccountOnboardingView: View {
                     Text((account.isBusy ? "Kaydediliyor…" : "Devam et").tempoLocalized).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AccountPrimaryButtonStyle())
+                .accessibilityIdentifier("onboarding.sports.continue")
                 .disabled(account.isBusy || selectedSports.isEmpty)
             }
         }
@@ -638,7 +667,7 @@ struct AccountOnboardingView: View {
             )
             ConnectionCard(
                 title: "Strava · İsteğe bağlı",
-                subtitle: model.isConnected ? "Strava hesabın bağlı." : "Aktivitelerini, rotalarını ve spor istatistiklerini ekle.",
+                subtitle: model.isConnected ? "Strava hesabın bağlı." : "Strava aktivitelerini ve rotalarını isteğe bağlı görüntüle.",
                 icon: "figure.run",
                 color: TempoTheme.orange,
                 connected: model.isConnected,
@@ -662,6 +691,7 @@ struct AccountOnboardingView: View {
                     Text((account.isBusy ? "Hazırlanıyor…" : "Tempo’yu aç").tempoLocalized).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(AccountPrimaryButtonStyle())
+                .accessibilityIdentifier("onboarding.finish")
                 .disabled(account.isBusy)
             }
         }
@@ -692,7 +722,7 @@ struct AccountProfileCard: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
 
-    private var achievement: TempoAchievement { model.dashboard?.achievement ?? .empty }
+    private var achievement: TempoAchievement { model.tempoAchievement }
 
     var body: some View {
         if let profile = account.profile {
@@ -765,17 +795,15 @@ struct AccountProfileCard: View {
 
 struct TempoProfileShareScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
-    @EnvironmentObject private var model: TempoAppModel
     @State private var isSaving = false
     @State private var shareURL: URL?
     @State private var showShareSheet = false
     @State private var notice = ""
 
-    private var achievement: TempoAchievement { model.dashboard?.achievement ?? .empty }
     private var profileCard: some View {
         Group {
             if let profile = account.profile {
-                TempoProfileShareArtwork(profile: profile, achievement: achievement)
+                TempoProfileShareArtwork(profile: profile)
             } else {
                 EmptyCard(icon: "person.crop.rectangle", text: "Profil bilgisi yüklenemedi.")
             }
@@ -785,7 +813,7 @@ struct TempoProfileShareScreen: View {
     var body: some View {
         TempoPage {
             PageTitle(title: "Profil kartın", subtitle: "Hareketini paylaş")
-            Text("Kartın kullanıcı adını, seçtiğin sporları ve Tempo başarılarını içerir. E-posta veya özel sağlık verileri eklenmez.")
+            Text("Kartında profil adın, kullanıcı adın, fotoğrafın ve seçtiğin sporlar yer alır. E-posta, sağlık verileri ve Strava istatistikleri paylaşılmaz.")
                 .font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
 
             profileCard
@@ -827,7 +855,7 @@ struct TempoProfileShareScreen: View {
     @MainActor
     private func renderedPNG() -> Data? {
         guard let profile = account.profile else { return nil }
-        let renderer = ImageRenderer(content: TempoProfileShareArtwork(profile: profile, achievement: achievement).frame(width: 360, height: 450))
+        let renderer = ImageRenderer(content: TempoProfileShareArtwork(profile: profile).frame(width: 360, height: 450))
         renderer.scale = 3
         return renderer.uiImage?.pngData()
     }
@@ -887,157 +915,173 @@ struct TempoProfileShareScreen: View {
 
 private struct TempoProfileShareArtwork: View {
     let profile: TempoUserProfile
-    let achievement: TempoAchievement
 
     private var name: String { profile.displayName.isEmpty ? profile.username : profile.displayName }
     private var sports: [TempoSportChoice] { profile.sports.compactMap(TempoSportChoice.init(rawValue:)) }
-    private var displaySports: [TempoSportChoice] { Array(sports.prefix(6)) }
-    private var remainingSportsCount: Int { max(sports.count - displaySports.count, 0) }
-    private var badges: [TempoBadge] { Array(achievement.unlockedBadges.reversed().prefix(3)) }
+    private var displaySports: [TempoSportChoice] { Array(sports.prefix(4)) }
+    private let ink = Color(red: 0.08, green: 0.14, blue: 0.12)
+    private let paper = Color(red: 0.95, green: 0.95, blue: 0.90)
+    private let mutedInk = Color(red: 0.36, green: 0.42, blue: 0.38)
+    private let accent = Color(red: 0.73, green: 0.91, blue: 0.36)
+    private var heroSymbol: String { sports.first?.symbol ?? "figure.run" }
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .fill(LinearGradient(colors: [Color(red: 0.035, green: 0.075, blue: 0.09), Color(red: 0.055, green: 0.07, blue: 0.09), Color(red: 0.035, green: 0.045, blue: 0.065)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            Circle().fill(TempoTheme.green.opacity(0.18)).frame(width: 210).blur(radius: 60).offset(x: 125, y: -190)
-            Circle().fill(TempoTheme.blue.opacity(0.16)).frame(width: 190).blur(radius: 58).offset(x: -140, y: 170)
+        VStack(spacing: 0) {
+            heroPanel
+                .frame(height: 160)
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 9) {
-                    TempoBrandMark(size: 31)
-                    Text("TEMPO")
-                        .font(.system(size: 15, weight: .black, design: .rounded))
-                        .tracking(3.2).foregroundStyle(.white)
+                identityRow
+                    .padding(.bottom, 15)
+
+                Rectangle().fill(ink.opacity(0.10)).frame(height: 1)
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text("SPORLARIM")
+                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .tracking(1.6).foregroundStyle(mutedInk)
                     Spacer()
-                    Text("SPORCU PROFİLİ".tempoLocalized)
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .tracking(1.1).foregroundStyle(TempoTheme.green)
-                        .padding(.horizontal, 10).padding(.vertical, 7)
-                        .background(.white.opacity(0.055), in: Capsule())
+                    Text("%d spor".tempoFormatted(sports.count))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(ink)
                 }
-
-                Spacer(minLength: 20)
-
-                HStack(spacing: 16) {
-                    AccountAvatarView(data: profile.avatarData, size: 84)
-                        .overlay(Circle().stroke(TempoTheme.green.opacity(0.72), lineWidth: 2).padding(-4))
-                        .shadow(color: TempoTheme.green.opacity(0.19), radius: 15)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(name)
-                            .font(.system(size: 23, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.78)
-                        Text("@\(profile.username)")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(TempoTheme.green)
-                        Text("KENDİ RİTMİNDE İLERLE".tempoLocalized)
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .tracking(1).foregroundStyle(TempoTheme.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-
-                Spacer(minLength: 20)
-
-                HStack(spacing: 8) {
-                    Image(systemName: "figure.run")
-                        .foregroundStyle(TempoTheme.green)
-                    Text("İLGİ ALANLARI")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .tracking(1.3).foregroundStyle(TempoTheme.secondary)
-                }
+                .padding(.top, 15)
                 .padding(.bottom, 10)
 
                 if displaySports.isEmpty {
-                    Text("Henüz spor seçilmedi")
-                        .font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(TempoTheme.secondary)
+                    Text("Spor tercihlerini Tempo profilinden ekleyebilirsin.")
+                        .font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(mutedInk)
                 } else {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(spacing: 7) {
                         ForEach(Array(stride(from: 0, to: displaySports.count, by: 2)), id: \.self) { start in
-                            HStack(spacing: 8) {
+                            HStack(spacing: 7) {
                                 sportPill(displaySports[start])
-                                if start + 1 < displaySports.count { sportPill(displaySports[start + 1]) }
-                                if start + 2 == displaySports.count, remainingSportsCount > 0 {
-                                    Text("+%d".tempoFormatted(remainingSportsCount))
-                                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                                        .foregroundStyle(TempoTheme.secondary)
-                                        .padding(.horizontal, 9).padding(.vertical, 8)
-                                        .background(.white.opacity(0.045), in: Capsule())
+                                if start + 1 < displaySports.count {
+                                    sportPill(displaySports[start + 1])
                                 }
-                                Spacer(minLength: 0)
                             }
                         }
                     }
                 }
 
-                Spacer(minLength: 18)
+                Spacer(minLength: 10)
 
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("TEMPO SEVİYESİ")
-                            .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.1).foregroundStyle(TempoTheme.secondary)
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("\(achievement.level)")
-                                .font(.system(size: 44, weight: .bold, design: .rounded)).foregroundStyle(.white)
-                            Text(achievement.title.tempoLocalized.uppercased())
-                                .font(.system(size: 10, weight: .bold, design: .rounded)).foregroundStyle(TempoTheme.green).lineLimit(1)
-                        }
-                    }
+                HStack(alignment: .center, spacing: 8) {
+                    Rectangle().fill(ink).frame(width: 22, height: 3)
+                    Text("KENDİ TEMPO’NDA. KENDİ YOLUNDA.")
+                        .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        .tracking(0.8).foregroundStyle(ink)
+                        .lineLimit(1).minimumScaleFactor(0.7)
                     Spacer(minLength: 0)
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("TOPLAM XP")
-                            .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.1).foregroundStyle(TempoTheme.secondary)
-                        Text(achievement.totalXp.formatted())
-                            .font(.system(size: 23, weight: .bold, design: .rounded).monospacedDigit()).foregroundStyle(.white)
-                        Text("%d ROZET".tempoFormatted(achievement.unlockedBadgeCount))
-                            .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(0.8).foregroundStyle(TempoTheme.secondary)
-                    }
-                }
-                .padding(16)
-                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
-
-                if !badges.isEmpty {
-                    HStack(spacing: 7) {
-                        ForEach(badges) { badge in
-                            HStack(spacing: 5) {
-                                Image(systemName: badge.symbol)
-                                Text(badge.title.tempoLocalized).lineLimit(1).minimumScaleFactor(0.7)
-                            }
-                            .font(.system(size: 8, weight: .semibold, design: .rounded))
-                            .foregroundStyle(badge.tempoColor)
-                            .padding(.horizontal, 8).padding(.vertical, 7)
-                            .background(badge.tempoColor.opacity(0.10), in: Capsule())
-                        }
-                    }
-                    .padding(.top, 12)
-                }
-
-                Spacer(minLength: 13)
-
-                HStack {
-                    Text("HAREKETİNİ PAYLAŞ".tempoLocalized)
-                        .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.4).foregroundStyle(TempoTheme.secondary)
-                    Spacer()
                     Text("APITEMPO.COM")
-                        .font(.system(size: 8, weight: .bold, design: .rounded)).tracking(1.2).foregroundStyle(TempoTheme.green)
+                        .font(.system(size: 7, weight: .bold, design: .rounded))
+                        .tracking(0.6).foregroundStyle(mutedInk)
                 }
             }
-            .padding(25)
+            .padding(.horizontal, 22)
+            .padding(.top, 12)
+            .padding(.bottom, 17)
+            .frame(maxHeight: .infinity)
+            .background(paper)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).stroke(.white.opacity(0.09), lineWidth: 1))
+        .background(paper)
+        .clipShape(RoundedRectangle(cornerRadius: 29, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 29, style: .continuous).stroke(ink.opacity(0.12), lineWidth: 1))
         .accessibilityElement(children: .combine)
+    }
+
+    private var heroPanel: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [Color(red: 0.09, green: 0.18, blue: 0.15), ink],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .stroke(accent.opacity(0.15), lineWidth: 1)
+                .frame(width: 150, height: 150)
+                .offset(x: 245, y: -67)
+            Circle()
+                .stroke(accent.opacity(0.10), lineWidth: 1)
+                .frame(width: 108, height: 108)
+                .offset(x: 265, y: -45)
+
+            Image(systemName: heroSymbol)
+                .font(.system(size: 78, weight: .light))
+                .foregroundStyle(.white.opacity(0.075))
+                .rotationEffect(.degrees(-12))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .offset(x: -20, y: 4)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    TempoBrandMark(size: 25)
+                    Text("TEMPO")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .tracking(3).foregroundStyle(.white)
+                    Spacer()
+                    Text("SPORCU KARTI")
+                        .font(.system(size: 8, weight: .heavy, design: .rounded))
+                        .tracking(1.1).foregroundStyle(ink)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(accent, in: Capsule())
+                }
+
+                Spacer(minLength: 16)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("HAREKETİNİ")
+                    Text("KENDİ RİTMİNDE YAŞA")
+                }
+                .font(.system(size: 21, weight: .heavy, design: .rounded))
+                .tracking(0.3).foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 21)
+            .padding(.top, 18)
+            .padding(.bottom, 17)
+        }
+        .clipped()
+    }
+
+    private var identityRow: some View {
+        HStack(spacing: 13) {
+            AccountAvatarView(data: profile.avatarData, size: 62)
+                .overlay(Circle().stroke(paper, lineWidth: 4))
+                .overlay(Circle().stroke(ink.opacity(0.10), lineWidth: 1))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(name)
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                    .foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.72)
+                Text("@\(profile.username)")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(mutedInk).lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "figure.run")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(ink)
+                .frame(width: 34, height: 34)
+                .background(accent, in: Circle())
+        }
     }
 
     private func sportPill(_ sport: TempoSportChoice) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: sport.symbol).foregroundStyle(TempoTheme.green)
-            Text(sport.title).foregroundStyle(.white.opacity(0.92)).lineLimit(1)
+            Image(systemName: sport.symbol).foregroundStyle(ink.opacity(0.72))
+            Text(sport.title).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.7)
+            Spacer(minLength: 0)
         }
-        .font(.system(size: 10, weight: .semibold, design: .rounded))
-        .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(.white.opacity(0.055), in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.06), lineWidth: 1))
+        .font(.system(size: 9, weight: .semibold, design: .rounded))
+        .padding(.horizontal, 10).frame(maxWidth: .infinity, alignment: .leading).frame(height: 30)
+        .background(.white.opacity(0.82), in: Capsule())
+        .overlay(Capsule().stroke(ink.opacity(0.08), lineWidth: 1))
     }
 }
 
@@ -1055,7 +1099,7 @@ struct AchievementsScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @State private var selectedCategory = "all"
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
-    private var achievement: TempoAchievement { model.dashboard?.achievement ?? .empty }
+    private var achievement: TempoAchievement { model.tempoAchievement }
 
     private let categories: [AchievementCategory] = [
         .init(id: "all", title: "Tümü", symbol: "square.grid.2x2.fill"),
@@ -1134,10 +1178,10 @@ struct AchievementsScreen: View {
                         }
                     }
 
-                    if achievement.badges.isEmpty {
+                    if model.isLoadingDashboard && model.manualWorkouts.isEmpty && model.healthDays.isEmpty {
                         VStack(spacing: 12) {
                             ProgressView().tint(TempoTheme.green)
-                            Text("Strava aktivitelerin hazırlanıyor…").font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                            Text("Tempo ilerlemen hazırlanıyor…".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
                         }
                         .padding(30).frame(maxWidth: .infinity)
                         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -1149,7 +1193,7 @@ struct AchievementsScreen: View {
                         }
                     }
 
-                    Text("XP ve rozetler Strava’daki erişilebilir aktivitelerinden hesaplanır. Geçmiş sınırlandırılmışsa sonuçlar eksik olabilir.")
+                    Text("XP ve rozetler yalnızca Tempo’da kaydettiğin antrenmanlar ve Apple Sağlık’taki hareket günlerinden hesaplanır. Strava aktiviteleri bu puana katılmaz.")
                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -1243,7 +1287,8 @@ private extension TempoBadge {
             "elevation_10000": "High Altitude", "elevation_25000": "Summit Seeker", "streak_3": "3-Day Streak",
             "streak_7": "7-Day Streak", "streak_14": "Two-Week Streak", "streak_30": "Monthly Streak",
             "multi_sport_3": "Well-Rounded", "multi_sport_5": "Sports Explorer", "multi_sport_8": "All-Rounder",
-            "century": "Century Ride", "early_bird": "Early Bird", "early_bird_20": "Chase the Sunrise"
+            "century": "Long Route", "early_bird": "Early Bird", "early_bird_20": "Chase the Sunrise",
+            "movement_days_10": "10 Movement Days"
         ]
         if let fixed = fixed[id] { return fixed }
         guard let (sportKey, kind, targetText) = generatedBadgeParts else { return title.tempoLocalized }
@@ -1254,7 +1299,7 @@ private extension TempoBadge {
         case "streak": return "\(sport) · \(targetText)-Day Streak"
         case "distance": return "\(sport) · \(targetText) km"
         case "longest": return "\(sport) · \(targetText) km in One Session"
-        case "single": return "\(sport) · Long Session"
+        case "single": return "\(sport) · \(targetText)-Min Session"
         default: return title.tempoLocalized
         }
     }
@@ -1262,9 +1307,9 @@ private extension TempoBadge {
     var localizedDescription: String {
         guard Bundle.main.preferredLocalizations.first?.hasPrefix("en") == true else { return description }
         let fixed: [String: String] = [
-            "first_activity": "Complete your first Strava activity.", "activity_10": "Complete 10 activities.",
-            "activity_25": "Complete 25 activities.", "activity_50": "Complete 50 activities.",
-            "activity_100": "Complete 100 activities.", "activity_250": "Complete 250 activities.",
+            "first_activity": "Complete your first Tempo workout.", "activity_10": "Complete 10 Tempo workouts.",
+            "activity_25": "Complete 25 Tempo workouts.", "activity_50": "Complete 50 Tempo workouts.",
+            "activity_100": "Complete 100 Tempo workouts.", "activity_250": "Complete 250 Tempo workouts.",
             "active_10_hours": "Accumulate 10 hours of movement.", "active_50_hours": "Accumulate 50 hours of movement.",
             "active_100_hours": "Accumulate 100 hours of movement.", "active_250_hours": "Accumulate 250 hours of movement.",
             "elevation_1000": "Climb 1,000 m in total.", "elevation_5000": "Climb 5,000 m in total.",
@@ -1273,7 +1318,8 @@ private extension TempoBadge {
             "streak_14": "Record activities on 14 consecutive days.", "streak_30": "Record activities on 30 consecutive days.",
             "multi_sport_3": "Try at least 3 different sports.", "multi_sport_5": "Try at least 5 different sports.",
             "multi_sport_8": "Try at least 8 different sports.", "century": "Complete 100 km in one activity.",
-            "early_bird": "Start 5 activities before 8:00 AM.", "early_bird_20": "Start 20 activities before 8:00 AM."
+            "early_bird": "Start 5 Tempo workouts before 8:00 AM.", "early_bird_20": "Start 20 Tempo workouts before 8:00 AM.",
+            "movement_days_10": "Reach 10 movement days using Apple Health or Tempo records."
         ]
         if let fixed = fixed[id] { return fixed }
         guard let (sportKey, kind, targetText) = generatedBadgeParts else { return description.tempoLocalized }
@@ -1580,6 +1626,7 @@ struct SportSelectionGrid: View {
                     .background(selected ? TempoTheme.green : TempoTheme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("sport.selection.\(sport.rawValue)")
             }
         }
     }
@@ -1786,6 +1833,17 @@ struct TempoGlassBackButtonModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 18, coordinateSpace: .global)
+                    .onEnded { value in
+                        let beganAtLeadingEdge = value.startLocation.x <= 28
+                        let wasPrimarilyHorizontal = abs(value.translation.height) < 64
+                        guard beganAtLeadingEdge,
+                              wasPrimarilyHorizontal,
+                              value.translation.width >= 88 else { return }
+                        dismiss()
+                    }
+            )
             .navigationBarBackButtonHidden(true)
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)

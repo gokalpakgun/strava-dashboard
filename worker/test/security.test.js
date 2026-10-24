@@ -279,7 +279,30 @@ test("social report queue is private; blocking removes friendship, requests and 
   assert.equal(rejectedReconnect.status, 403);
 });
 
-test("social creation stays disabled when the moderation secret is missing or weak", async () => {
+test("friend requests and acceptance work without the optional moderation secret", async () => {
+  const env = accountEnv();
+  const alice = await signUpAs(env, "alice-social@example.com", "alice_social");
+  const bob = await signUpAs(env, "bob-social@example.com", "bob_social");
+
+  const sent = await worker.fetch(socialRequest("/api/account/social/friends", alice.body.token, { username: "@bob_social" }), env);
+  assert.equal(sent.status, 201);
+
+  const bobPending = await worker.fetch(socialRequest("/api/account/social", bob.body.token, null, "GET"), env);
+  const bobSnapshot = await bobPending.json();
+  assert.equal(bobSnapshot.incoming.length, 1);
+
+  const accepted = await worker.fetch(socialRequest("/api/account/social/requests", bob.body.token, {
+    requestId: bobSnapshot.incoming[0].id,
+    action: "accept",
+  }), env);
+  assert.equal(accepted.status, 200);
+
+  const aliceSnapshot = await (await worker.fetch(socialRequest("/api/account/social", alice.body.token, null, "GET"), env)).json();
+  assert.equal(aliceSnapshot.friends.length, 1);
+  assert.equal(aliceSnapshot.friends[0].username, "bob_social");
+});
+
+test("challenge and report creation stay disabled when the moderation secret is missing or weak", async () => {
   const env = { ...accountEnv(), MODERATION_TOKEN: "short" };
   const user = await signUpAs(env, "social@example.com", "social_audit");
   const response = await worker.fetch(socialRequest("/api/account/social/challenges", user.body.token, {

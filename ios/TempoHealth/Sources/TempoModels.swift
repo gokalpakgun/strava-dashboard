@@ -180,8 +180,19 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
     let notes: String
     let photoFilename: String?
     let healthSignal: TempoWorkoutHealthSignal?
+    let durationSeconds: Int?
+    let distanceKm: Double?
+    let routeCoordinates: [TempoCoordinate]?
+    let recordSource: String?
+    let perceivedEffort: Int?
+    let enjoyment: Int?
 
-    var endedAt: Date { startedAt.addingTimeInterval(Double(durationMinutes) * 60) }
+    var endedAt: Date { startedAt.addingTimeInterval(Double(durationSeconds ?? durationMinutes * 60)) }
+}
+
+struct TempoCoordinate: Codable, Equatable {
+    let latitude: Double
+    let longitude: Double
 }
 
 enum TempoSport: Hashable {
@@ -287,6 +298,170 @@ struct TempoBadge: Codable, Identifiable {
     var safeProgress: Double { min(max(progress, 0), 1) }
 }
 
+enum TempoAchievementFactory {
+    private struct SportDefinition {
+        let id: String
+        let title: String
+        let symbol: String
+        let tint: String
+        let distanceTargets: [Double]
+        let longestTargets: [Double]
+        let sessionTargets: [Double]
+    }
+
+    static func make(workouts: [TempoManualWorkout], healthDays: [String: TempoHealthMetrics]) -> TempoAchievement {
+        let valid = workouts.filter { $0.durationMinutes > 0 }
+        let calendar = Calendar.current
+        var activeDays = Set(valid.map { calendar.startOfDay(for: $0.startedAt) })
+        for (day, metrics) in healthDays where (metrics.steps ?? 0) >= 3_000 || (metrics.exerciseMinutes ?? 0) >= 10 {
+            if let date = TempoFormat.date(from: day) { activeDays.insert(calendar.startOfDay(for: date)) }
+        }
+        let manualStreak = longestStreak(activeDays)
+        let totalMinutes = valid.reduce(0.0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) / 60 }
+        let totalDistance = valid.reduce(0.0) { $0 + ($1.distanceKm ?? 0) }
+        let earlyBirds = valid.filter { (4..<8).contains(calendar.component(.hour, from: $0.startedAt)) }.count
+        let playedSports = Set(valid.map(\.sportId))
+        let activeDaysCount = activeDays.count
+
+        func badge(_ id: String, _ title: String, _ description: String, _ symbol: String, _ tint: String, _ current: Double, _ target: Double, _ unit: String) -> TempoBadge {
+            TempoBadge(
+                id: id, title: title, description: description, symbol: symbol, tint: tint,
+                unlocked: current >= target,
+                progress: target > 0 ? min(max(current / target, 0), 1) : 0,
+                current: (current * 10).rounded() / 10,
+                target: target,
+                unit: unit
+            )
+        }
+
+        var badges = [
+            badge("first_activity", "İlk Tempo Antrenmanı", "Tempo’da ilk antrenmanını tamamla.", "flag.checkered", "green", Double(valid.count), 1, "aktivite"),
+            badge("activity_10", "Ritim Yakala", "Tempo’da 10 antrenman kaydet.", "10.circle.fill", "blue", Double(valid.count), 10, "aktivite"),
+            badge("activity_25", "İstikrar", "Tempo’da 25 antrenman kaydet.", "25.circle.fill", "green", Double(valid.count), 25, "aktivite"),
+            badge("activity_50", "Aktif 50", "Tempo’da 50 antrenman kaydet.", "50.circle.fill", "purple", Double(valid.count), 50, "aktivite"),
+            badge("activity_100", "Yüzler Kulübü", "Tempo’da 100 antrenman kaydet.", "trophy.fill", "orange", Double(valid.count), 100, "aktivite"),
+            badge("active_10_hours", "10 Saat Hareket", "Tempo kayıtlarında 10 saat hareket et.", "clock.fill", "purple", totalMinutes / 60, 10, "saat"),
+            badge("active_50_hours", "50 Saat Hareket", "Tempo kayıtlarında 50 saat hareket et.", "clock.badge.checkmark.fill", "blue", totalMinutes / 60, 50, "saat"),
+            badge("active_100_hours", "Yüz Saat", "Tempo kayıtlarında 100 saat hareket et.", "hourglass.tophalf.filled", "green", totalMinutes / 60, 100, "saat"),
+            badge("streak_3", "Üç Gün Seri", "Üç farklı günde hareket kaydet.", "flame.fill", "orange", Double(manualStreak), 3, "gün"),
+            badge("streak_7", "Yedi Gün Seri", "Yedi farklı günde hareket kaydet.", "calendar.badge.checkmark", "green", Double(manualStreak), 7, "gün"),
+            badge("movement_days_10", "10 Hareket Günü", "Apple Sağlık veya Tempo kaydında 10 hareket günü biriktir.", "figure.walk", "blue", Double(activeDaysCount), 10, "gün"),
+            badge("multi_sport_3", "Çok Yönlü", "Üç farklı spor dalında Tempo antrenmanı kaydet.", "square.grid.2x2.fill", "pink", Double(playedSports.count), 3, "spor"),
+            badge("early_bird", "Erken Kuş", "Saat 08.00’den önce beş Tempo antrenmanına başla.", "sunrise.fill", "orange", Double(earlyBirds), 5, "aktivite"),
+            badge("century", "Uzun Rota", "Tempo GPS kaydında toplam 100 km tamamla.", "medal.fill", "green", totalDistance, 100, "km"),
+        ]
+
+        let definitions: [SportDefinition] = [
+            .init(id: "run", title: "Koşu", symbol: "figure.run", tint: "orange", distanceTargets: [25, 50, 100, 250], longestTargets: [5, 10, 21.1], sessionTargets: []),
+            .init(id: "ride", title: "Bisiklet", symbol: "bicycle", tint: "blue", distanceTargets: [100, 250, 500, 1000], longestTargets: [25, 50, 100], sessionTargets: []),
+            .init(id: "walk", title: "Yürüyüş", symbol: "figure.walk", tint: "green", distanceTargets: [25, 100, 250, 500], longestTargets: [5, 10, 20], sessionTargets: []),
+            .init(id: "hike", title: "Doğa Yürüyüşü", symbol: "figure.hiking", tint: "purple", distanceTargets: [25, 50, 100, 250], longestTargets: [5, 10, 20], sessionTargets: []),
+            .init(id: "swim", title: "Yüzme", symbol: "figure.pool.swim", tint: "blue", distanceTargets: [5, 10, 25, 50], longestTargets: [1, 2, 5], sessionTargets: []),
+            .init(id: "fitness", title: "Fitness", symbol: "dumbbell.fill", tint: "orange", distanceTargets: [], longestTargets: [], sessionTargets: [20, 45, 75, 120]),
+            .init(id: "tennis", title: "Tenis", symbol: "tennis.racket", tint: "green", distanceTargets: [], longestTargets: [], sessionTargets: [20, 45, 75, 120]),
+            .init(id: "basketball", title: "Basketbol", symbol: "basketball.fill", tint: "orange", distanceTargets: [], longestTargets: [], sessionTargets: [20, 45, 75, 120]),
+            .init(id: "football", title: "Futbol", symbol: "soccerball", tint: "green", distanceTargets: [], longestTargets: [], sessionTargets: [20, 45, 75, 120]),
+            .init(id: "volleyball", title: "Voleybol", symbol: "volleyball.fill", tint: "blue", distanceTargets: [], longestTargets: [], sessionTargets: [20, 45, 75, 120]),
+            .init(id: "padel", title: "Padel", symbol: "figure.racquetball", tint: "purple", distanceTargets: [], longestTargets: [], sessionTargets: [20, 45, 75, 120]),
+            .init(id: "badminton", title: "Badminton", symbol: "figure.badminton", tint: "blue", distanceTargets: [], longestTargets: [], sessionTargets: [20, 45, 75, 120]),
+            .init(id: "yoga", title: "Yoga", symbol: "figure.yoga", tint: "pink", distanceTargets: [], longestTargets: [], sessionTargets: [15, 30, 45, 60]),
+        ]
+
+        for sport in definitions {
+            let entries = valid.filter { achievementSportID($0.sportId) == sport.id }
+            let hours = entries.reduce(0.0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) / 3_600 }
+            let distance = entries.reduce(0.0) { $0 + ($1.distanceKm ?? 0) }
+            let longest = entries.map { $0.distanceKm ?? 0 }.max() ?? 0
+            let maxMinutes = entries.map { Double($0.durationSeconds ?? $0.durationMinutes * 60) / 60 }.max() ?? 0
+            let sportDays = Set(entries.map { calendar.startOfDay(for: $0.startedAt) })
+            let streak = longestStreak(sportDays)
+            let countTargets = [1, 5, 10, 25, 50]
+            let hourTargets = [5, 15, 30, 50]
+            let streakTargets = [3, 7, 14]
+            for target in countTargets {
+                badges.append(badge("\(sport.id)_count_\(target)", target == 1 ? "İlk \(sport.title)" : "\(sport.title) · \(target) Aktivite", "\(target) Tempo \(sport.title.lowercased()) kaydı tamamla.", sport.symbol, sport.tint, Double(entries.count), Double(target), "aktivite"))
+            }
+            for target in hourTargets {
+                badges.append(badge("\(sport.id)_hours_\(target)", "\(sport.title) · \(target) Saat", "Tempo’da toplam \(target) saat \(sport.title.lowercased()) kaydet.", "clock.fill", sport.tint, hours, Double(target), "saat"))
+            }
+            for target in streakTargets {
+                badges.append(badge("\(sport.id)_streak_\(target)", "\(sport.title) · \(target) Gün Seri", "\(target) ayrı günde \(sport.title.lowercased()) kaydet.", "flame.fill", sport.tint, Double(streak), Double(target), "gün"))
+            }
+            if sport.distanceTargets.isEmpty {
+                for target in sport.sessionTargets {
+                    badges.append(badge("\(sport.id)_single_\(Int(target))", "\(sport.title) · \(Int(target)) dk", "Tek bir Tempo kaydında \(Int(target)) dakika tamamla.", "stopwatch.fill", sport.tint, maxMinutes, target, "dk"))
+                }
+            } else {
+                for target in sport.distanceTargets {
+                    let token = String(target).replacingOccurrences(of: ".", with: "_")
+                    badges.append(badge("\(sport.id)_distance_\(token)", "\(sport.title) · \(target) km", "Tempo GPS kayıtlarında toplam \(target) km \(sport.title.lowercased()).", sport.symbol, sport.tint, distance, target, "km"))
+                }
+                for target in sport.longestTargets {
+                    let token = String(target).replacingOccurrences(of: ".", with: "_")
+                    badges.append(badge("\(sport.id)_longest_\(token)", "\(sport.title) · Tek Seferde \(target) km", "Tek bir Tempo GPS kaydında \(target) km tamamla.", "medal.fill", sport.tint, longest, target, "km"))
+                }
+            }
+        }
+
+        let xp = valid.reduce(0) { total, workout in
+            let minutes = Double(workout.durationSeconds ?? workout.durationMinutes * 60) / 60
+            let distance = workout.distanceKm ?? 0
+            return total + 25 + min(Int(minutes) * 2, 360) + min(Int(distance * 8), 300)
+        }
+        let level = (1...50).last { xp >= 100 * $0 * ($0 - 1) } ?? 1
+        let levelStart = 100 * level * (level - 1)
+        let nextThreshold = level < 50 ? 100 * (level + 1) * level : levelStart
+        let levelSpan = max(nextThreshold - levelStart, 0)
+        let progress = levelSpan > 0 ? min(Double(xp - levelStart) / Double(levelSpan), 1) : 1
+        return TempoAchievement(
+            level: level,
+            title: achievementLevelTitle(level),
+            totalXp: xp,
+            currentLevelXp: max(xp - levelStart, 0),
+            nextLevelXp: levelSpan,
+            progress: progress,
+            unlockedBadgeCount: badges.filter(\.unlocked).count,
+            totalBadgeCount: badges.count,
+            badges: badges
+        )
+    }
+
+    private static func achievementSportID(_ value: String) -> String {
+        switch value {
+        case "cycling": return "ride"
+        case "walking": return "walk"
+        case "hiking": return "hike"
+        case "swimming": return "swim"
+        default: return value
+        }
+    }
+
+    private static func longestStreak(_ dates: Set<Date>) -> Int {
+        let sorted = dates.sorted()
+        guard !sorted.isEmpty else { return 0 }
+        var longest = 1
+        var current = 1
+        for pair in zip(sorted, sorted.dropFirst()) {
+            if Calendar.current.dateComponents([.day], from: pair.0, to: pair.1).day == 1 {
+                current += 1
+                longest = max(longest, current)
+            } else {
+                current = 1
+            }
+        }
+        return longest
+    }
+
+    private static func achievementLevelTitle(_ level: Int) -> String {
+        if level >= 40 { return "Efsane" }
+        if level >= 25 { return "Zirve" }
+        if level >= 15 { return "Dayanıklılık" }
+        if level >= 8 { return "Atılım" }
+        if level >= 3 { return "Ritim" }
+        return "Başlangıç"
+    }
+}
+
 struct TempoMonthStat: Identifiable {
     let date: Date
     var distanceKm: Double
@@ -373,10 +548,29 @@ struct TempoSocialSnapshot: Decodable {
 enum TempoSocialMetric: String, CaseIterable, Identifiable {
     case steps
     case exerciseMinutes
+    case movementDays
     var id: String { rawValue }
-    var title: String { self == .steps ? "Adımlar".tempoLocalized : "Egzersiz dakikası".tempoLocalized }
-    var symbol: String { self == .steps ? "figure.walk" : "figure.run" }
-    var unit: String { self == .steps ? "adım".tempoLocalized : "dk" }
+    var title: String {
+        switch self {
+        case .steps: return "Adımlar".tempoLocalized
+        case .exerciseMinutes: return "Egzersiz dakikası".tempoLocalized
+        case .movementDays: return "Hareket edilen gün".tempoLocalized
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .steps: return "figure.walk"
+        case .exerciseMinutes: return "figure.run"
+        case .movementDays: return "calendar.badge.checkmark"
+        }
+    }
+    var unit: String {
+        switch self {
+        case .steps: return "adım".tempoLocalized
+        case .exerciseMinutes: return "dk"
+        case .movementDays: return "gün".tempoLocalized
+        }
+    }
 }
 
 struct TempoHealthMetrics: Codable, Equatable {
@@ -509,7 +703,7 @@ struct TempoSleepAssessment: Equatable {
         }
 
         let restorativeMinutes = (metrics.sleepDeepMinutes ?? 0) + (metrics.sleepREMMinutes ?? 0)
-        if metrics.sleepDeepMinutes != nil || metrics.sleepREMMinutes != nil {
+        if metrics.sleepDeepMinutes != nil && metrics.sleepREMMinutes != nil {
             let ratio = restorativeMinutes / totalMinutes
             weighted.append((
                 TempoSleepFactor(
@@ -541,7 +735,7 @@ struct TempoSleepAssessment: Equatable {
         let totalWeight = weighted.reduce(0) { $0 + $1.1 }
         let score = bounded(weighted.reduce(0) { $0 + Double($1.0.score) * $1.1 } / totalWeight)
         let state: String
-        let summary: String
+        var summary: String
         switch score {
         case 88...:
             state = "Çok iyi uyku"
@@ -562,7 +756,10 @@ struct TempoSleepAssessment: Equatable {
 
         let stageCount = [metrics.sleepCoreMinutes, metrics.sleepDeepMinutes, metrics.sleepREMMinutes, metrics.sleepAwakeMinutes]
             .compactMap { $0 }.count
-        let confidence = stageCount >= 4 ? "Tüm evrelerle hesaplandı" : (stageCount >= 2 ? "Kısmi evre verisi" : "Yalnızca süre verisi")
+        if stageCount == 0 {
+            summary = "Bu değerlendirme yalnızca uyku sürene dayanıyor; uyku evreleri ölçülmemiş."
+        }
+        let confidence = stageCount >= 4 ? "Tüm evrelerle hesaplandı" : (stageCount >= 1 ? "Kısmi evre verisi" : "Yalnızca süre verisi")
         return TempoSleepAssessment(value: score, state: state, summary: summary, confidence: confidence, factors: weighted.map { $0.0 })
     }
 

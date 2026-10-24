@@ -16,6 +16,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  live-service-check:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify disposable live account and service flows
+        run: node worker/scripts/live-audit.mjs --live
+      - name: Keep live service verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-live-service-verification
+          path: outputs/live-audit.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   simulator-smoke:
     runs-on: macos-26
     timeout-minutes: 30
@@ -31,6 +48,22 @@ jobs:
           xcrun simctl list runtimes
           xcrun simctl list devices available
 
+      - name: Run backend regression tests
+        run: node --test worker/test/*.test.js
+
+      - name: Run production sleep aggregation regressions
+        run: |
+          set -euo pipefail
+          swiftc ios/TempoHealth/Sources/TempoSleepAggregation.swift ios/HealthRegressionTests/main.swift -o "$RUNNER_TEMP/health-regressions"
+          "$RUNNER_TEMP/health-regressions"
+
+      - name: Select an iPhone simulator
+        run: |
+          set -euo pipefail
+          DEVICE_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          test -n "$DEVICE_ID"
+          echo "TEMPO_SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
@@ -38,15 +71,18 @@ jobs:
             -project ios/TempoHealth/TempoHealth.xcodeproj \
             -scheme TempoHealth \
             -configuration Debug \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "platform=iOS Simulator,id=$TEMPO_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            build-for-testing
 
       - name: Install and launch on an iPhone simulator
         run: |
           set -euo pipefail
-          DEVICE_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          DEVICE_ID="$TEMPO_SIMULATOR_ID"
           test -n "$DEVICE_ID"
           echo "Using iPhone simulator $DEVICE_ID"
 
@@ -62,12 +98,69 @@ jobs:
 
           xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/Tempo-simulator-launch.png"
 
+      - name: Run user-flow UI tests on the iPhone simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/TempoHealth/TempoHealth.xcodeproj \
+            -scheme TempoHealth \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$TEMPO_SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
+            -resultBundlePath "$RUNNER_TEMP/TempoUITests.xcresult" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            test-without-building
+
+      - name: Export safe account network diagnostics
+        if: always()
+        run: |
+          if [ -n "${TEMPO_SIMULATOR_ID:-}" ]; then
+            xcrun simctl spawn "$TEMPO_SIMULATOR_ID" log show --info --style compact --last 30m --predicate 'subsystem == "com.apitempo.tempohealth.account-network"' > "$RUNNER_TEMP/Tempo-account-network.log" || true
+          fi
+
+      - name: Keep safe account network diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-account-network-diagnostics
+          path: ${{ runner.temp }}/Tempo-account-network.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Export UI test screenshots
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/TempoUITests.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/TempoUITests.xcresult" --output-path "$RUNNER_TEMP/TempoUITestScreenshots"
+          fi
+
+      - name: Keep UI test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-ios-ui-screenshots
+          path: ${{ runner.temp }}/TempoUITestScreenshots
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Keep simulator launch screenshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tempo-ios-simulator-launch
           path: ${{ runner.temp }}/Tempo-simulator-launch.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Keep UI test results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempo-ios-ui-test-results
+          path: ${{ runner.temp }}/TempoUITests.xcresult
           if-no-files-found: ignore
           retention-days: 7
 

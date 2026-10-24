@@ -5,9 +5,18 @@
       <BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">
         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A50000000000000000000001" BuildableName="Tempo.app" BlueprintName="TempoHealth" ReferencedContainer="container:TempoHealth.xcodeproj"/>
       </BuildActionEntry>
+    <BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO">
+      <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B50000000000000000000001" BuildableName="TempoHealthUITests.xctest" BlueprintName="TempoHealthUITests" ReferencedContainer="container:TempoHealth.xcodeproj"/>
+    </BuildActionEntry>
     </BuildActionEntries>
   </BuildAction>
-  <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"/>
+  <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
+    <Testables>
+      <TestableReference skipped="NO" parallelizable="NO">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B50000000000000000000001" BuildableName="TempoHealthUITests.xctest" BlueprintName="TempoHealthUITests" ReferencedContainer="container:TempoHealth.xcodeproj"/>
+      </TestableReference>
+    </Testables>
+  </TestAction>
   <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB"/>
   <ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES">
     <BuildableProductRunnable runnableDebuggingMode="0">

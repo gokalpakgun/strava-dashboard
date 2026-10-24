@@ -22,7 +22,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var dashboard: TempoDashboard?
     @Published private(set) var dashboardError: String?
     @Published private(set) var dashboardErrorDetails: String?
-    @Published var status = "Strava hesabını bağlayarak başla."
+    @Published var status = "Apple Sağlık ana kaynağın; Strava isteğe bağlı."
 
     let dailyGoalMl = 2_000
     private let baseURL = URL(string: "https://apitempo.com")!
@@ -36,6 +36,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var activeTempoAccountId: String?
     private var lastManualWorkoutAccountId: String?
     private var lastDashboardRefresh: Date?
+    private var healthGeneration = UUID()
+    private var healthUploadTask: Task<Void, Error>?
+    private var healthDisconnectTask: Task<Void, Never>?
     private static let apiSession: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.waitsForConnectivity = true
@@ -56,11 +59,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     override init() {
         super.init()
-        Self.prewarmAPI()
-        let storedToken = SecureTokenStore.read()
+#if DEBUG
+        let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+#else
+        let isUITesting = false
+#endif
+        if !isUITesting { Self.prewarmAPI() }
+        let storedToken = isUITesting ? nil : SecureTokenStore.read()
         accessToken = storedToken
         isConnected = storedToken != nil
-        isRestoringConnection = storedToken == nil && !UserDefaults.standard.bool(forKey: Self.stravaSkippedKey)
+        isRestoringConnection = !isUITesting && storedToken == nil && !UserDefaults.standard.bool(forKey: Self.stravaSkippedKey)
         if storedToken != nil { status = "Strava bağlı. Verilerin hazırlanıyor." }
         Self.clearLegacyGlobalCaches()
     }
@@ -145,6 +153,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 return
             }
 
+            if http.statusCode == 409 {
+                SecureTokenStore.delete()
+                accessToken = nil
+                dashboard = nil
+                Self.clearCachedDashboard(accountId: accountId)
+                isRestoringConnection = false
+                status = result?.error ?? "Strava bağlantısı bu Tempo hesabına ait değil."
+                return
+            }
+
             throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
         } catch {
             guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
@@ -167,6 +185,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isCompletingAuthorization = false
         OAuthVerifierStore.delete()
         healthStore.disableBackgroundDelivery()
+        healthGeneration = UUID()
+        isHealthSyncing = false
         activeTempoAccountId = accountId
         accountAccessToken = nil
         hasAttemptedAccountRestore = false
@@ -212,7 +232,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         startedAt: Date,
         durationMinutes: Int,
         notes: String,
-        photoData: Data?
+        photoData: Data?,
+        perceivedEffort: Int? = nil,
+        enjoyment: Int? = nil
     ) async throws {
         guard let accountId = activeTempoAccountId, !accountId.isEmpty else {
             throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
@@ -259,7 +281,62 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             durationMinutes: safeDuration,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             photoFilename: filename,
-            healthSignal: healthSignal
+            healthSignal: healthSignal,
+            durationSeconds: nil,
+            distanceKm: nil,
+            routeCoordinates: nil,
+            recordSource: "health-supported-manual",
+            perceivedEffort: perceivedEffort.map { min(max($0, 1), 5) },
+            enjoyment: enjoyment.map { min(max($0, 1), 5) }
+        )
+        var updated = manualWorkouts
+        updated.insert(workout, at: 0)
+        try Self.saveManualWorkouts(updated, accountId: accountId)
+        manualWorkouts = updated
+    }
+
+    func addPhoneTrackedWorkout(
+        sportId: String,
+        sportTitle: String,
+        startedAt: Date,
+        durationSeconds: Int,
+        distanceKm: Double,
+        routeCoordinates: [TempoCoordinate],
+        notes: String = "",
+        perceivedEffort: Int? = nil,
+        enjoyment: Int? = nil
+    ) throws {
+        guard let accountId = activeTempoAccountId, !accountId.isEmpty else {
+            throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
+        }
+        let safeSeconds = min(max(durationSeconds, 1), 24 * 60 * 60)
+        let cleanRoute = Array(routeCoordinates.prefix(12_000)).filter {
+            $0.latitude.isFinite && $0.longitude.isFinite
+                && (-90...90).contains($0.latitude)
+                && (-180...180).contains($0.longitude)
+        }
+        guard startedAt <= Date(), safeSeconds >= 60,
+              distanceKm.isFinite, distanceKm > 0, distanceKm <= 500,
+              cleanRoute.count >= 2 else {
+            throw APIError.server("GPS kaydı için en az 1 dakika ve iki konum noktası gerekiyor.")
+        }
+
+        let workout = TempoManualWorkout(
+            id: UUID(),
+            sportId: sportId,
+            sportTitle: sportTitle,
+            title: sportTitle,
+            startedAt: startedAt,
+            durationMinutes: max(1, Int((Double(safeSeconds) / 60).rounded())),
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            photoFilename: nil,
+            healthSignal: nil,
+            durationSeconds: safeSeconds,
+            distanceKm: distanceKm,
+            routeCoordinates: cleanRoute,
+            recordSource: "phone-gps",
+            perceivedEffort: perceivedEffort.map { min(max($0, 1), 5) },
+            enjoyment: enjoyment.map { min(max($0, 1), 5) }
         )
         var updated = manualWorkouts
         updated.insert(workout, at: 0)
@@ -513,6 +590,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthDays.sorted { $0.key > $1.key }.compactMap { $0.value.bodyMassKg }.first
     }
 
+    var tempoAchievement: TempoAchievement {
+        TempoAchievementFactory.make(workouts: manualWorkouts, healthDays: healthDays)
+    }
+
     var tempoBalance: TempoBalanceScore? {
         let records = healthDays.sorted { $0.key > $1.key }
         var weightedFactors: [(factor: TempoBalanceFactor, weight: Double)] = []
@@ -665,12 +746,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             return
         }
         isHealthSyncing = true
+        let generation = UUID()
+        healthGeneration = generation
         healthError = nil
         status = "Apple Sağlık izni bekleniyor…"
         Task {
             do {
+                await healthDisconnectTask?.value
+                guard healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
                 try await healthStore.requestAuthorization()
-                guard activeTempoAccountId == accountId, accountAccessToken == accountToken else {
+                guard healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken == accountToken else {
                     throw APIError.server("Tempo hesabı değişti. Apple Sağlık eşitlemesi başlatılmadı.")
                 }
                 healthSyncEnabled = true
@@ -679,7 +764,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 isHealthSyncing = false
                 await syncAppleHealth()
             } catch {
-                guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+                guard healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
                 isHealthSyncing = false
                 healthError = error.localizedDescription.tempoLocalized
                 status = "Apple Sağlık bağlanamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
@@ -693,32 +778,40 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
               let accountToken = accountAccessToken else { return }
         isHealthSyncing = true
         healthError = nil
-        defer { isHealthSyncing = false }
+        let generation = healthGeneration
+        defer { if healthGeneration == generation { isHealthSyncing = false } }
         do {
             let days = try await healthStore.readRecentDays()
-            guard activeTempoAccountId == accountId else { return }
+            guard healthGeneration == generation, healthSyncEnabled,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             healthDays = days
             healthLastSync = Date()
             Self.saveCachedHealthDays(days, accountId: accountId)
             UserDefaults.standard.set(healthLastSync, forKey: Self.healthLastSyncKey(accountId: accountId))
             todayWaterMl = Int((days[Self.localDay()]?.waterMl ?? 0).rounded())
-            if !days.isEmpty {
+            // An empty read also replaces the previous server snapshot, so
+            // revoked read access cannot leave old measurements on the server.
                 do {
-                    try await uploadHealth(days, using: accountToken, for: accountId)
-                    guard activeTempoAccountId == accountId else { return }
+                    let upload = Task { try await uploadHealth(days, using: accountToken, for: accountId) }
+                    healthUploadTask = upload
+                    defer { if healthGeneration == generation { healthUploadTask = nil } }
+                    try await upload.value
+                    guard healthGeneration == generation, healthSyncEnabled,
+                          activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
                 } catch {
-                    guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+                    guard healthGeneration == generation, healthSyncEnabled,
+                          activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
                     status = days.isEmpty
                         ? "Apple Sağlık bağlı; paylaşılmış veri bulunamadı. Sağlık izinlerini kontrol edebilirsin."
                         : "Apple Sağlık cihazında güncel. Sunucu eşitlemesi daha sonra yeniden denenecek."
                     return
                 }
-            }
             status = days.isEmpty
                 ? "Apple Sağlık bağlı; paylaşılmış veri bulunamadı. Sağlık izinlerini kontrol edebilirsin."
                 : "Apple Sağlık verilerin güncel."
         } catch {
-            guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+            guard healthGeneration == generation, healthSyncEnabled,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             healthError = error.localizedDescription.tempoLocalized
             status = "Apple Sağlık eşitlenemedi: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
         }
@@ -727,23 +820,40 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     func disconnectAppleHealth() {
         let accountId = activeTempoAccountId
         let accountToken = accountAccessToken
+        let pendingUpload = healthUploadTask
+        healthUploadTask = nil
+        healthGeneration = UUID()
+        isHealthSyncing = false
         healthStore.disableBackgroundDelivery()
         healthSyncEnabled = false
         if let accountId {
             UserDefaults.standard.set(false, forKey: Self.healthSyncKey(accountId: accountId))
             Self.clearCachedHealthDays(accountId: accountId)
+            UserDefaults.standard.removeObject(forKey: Self.healthLastSyncKey(accountId: accountId))
         }
         healthDays = [:]
         healthLastSync = nil
         todayWaterMl = 0
-        Task {
+        healthDisconnectTask = Task {
+            // Finish any already-sent upload before deleting its server copy.
+            // Queries still in progress are invalidated by healthGeneration.
+            _ = await pendingUpload?.result
             if let accountToken {
                 var request = URLRequest(url: URL(string: "/api/account/health", relativeTo: baseURL)!)
                 request.httpMethod = "DELETE"
                 request.setValue("Bearer \(accountToken)", forHTTPHeaderField: "Authorization")
-                _ = try? await Self.apiSession.data(for: request)
+                do {
+                    let (_, response) = try await Self.apiSession.data(for: request)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        throw APIError.server("Sağlık verileri sunucudan kaldırılamadı.")
+                    }
+                } catch {
+                    guard !healthSyncEnabled, activeTempoAccountId == accountId else { return }
+                    healthError = error.localizedDescription.tempoLocalized
+                    return
+                }
             }
-            guard activeTempoAccountId == accountId else { return }
+            guard !healthSyncEnabled, activeTempoAccountId == accountId else { return }
             status = "Apple Sağlık eşitlemesi kapatıldı. İzinleri iPhone Ayarlar’dan ayrıca değiştirebilirsin."
         }
     }
@@ -867,6 +977,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthStore.disableBackgroundDelivery()
         healthSyncEnabled = false
         healthDays = [:]
+        healthGeneration = UUID()
+        isHealthSyncing = false
         healthLastSync = nil
         todayWaterMl = 0
         isRestoringConnection = false
@@ -1014,7 +1126,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     private func uploadHealth(_ days: [String: TempoHealthMetrics], using accountToken: String, for accountId: String) async throws {
-        guard activeTempoAccountId == accountId, accountAccessToken == accountToken else {
+        guard healthSyncEnabled, activeTempoAccountId == accountId, accountAccessToken == accountToken else {
             throw APIError.server("Tempo hesabı değişti. Sağlık verileri eşitlenmedi.")
         }
         var request = URLRequest(url: URL(string: "/api/account/health", relativeTo: baseURL)!)

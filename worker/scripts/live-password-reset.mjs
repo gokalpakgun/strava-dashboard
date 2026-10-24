@@ -54,12 +54,19 @@ if (mode === 'begin') {
     check('New password signs in', login, 200);
     state.token = login.data.token; await save();
     check('Used delivered token cannot be reused', await call('/api/account/password/reset', { body: { token: resetToken, password: randomBytes(24).toString('base64url') } }), 400);
+    if (state.previousResetLink) {
+      const previous = new URL(state.previousResetLink);
+      check('Earlier delivered reset link also revoked', await call('/api/account/password/reset', { body: { token: previous.searchParams.get('token'), password: randomBytes(24).toString('base64url') } }), 400);
+    }
     check('Delete disposable email test account', await call('/api/account', { method: 'DELETE', token: state.token, body: {} }), 200);
     await mkdir(new URL('../../outputs/', import.meta.url), { recursive: true });
     await writeFile(reportPath, JSON.stringify({ timestamp: new Date().toISOString(), results: state.results }, null, 2));
     await unlink(statePath);
   } else {
-    const login = await call('/api/account/login', { body: { identifier: state.email, password: state.newPassword || state.password } });
+    let login = await call('/api/account/login', { body: { identifier: state.email, password: state.newPassword || state.password } });
+    if (login.status === 401 && state.newPassword) {
+      login = await call('/api/account/login', { body: { identifier: state.email, password: state.password } });
+    }
     if (login.status === 200) state.token = login.data.token;
     check('Delete disposable email test account', await call('/api/account', { method: 'DELETE', token: state.token, body: {} }), 200);
     await unlink(statePath);

@@ -88,3 +88,58 @@ jobs:
           if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
             security delete-keychain "$KEYCHAIN_PATH"
           fi
+
+  simulator-smoke:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: iOS simülatörünü bul
+        id: simulator
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(d["udid"] for group in data["devices"].values() for d in group if d.get("isAvailable") and d["name"].startswith("iPhone")))')"
+          echo "device_id=$DEVICE_ID" >> "$GITHUB_OUTPUT"
+          echo "Using iPhone simulator $DEVICE_ID"
+
+      - name: Simülatör uygulamasını derle
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/TempoHealth/TempoHealth.xcodeproj \
+            -scheme TempoHealth \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.device_id }}" \
+            -derivedDataPath "$RUNNER_TEMP/TempoSimulatorBuild" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Simülatörde açılışı doğrula
+        run: |
+          set -euo pipefail
+          DEVICE_ID="${{ steps.simulator.outputs.device_id }}"
+          APP_PATH="$RUNNER_TEMP/TempoSimulatorBuild/Build/Products/Debug-iphonesimulator/Tempo.app"
+          test -d "$APP_PATH"
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          xcrun simctl launch "$DEVICE_ID" com.apitempo.tempohealth
+          sleep 0.35
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/Tempo-launch.png"
+          sleep 2
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/Tempo-home.png"
+          test -s "$RUNNER_TEMP/Tempo-launch.png"
+          test -s "$RUNNER_TEMP/Tempo-home.png"
+
+      - name: Simülatör görüntülerini sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tempo-iOS-simulator-smoke
+          path: |
+            ${{ runner.temp }}/Tempo-launch.png
+            ${{ runner.temp }}/Tempo-home.png
+          if-no-files-found: ignore
+          retention-days: 7

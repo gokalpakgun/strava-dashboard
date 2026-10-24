@@ -1,4 +1,5 @@
 import Charts
+import CoreLocation
 import MapKit
 import PhotosUI
 import SwiftUI
@@ -20,10 +21,11 @@ struct ContentView: View {
     @EnvironmentObject private var model: TempoAppModel
     @EnvironmentObject private var account: TempoAccountStore
     @State private var selectedTab = 0
+    @State private var minimumLaunchFinished = false
 
     var body: some View {
         Group {
-            if account.isRestoring {
+            if !minimumLaunchFinished || account.isRestoring {
                 TempoLaunchView()
             } else if !account.isAuthenticated {
                 AccountWelcomeView()
@@ -34,7 +36,16 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            withAnimation(.easeOut(duration: 0.28)) {
+                minimumLaunchFinished = true
+            }
+        }
         .task(id: account.isAuthenticated) {
+#if DEBUG
+            guard !ProcessInfo.processInfo.arguments.contains("--ui-testing-authenticated") else { return }
+#endif
             guard account.isAuthenticated else { return }
             model.setTempoAccount(account.profile?.id)
             await model.restoreConnectionIfNeeded(accountToken: account.authorizationToken, accountId: account.profile?.id)
@@ -80,7 +91,13 @@ private struct TempoMainShell: View {
     }
 
     var body: some View {
-        selectedScreen
+        ZStack {
+            selectedScreen
+                .id(selectedTab)
+                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.24), value: selectedTab)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 TempoGlassTabBar(selectedTab: $selectedTab)
                     .padding(.horizontal, 12)
@@ -185,6 +202,7 @@ private struct TempoGlassTabBar: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("tab.\(tab.id)")
                 .accessibilityLabel(tab.title.tempoLocalized)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
@@ -400,20 +418,24 @@ private struct ImportPill: View {
 private struct HomeScreen: View {
     @EnvironmentObject private var model: TempoAppModel
 
-    private var activities: [TempoActivity] { model.dashboard?.activities ?? [] }
-    private var weekActivities: [TempoActivity] { activities.filter { $0.date.map(Calendar.current.isDateInCurrentWeek) ?? false } }
-    private var weekDistance: Double { weekActivities.reduce(0) { $0 + $1.distanceKm } }
-    private var weekSeconds: Double { weekActivities.reduce(0) { $0 + $1.movingSeconds } }
+    private var weekManualWorkouts: [TempoManualWorkout] {
+        model.manualWorkouts.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }
+    }
+    private var weekDistance: Double {
+        weekManualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
+    }
+    private var weekSeconds: Double {
+        weekManualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
+    }
 
     var body: some View {
         NavigationStack {
             TempoPage {
                 HomeHeader()
                 AppleHealthHomeCard(balance: model.tempoBalance, connected: model.healthSyncEnabled)
+                HomeMovementMenuCard()
                 if let dashboard = model.dashboard {
                     hero(dashboard.athlete)
-                    SectionHeading(title: "Bu hafta", caption: "HAFTALIK ÖZET", padding: false)
-                    weeklyMetrics
                 } else if model.isConnected {
                     LoadingDashboardCard()
                 } else {
@@ -422,6 +444,8 @@ private struct HomeScreen: View {
                         message: "Strava’yı bağlamadan da spor alanlarını keşfedebilir ve Apple Sağlık verilerini cihazında görüntüleyebilirsin."
                     )
                 }
+                SectionHeading(title: "Bu hafta", caption: "TEMPO KAYITLARI", padding: false)
+                weeklyMetrics
                 HomeSocialCard()
                 if let dashboard = model.dashboard {
                     RecentActivitiesPanel(activities: dashboard.activities)
@@ -450,7 +474,7 @@ private struct HomeScreen: View {
 
     private var weeklyMetrics: some View {
         HStack(spacing: 10) {
-            MetricCard(value: "\(weekActivities.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
+            MetricCard(value: "\(weekManualWorkouts.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
             MetricCard(value: TempoFormat.duration(weekSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
             MetricCard(value: TempoFormat.distance(weekDistance), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.purple)
         }
@@ -469,6 +493,37 @@ private struct HomeScreen: View {
 
     private var dailyMotivation: some View {
         DailyMotivationCard()
+    }
+}
+
+private struct HomeMovementMenuCard: View {
+    var body: some View {
+        NavigationLink(destination: TempoMovementMenuScreen()) {
+            HStack(spacing: 13) {
+                Image(systemName: "sparkles.rectangle.stack.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(TempoTheme.green)
+                    .frame(width: 46, height: 46)
+                    .background(TempoTheme.green.opacity(0.13), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("GÜNÜN HAREKET MENÜSÜ")
+                        .font(.caption2.weight(.bold)).tracking(1).foregroundStyle(TempoTheme.green)
+                    Text("Bugün ne yapsam?")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    Text("Vaktine, enerjine ve ekipmanına göre kısa seçenekler")
+                        .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                }
+                Spacer(minLength: 2)
+                Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(TempoTheme.secondary)
+            }
+            .padding(14)
+            .background(
+                LinearGradient(colors: [TempoTheme.green.opacity(0.10), TempoTheme.card, TempoTheme.blue.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 21, style: .continuous)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -555,9 +610,7 @@ private struct AppleHealthHomeCard: View {
                 }
                 Spacer(minLength: 2)
                 if connected, let balance {
-                    Text("\(balance.value)")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(TempoTheme.green)
+                    TempoReadinessRing(value: balance.value, size: 66)
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
@@ -572,6 +625,31 @@ private struct AppleHealthHomeCard: View {
             .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct TempoReadinessRing: View {
+    let value: Int
+    var size: CGFloat = 68
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(.white.opacity(0.09), lineWidth: 6)
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(value, 0), 100)) / 100)
+                .stroke(
+                    AngularGradient(colors: [TempoTheme.green, TempoTheme.blue, TempoTheme.green], center: .center),
+                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: -2) {
+                Text("\(value)").font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
+                Text("/100").font(.system(size: 8, weight: .semibold)).foregroundStyle(TempoTheme.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Tempo Dengesi, %d / 100".tempoFormatted(value))
     }
 }
 
@@ -667,6 +745,7 @@ private struct ActivitiesScreen: View {
     @State private var search = ""
     @State private var selectedFilter = ActivityTimelineFilter.all
     @State private var isShowingManualWorkoutForm = false
+    @State private var isShowingPhoneTracker = false
 
     private var filterOptions: [ActivityTimelineFilter] {
         let featuredSports: [TempoSport] = [.run, .ride, .walk, .tennis, .basketball, .football, .swim]
@@ -689,18 +768,31 @@ private struct ActivitiesScreen: View {
     }
 
     private var allActivities: [TempoActivity] { model.dashboard?.activities ?? [] }
-    private var totalDistance: Double { allActivities.reduce(0) { $0 + $1.distanceKm } }
-    private var totalTime: Double { allActivities.reduce(0) { $0 + $1.movingSeconds } }
+    private var totalDistance: Double {
+        model.manualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
+    }
+    private var totalTime: Double {
+        model.manualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
+    }
+    private var totalWorkoutCount: Int { model.manualWorkouts.count }
 
     var body: some View {
         NavigationStack {
             TempoPage {
                 PageTitle(title: "Aktiviteler", subtitle: "Tüm antrenman geçmişin")
-                Button { isShowingManualWorkoutForm = true } label: {
-                    Label("Antrenman ekle", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 9) {
+                    Button { isShowingPhoneTracker = true } label: {
+                        Label("Koşu / yürüyüş kaydet", systemImage: "location.north.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(TempoPrimaryButtonStyle())
+                    Button { isShowingManualWorkoutForm = true } label: {
+                        Label("Manuel kayıt", systemImage: "plus.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(TempoSecondaryButtonStyle())
+                    .accessibilityIdentifier("activity.manual.add")
                 }
-                .buttonStyle(TempoPrimaryButtonStyle())
                 if !model.manualWorkouts.isEmpty {
                     VStack(alignment: .leading, spacing: 11) {
                         HStack {
@@ -720,15 +812,17 @@ private struct ActivitiesScreen: View {
                         }
                     }
                 }
+                if !model.manualWorkouts.isEmpty {
+                    activitySnapshot
+                }
                 if !model.isConnected {
                     StravaOptionalCard(
                         title: "Aktivitelerin burada görünsün",
-                        message: "Aktivite geçmişi ve Strava istatistikleri için hesabını istediğin zaman bağlayabilirsin."
+                        message: "Strava aktivitelerini ve rotalarını görmek istersen hesabını istediğin zaman bağlayabilirsin."
                     )
                 } else if model.dashboard == nil {
                     LoadingDashboardCard()
                 } else {
-                    activitySnapshot
                     SearchField(text: $search, placeholder: "Aktivite ara")
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -750,7 +844,6 @@ private struct ActivitiesScreen: View {
                     HStack {
                         Text("SON HAREKETLER".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         Spacer()
-                        Text("%d aktivite".tempoFormatted(filtered.count)).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
                     }
                     LazyVStack(spacing: 10) {
                         ForEach(filtered) { activity in
@@ -766,6 +859,9 @@ private struct ActivitiesScreen: View {
             .sheet(isPresented: $isShowingManualWorkoutForm) {
                 ManualWorkoutForm()
             }
+            .sheet(isPresented: $isShowingPhoneTracker) {
+                TempoPhoneTrackerScreen()
+            }
         }
     }
 
@@ -773,9 +869,9 @@ private struct ActivitiesScreen: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("HAREKET ÖZETİ".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                Text("%d antrenman".tempoFormatted(allActivities.count))
+                Text("%d antrenman".tempoFormatted(totalWorkoutCount))
                     .font(.title3.bold())
-                Text("Strava geçmişinden derlendi".tempoLocalized)
+                Text("Yalnızca Tempo kayıtların".tempoLocalized)
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
             }
             Spacer(minLength: 10)
@@ -796,6 +892,7 @@ private struct ActivitiesScreen: View {
 private struct ManualWorkoutRow: View {
     @EnvironmentObject private var model: TempoAppModel
     @State private var isShowingPhotoEvidence = false
+    @State private var isShowingRoute = false
     let workout: TempoManualWorkout
 
     private var sportChoice: TempoSportChoice? {
@@ -813,14 +910,36 @@ private struct ManualWorkoutRow: View {
                 Text(workout.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
                 Text("%@ · %@ · %d dk".tempoFormatted(workout.sportTitle, workout.startedAt.formatted(date: .abbreviated, time: .shortened), workout.durationMinutes))
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
+                HStack(spacing: 5) {
+                    Image(systemName: sourceSymbol).font(.caption2)
+                    Text(sourceTitle).font(.caption2.weight(.semibold))
+                    if let distance = workout.distanceKm, distance > 0 {
+                        Text("· %@".tempoFormatted(TempoFormat.distance(distance))).font(.caption2)
+                    }
+                }
+                .foregroundStyle(workout.recordSource == "phone-gps" ? TempoTheme.blue : TempoTheme.green)
                 if let signal = workout.healthSignal {
                     WorkoutHealthSignalSummary(signal: signal, durationMinutes: workout.durationMinutes)
+                }
+                if workout.perceivedEffort != nil || workout.enjoyment != nil {
+                    Text("Zorluk %@ · Keyif %@".tempoFormatted(rating(workout.perceivedEffort), rating(workout.enjoyment)))
+                        .font(.caption2).foregroundStyle(TempoTheme.secondary)
                 }
                 if !workout.notes.isEmpty {
                     Text(workout.notes).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
                 }
             }
             Spacer(minLength: 0)
+            if (workout.routeCoordinates?.count ?? 0) >= 2 {
+                Button { isShowingRoute = true } label: {
+                    Image(systemName: "map.fill")
+                        .foregroundStyle(TempoTheme.blue)
+                        .frame(width: 40, height: 40)
+                        .background(TempoTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rotayı görüntüle")
+            }
             if let url = model.manualWorkoutPhotoURL(for: workout), let image = UIImage(contentsOfFile: url.path) {
                 Button { isShowingPhotoEvidence = true } label: {
                     Image(uiImage: image).resizable().scaledToFill()
@@ -849,6 +968,80 @@ private struct ManualWorkoutRow: View {
                 .preferredColorScheme(.dark)
             }
         }
+        .sheet(isPresented: $isShowingRoute) {
+            ManualWorkoutRouteScreen(workout: workout)
+        }
+    }
+
+    private var sourceTitle: String {
+        switch workout.recordSource {
+        case "phone-gps": return "iPhone GPS kaydı".tempoLocalized
+        case "health-supported-manual": return "Elle eklendi · Sağlık sinyali".tempoLocalized
+        default: return workout.healthSignal == nil ? "Elle eklendi".tempoLocalized : "Elle eklendi · Sağlık sinyali".tempoLocalized
+        }
+    }
+
+    private var sourceSymbol: String { workout.recordSource == "phone-gps" ? "location.fill" : "heart.text.square.fill" }
+
+    private func rating(_ value: Int?) -> String {
+        guard let value else { return "—" }
+        return "\(value)/5"
+    }
+}
+
+private struct ManualWorkoutRouteScreen: View {
+    let workout: TempoManualWorkout
+    @Environment(\.dismiss) private var dismiss
+    @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 39.0, longitude: 35.0),
+        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+    ))
+
+    private var coordinates: [CLLocationCoordinate2D] {
+        (workout.routeCoordinates ?? []).map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if coordinates.count >= 2 {
+                    Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
+                        MapPolyline(coordinates: coordinates).stroke(TempoTheme.green, lineWidth: 5)
+                    }
+                    .mapStyle(.standard(elevation: .flat))
+                    .overlay(alignment: .top) {
+                        HStack {
+                            Label(workout.sportTitle, systemImage: workout.sportId == "run" ? "figure.run" : "figure.walk")
+                            Spacer()
+                            Text(TempoFormat.distance(workout.distanceKm ?? 0)).bold()
+                        }
+                        .font(.subheadline.weight(.semibold)).padding(14)
+                        .background(.ultraThinMaterial, in: Capsule()).padding(14)
+                    }
+                } else {
+                    EmptyCard(icon: "map", text: "Bu kayıtta görüntülenecek rota noktası yok.")
+                }
+            }
+            .background(TempoTheme.background)
+            .navigationTitle("iPhone GPS rotası")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Kapat") { dismiss() } }
+            }
+            .onAppear { updateRegion() }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func updateRegion() {
+        guard !coordinates.isEmpty else { return }
+        let latitudes = coordinates.map(\.latitude)
+        let longitudes = coordinates.map(\.longitude)
+        let center = CLLocationCoordinate2D(latitude: (latitudes.min()! + latitudes.max()!) / 2, longitude: (longitudes.min()! + longitudes.max()!) / 2)
+        cameraPosition = .region(MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: max((latitudes.max()! - latitudes.min()!) * 1.6, 0.006), longitudeDelta: max((longitudes.max()! - longitudes.min()!) * 1.6, 0.006))
+        ))
     }
 }
 
@@ -911,6 +1104,8 @@ private struct ManualWorkoutForm: View {
     @State private var startedAt = Date().addingTimeInterval(-45 * 60)
     @State private var durationMinutes = 45
     @State private var notes = ""
+    @State private var perceivedEffort: Int?
+    @State private var enjoyment: Int?
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var photoImage: UIImage?
@@ -933,6 +1128,7 @@ private struct ManualWorkoutForm: View {
                     startedAt: $startedAt,
                     durationMinutes: $durationMinutes
                 )
+                ManualWorkoutFeedbackSection(effort: $perceivedEffort, enjoyment: $enjoyment)
                 ManualWorkoutEvidenceSection(
                     photoItem: $photoItem,
                     photoData: $photoData,
@@ -940,6 +1136,7 @@ private struct ManualWorkoutForm: View {
                     notes: $notes
                 )
             }
+            .accessibilityIdentifier("activity.manual.form")
             .scrollContentBackground(.hidden)
             .background(TempoTheme.background)
             .navigationTitle("Antrenman ekle")
@@ -951,7 +1148,7 @@ private struct ManualWorkoutForm: View {
                 Task { await loadPhoto(item) }
             }
             .alert(errorTitle.tempoLocalized, isPresented: $showingError) {
-                Button("Tamam") { dismiss() }
+                Button("Tamam") { }
             } message: {
                 Text(errorMessage ?? "Fotoğraf tek başına yeterli değil. Antrenman saatinde anlamlı bir hareket veya Sağlık sinyali bulunamadı.")
             }
@@ -982,7 +1179,9 @@ private struct ManualWorkoutForm: View {
                 startedAt: startedAt,
                 durationMinutes: durationMinutes,
                 notes: notes,
-                photoData: photoData
+                photoData: photoData,
+                perceivedEffort: perceivedEffort,
+                enjoyment: enjoyment
             )
             dismiss()
         } catch {
@@ -990,6 +1189,53 @@ private struct ManualWorkoutForm: View {
             errorMessage = error.localizedDescription.tempoLocalized
             showingError = true
         }
+    }
+}
+
+private struct ManualWorkoutFeedbackSection: View {
+    @Binding var effort: Int?
+    @Binding var enjoyment: Int?
+
+    var body: some View {
+        Section {
+            ratingRow(title: "Ne kadar zor hissettirdi?", selection: $effort, labels: ["Çok kolay", "Kolay", "Orta", "Zor", "Çok zor"])
+            ratingRow(title: "Ne kadar keyif aldın?", selection: $enjoyment, labels: ["Hiç", "Az", "Orta", "İyi", "Çok"])
+            Text("Bu geri bildirim yalnızca bu cihazdaki antrenman kaydında tutulur ve sonraki önerileri yumuşatmaya yardımcı olur.")
+                .font(.caption2).foregroundStyle(TempoTheme.secondary)
+        } header: {
+            Text("Antrenman sonrası kısa not")
+        }
+    }
+
+    private func ratingRow(title: String, selection: Binding<Int?>, labels: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title.tempoLocalized).font(.subheadline.weight(.medium))
+                Spacer()
+                if selection.wrappedValue != nil {
+                    Button("Temizle") { selection.wrappedValue = nil }
+                        .font(.caption).foregroundStyle(TempoTheme.green)
+                }
+            }
+            HStack(spacing: 7) {
+                ForEach(1...5, id: \.self) { score in
+                    Button {
+                        selection.wrappedValue = selection.wrappedValue == score ? nil : score
+                    } label: {
+                        Text(labels[score - 1].tempoLocalized)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1).minimumScaleFactor(0.65)
+                            .foregroundStyle(selection.wrappedValue == score ? .black : TempoTheme.secondary)
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(selection.wrappedValue == score ? TempoTheme.green : TempoTheme.raised, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("%@, %d".tempoFormatted(title, score))
+                    .accessibilityAddTraits(selection.wrappedValue == score ? .isSelected : [])
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -1001,6 +1247,7 @@ private struct ManualWorkoutToolbar: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("İptal", action: onCancel)
+                .accessibilityIdentifier("activity.manual.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
             Button(isSaving ? "Kaydediliyor…" : "Kaydet", action: onSave)
@@ -1242,7 +1489,7 @@ private struct RecentActivitiesPanel: View {
                             Text("Aktivite geçmişi")
                                 .font(.subheadline.bold())
                                 .foregroundStyle(.white)
-                            Text("Dönemlere göre gruplanmış %d aktivite".tempoFormatted(activities.count))
+                            Text("Aktiviteleri tarihe göre görüntüle")
                                 .font(.caption)
                                 .foregroundStyle(TempoTheme.secondary)
                         }
@@ -1292,7 +1539,6 @@ private struct ActivityTimelineGroup: Identifiable {
     let title: String
     var activities: [TempoActivity]
 
-    var distanceKm: Double { activities.reduce(0) { $0 + $1.distanceKm } }
 }
 
 private struct ActivityTimelineScreen: View {
@@ -1359,10 +1605,6 @@ private struct ActivityTimelineScreen: View {
         return result
     }
 
-    private var totalDistance: Double { filteredActivities.reduce(0) { $0 + $1.distanceKm } }
-    private var totalSeconds: Double { filteredActivities.reduce(0) { $0 + $1.movingSeconds } }
-    private var totalElevation: Double { filteredActivities.reduce(0) { $0 + $1.elevationMeters } }
-
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
@@ -1372,19 +1614,12 @@ private struct ActivityTimelineScreen: View {
                         Text("AKTİVİTE ARŞİVİ".tempoSentenceCased)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(TempoTheme.secondary)
-                        Text("Ritmini dönemlere göre incele.")
+                        Text("Strava’dan gelen aktiviteleri tarih sırasıyla görüntüle.")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
 
-                        HStack(spacing: 9) {
-                            MetricCard(value: "\(filteredActivities.count)", label: "Aktivite", icon: "figure.run", color: TempoTheme.green)
-                            MetricCard(value: TempoFormat.distance(totalDistance), label: "Mesafe", icon: "arrow.left.and.right", color: TempoTheme.orange)
-                            MetricCard(value: TempoFormat.duration(totalSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
-                        }
-                        if totalElevation > 0 {
-                            Label("Toplam %@ m tırmanış".tempoFormatted(Int(totalElevation).formatted()), systemImage: "mountain.2.fill")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(TempoTheme.secondary)
-                        }
+                        Text("Strava kayıtları burada doğrudan görüntülenir; Tempo puanlarına ve hedeflerine katılmaz.")
+                            .font(.caption)
+                            .foregroundStyle(TempoTheme.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1414,14 +1649,8 @@ private struct ActivityTimelineScreen: View {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(group.title.tempoLocalized).font(.headline)
-                                        Text("%d aktivite".tempoFormatted(group.activities.count))
-                                            .font(.caption)
-                                            .foregroundStyle(TempoTheme.secondary)
                                     }
                                     Spacer()
-                                    Text(TempoFormat.distance(group.distanceKm))
-                                        .font(.subheadline.bold())
-                                        .foregroundStyle(TempoTheme.green)
                                 }
                                 .padding(.top, 5)
 
@@ -1755,10 +1984,13 @@ private struct SocialScreen: View {
             socialIntro
             Picker("Sosyal bölümü", selection: $selectedSection) {
                 ForEach(SocialSection.allCases) { section in
-                    Text(section.title.tempoLocalized).tag(section)
+                    Text(section.title.tempoLocalized)
+                        .tag(section)
+                        .accessibilityIdentifier("social.section.\(section.rawValue)")
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("social.sections")
 
             if !notice.isEmpty {
                 Text(notice).font(.caption).foregroundStyle(TempoTheme.secondary).frame(maxWidth: .infinity, alignment: .leading)
@@ -1781,7 +2013,12 @@ private struct SocialScreen: View {
             }
         }
         .navigationTitle("Sosyal").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
-        .task { await refresh() }
+        .task {
+#if DEBUG
+            guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+#endif
+            await refresh()
+        }
         .confirmationDialog("Bu kullanıcıyı engelle?", isPresented: $showBlockConfirmation, titleVisibility: .visible) {
             Button("Engelle", role: .destructive) {
                 if let profile = pendingBlockProfile { Task { await setBlocked(profile, blocked: true) } }
@@ -1902,13 +2139,20 @@ private struct SocialScreen: View {
                     TextField("Kullanıcı adı", text: $username)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .padding(13).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .submitLabel(.send)
+                        .onSubmit { Task { await sendRequest() } }
+                        .accessibilityIdentifier("social.friendUsername")
                     Button { Task { await sendRequest() } } label: {
                         if working { ProgressView().tint(.black).frame(width: 46, height: 46) }
                         else { Image(systemName: "person.badge.plus").foregroundStyle(.black).frame(width: 46, height: 46) }
                     }
                     .background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .disabled(working || username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Arkadaşlık isteği gönder")
+                    .accessibilityIdentifier("social.sendFriendRequest")
                 }
+                Text("@ işaretiyle veya işaretsiz Tempo kullanıcı adını yazabilirsin.")
+                    .font(.caption2).foregroundStyle(TempoTheme.secondary)
             }
 
             if !(snapshot?.incoming.isEmpty ?? true) {
@@ -1999,6 +2243,10 @@ private struct SocialScreen: View {
                         Picker("Hedef", selection: $metric) {
                             ForEach(TempoSocialMetric.allCases) { option in Label(option.title, systemImage: option.symbol).tag(option) }
                         }.pickerStyle(.menu)
+                        if metric == .movementDays {
+                            Text("Hareket günü, en az 3.000 adım veya 10 dakika egzersiz olarak sayılır.")
+                                .font(.caption2).foregroundStyle(TempoTheme.secondary)
+                        }
                         Button { selectedSection = .friends } label: {
                             HStack {
                                 Label(selectedFriends.isEmpty ? "Arkadaş seç" : "%d arkadaş seçildi".tempoFormatted(selectedFriends.count), systemImage: "person.2.fill")
@@ -2054,27 +2302,32 @@ private struct SocialScreen: View {
         }
     }
 
-    private func refresh() async {
+    private func refresh(clearNotice: Bool = true) async {
         guard !loading else { return }
         loading = true; defer { loading = false }
         do {
             snapshot = try await account.loadSocial()
             selectedFriends.formIntersection(Set(snapshot?.friends.map(\.id) ?? []))
-            notice = ""
+            if clearNotice { notice = "" }
         } catch { notice = error.localizedDescription.tempoLocalized }
     }
 
     private func sendRequest() async {
         guard !working else { return }
         working = true; defer { working = false }
-        do { try await account.sendFriendRequest(username: username); username = ""; notice = "Arkadaşlık isteği gönderildi."; await refresh() }
+        do {
+            let becameFriends = try await account.sendFriendRequest(username: username.trimmingCharacters(in: .whitespacesAndNewlines))
+            username = ""
+            notice = becameFriends ? "Karşılıklı istek eşleşti; artık arkadaşsınız." : "Arkadaşlık isteği gönderildi."
+            await refresh(clearNotice: false)
+        }
         catch { notice = error.localizedDescription.tempoLocalized }
     }
 
     private func answer(_ request: TempoSocialRequest, accept: Bool) async {
         guard !working else { return }
         working = true; defer { working = false }
-        do { try await account.respondToFriendRequest(id: request.id, accept: accept); notice = accept ? "Arkadaşlık isteği kabul edildi." : "Arkadaşlık isteği reddedildi."; await refresh() }
+        do { try await account.respondToFriendRequest(id: request.id, accept: accept); notice = accept ? "Arkadaşlık isteği kabul edildi." : "Arkadaşlık isteği reddedildi."; await refresh(clearNotice: false) }
         catch { notice = error.localizedDescription.tempoLocalized }
     }
 
@@ -2377,6 +2630,7 @@ private struct MoreScreen: View {
                 }
                 LazyVGrid(columns: columns, spacing: 12) {
                     MoreLink(title: "Sosyal", subtitle: "Arkadaşlar ve yarışlar", icon: "person.2.fill", color: TempoTheme.green, destination: AnyView(SocialScreen()))
+                        .accessibilityIdentifier("more.social")
                     MoreLink(title: "Tempo Hesabı", subtitle: "Profil ve sporların", icon: "person.crop.circle.badge.checkmark", color: TempoTheme.green, destination: AnyView(AccountSettingsScreen()))
                     MoreLink(title: "Başarılar", subtitle: "Seviye ve rozetlerin", icon: "medal.fill", color: TempoTheme.orange, destination: AnyView(AchievementsScreen()))
                     MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
@@ -2430,6 +2684,11 @@ private struct HealthScreen: View {
     var body: some View {
         TempoPage {
             PageTitle(title: "Apple Sağlık", subtitle: "Günlük sağlık ve toparlanma görünümün")
+#if DEBUG && targetEnvironment(simulator)
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing-healthkit") {
+                SimulatorHealthIntegrationPanel()
+            }
+#endif
             healthIntro
             if !model.healthAvailable {
                 TempoCard {
@@ -3198,14 +3457,12 @@ private struct TempoBalanceFactorRow: View {
 
 private struct MonthlyStatsScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    var stats: [TempoMonthStat] { makeMonthStats(model.dashboard?.activities ?? []) }
+    var stats: [TempoMonthStat] { makeMonthStats(model.manualWorkouts) }
     var body: some View {
         TempoPage {
-            PageTitle(title: "Aylık İstatistikler", subtitle: "Son altı ay")
-            if !model.isConnected {
-                StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Aylık aktivite istatistiklerini görmek için Strava’yı istediğin zaman bağlayabilirsin.")
-            } else if model.dashboard == nil {
-                LoadingDashboardCard()
+            PageTitle(title: "Aylık İstatistikler", subtitle: "Son altı ay · Tempo kayıtların")
+            if model.manualWorkouts.isEmpty {
+                EmptyCard(icon: "chart.bar", text: "Tempo’da antrenman kaydettikçe aylık ilerlemen burada görünür.")
             } else {
                 TempoCard {
                     Chart(stats) { item in
@@ -3294,20 +3551,18 @@ private struct SegmentsScreen: View {
 
 private struct EddingtonScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    private var number: Int { eddingtonNumber(model.dashboard?.activities ?? []) }
+    private var number: Int { eddingtonNumber(model.manualWorkouts) }
     var body: some View {
         TempoPage {
-            PageTitle(title: "Eddington Sayısı", subtitle: "Koşu istikrarın")
-            if !model.isConnected {
-                StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Koşu istikrarı hesabın Strava aktivitelerin bağlandığında oluşturulur.")
-            } else if model.dashboard == nil {
-                LoadingDashboardCard()
+            PageTitle(title: "Eddington Sayısı", subtitle: "Tempo GPS kayıtlarındaki koşu istikrarın")
+            if !model.manualWorkouts.contains(where: { $0.sportId == "run" && ($0.distanceKm ?? 0) > 0 }) {
+                EmptyCard(icon: "figure.run", text: "Tempo’da GPS ile koşu kaydettikçe Eddington sayın oluşur.")
             } else {
                 TempoCard {
                     VStack(spacing: 16) {
                         Text("\(number)").font(.system(size: 92, weight: .bold, design: .rounded)).foregroundStyle(TempoTheme.green)
                         Text("%d farklı günde en az %d km koştun.".tempoFormatted(number, number)).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-                        Text("Bu sayı düzenli ve uzun mesafeli koşular yaptıkça yükselir.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+                        Text("Yalnızca Tempo GPS kayıtlarındaki koşular sayılır.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
                     }.padding(.vertical, 28).frame(maxWidth: .infinity)
                 }
             }
@@ -3317,26 +3572,22 @@ private struct EddingtonScreen: View {
 
 private struct YearSummaryScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    private var activities: [TempoActivity] {
-        (model.dashboard?.activities ?? []).filter { activity in
-            guard let date = activity.date else { return false }
-            return Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+    private var workouts: [TempoManualWorkout] {
+        model.manualWorkouts.filter { workout in
+            Calendar.current.isDate(workout.startedAt, equalTo: Date(), toGranularity: .year)
         }
     }
     var body: some View {
         TempoPage {
-            PageTitle(title: "%d Özeti".tempoFormatted(Calendar.current.component(.year, from: Date())), subtitle: "Yıl içindeki hareketin")
-            if !model.isConnected {
-                StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Yıllık aktivite özetin Strava verilerini bağladıktan sonra burada görünür.")
-            } else if model.dashboard == nil {
-                LoadingDashboardCard()
+            PageTitle(title: "%d Özeti".tempoFormatted(Calendar.current.component(.year, from: Date())), subtitle: "Tempo’da kaydettiğin antrenmanlar")
+            if workouts.isEmpty {
+                EmptyCard(icon: "calendar", text: "Tempo’da bu yıl antrenman kaydettikçe özetin burada görünür.")
             } else {
                 VStack(spacing: 10) {
-                    SummaryLine(icon: "figure.run", title: "Aktivite", value: "\(activities.count)", color: TempoTheme.orange)
-                    SummaryLine(icon: "arrow.left.and.right", title: "Toplam mesafe", value: TempoFormat.distance(activities.reduce(0) { $0 + $1.distanceKm }), color: TempoTheme.green)
-                    SummaryLine(icon: "clock.fill", title: "Hareket süresi", value: TempoFormat.duration(activities.reduce(0) { $0 + $1.movingSeconds }), color: TempoTheme.blue)
-                    SummaryLine(icon: "mountain.2.fill", title: "Yükseklik", value: "\(Int(activities.reduce(0) { $0 + $1.elevationMeters })) m", color: TempoTheme.purple)
-                    SummaryLine(icon: "trophy.fill", title: "En uzun", value: TempoFormat.distance(activities.map(\.distanceKm).max() ?? 0), color: TempoTheme.orange)
+                    SummaryLine(icon: "figure.run", title: "Antrenman", value: "\(workouts.count)", color: TempoTheme.orange)
+                    SummaryLine(icon: "arrow.left.and.right", title: "Toplam mesafe", value: TempoFormat.distance(workouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }), color: TempoTheme.green)
+                    SummaryLine(icon: "clock.fill", title: "Hareket süresi", value: TempoFormat.duration(workouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }), color: TempoTheme.blue)
+                    SummaryLine(icon: "trophy.fill", title: "En uzun seans", value: TempoFormat.duration(workouts.map { Double($0.durationSeconds ?? $0.durationMinutes * 60) }.max() ?? 0), color: TempoTheme.orange)
                 }
             }
         }.navigationTitle("Yıl Özeti").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
@@ -3404,6 +3655,7 @@ private struct HomeHeader: View {
                     .font(.caption.bold())
                     .tracking(3)
                     .foregroundStyle(TempoTheme.green)
+                    .accessibilityIdentifier("screen.summary")
                 Text(dateText.prefix(1).uppercased() + dateText.dropFirst())
                     .font(.title3.bold())
             }
@@ -3418,7 +3670,9 @@ struct PageTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(subtitle.tempoLocalized).font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.secondary)
-            Text(title.tempoLocalized).font(.system(size: 31, weight: .bold, design: .rounded))
+            Text(title.tempoLocalized)
+                .font(.system(size: 31, weight: .bold, design: .rounded))
+                .accessibilityIdentifier("page.title.\(title)")
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
     }
 }
@@ -3427,7 +3681,6 @@ private struct StravaConnectionCard: View {
     let dashboard: TempoDashboard
 
     private var athlete: TempoAthlete { dashboard.athlete }
-    private var totalDistance: Double { dashboard.activities.reduce(0) { $0 + $1.distanceKm } }
 
     var body: some View {
         Link(destination: URL(string: "https://www.strava.com/athletes/\(athlete.id)")!) {
@@ -3467,7 +3720,7 @@ private struct StravaConnectionCard: View {
                     }
                     Text(athlete.fullName.isEmpty ? "Strava Sporcusu".tempoLocalized : athlete.fullName)
                         .font(.headline).foregroundStyle(.white).lineLimit(1)
-                    Text("%d aktivite · %@".tempoFormatted(dashboard.activities.count, TempoFormat.distance(totalDistance)))
+                    Text("Strava hesabın bağlı".tempoLocalized)
                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                 }
 
@@ -3493,7 +3746,7 @@ private struct StravaConnectionCard: View {
     }
 }
 
-private struct TempoCard<Content: View>: View {
+struct TempoCard<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
@@ -3529,7 +3782,7 @@ private struct MetricCard: View {
     }
 }
 
-private struct SectionHeading: View {
+struct SectionHeading: View {
     let title: String; let caption: String; var padding = true
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -3692,27 +3945,27 @@ struct TempoSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-private func makeMonthStats(_ activities: [TempoActivity]) -> [TempoMonthStat] {
+private func makeMonthStats(_ workouts: [TempoManualWorkout]) -> [TempoMonthStat] {
     let calendar = Calendar.current
     let current = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
     var result: [TempoMonthStat] = (0..<6).reversed().compactMap { offset in
         calendar.date(byAdding: .month, value: -offset, to: current).map { TempoMonthStat(date: $0, distanceKm: 0, count: 0, seconds: 0) }
     }
-    for activity in activities {
-        guard let date = activity.date, let index = result.firstIndex(where: { calendar.isDate($0.date, equalTo: date, toGranularity: .month) }) else { continue }
-        result[index].distanceKm += activity.distanceKm
+    for workout in workouts {
+        guard let index = result.firstIndex(where: { calendar.isDate($0.date, equalTo: workout.startedAt, toGranularity: .month) }) else { continue }
+        result[index].distanceKm += workout.distanceKm ?? 0
         result[index].count += 1
-        result[index].seconds += activity.movingSeconds
+        result[index].seconds += Double(workout.durationSeconds ?? workout.durationMinutes * 60)
     }
     return result
 }
 
-private func eddingtonNumber(_ activities: [TempoActivity]) -> Int {
+private func eddingtonNumber(_ workouts: [TempoManualWorkout]) -> Int {
     let calendar = Calendar.current
     var days: [Date: Double] = [:]
-    for activity in activities where activity.sport == .run {
-        guard let date = activity.date else { continue }
-        days[calendar.startOfDay(for: date), default: 0] += activity.distanceKm
+    for workout in workouts where workout.sportId == "run" {
+        guard let distance = workout.distanceKm, distance > 0 else { continue }
+        days[calendar.startOfDay(for: workout.startedAt), default: 0] += distance
     }
     let distances = days.values.sorted(by: >)
     var result = 0
@@ -3723,4 +3976,28 @@ private func eddingtonNumber(_ activities: [TempoActivity]) -> Int {
 private extension Calendar {
     func isDateInCurrentWeek(_ date: Date) -> Bool { isDate(date, equalTo: Date(), toGranularity: .weekOfYear) }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+private struct SimulatorHealthIntegrationPanel: View {
+    @State private var result = "HEALTHKIT_READY"
+    @State private var running = false
+    var body: some View {
+        VStack {
+            Button("Run HealthKit integration") {
+                running = true
+                result = "HEALTHKIT_RUNNING"
+                Task { @MainActor in
+                    do { result = try await TempoHealthStore().runSimulatorIntegrationCheck() }
+                    catch { result = "HEALTHKIT_FAIL " + error.localizedDescription }
+                    running = false
+                }
+            }
+            .accessibilityIdentifier("healthkit.integration.start")
+            .disabled(running)
+            Text(result).font(.caption)
+                .accessibilityIdentifier("healthkit.integration.result")
+        }
+    }
+}
+#endif
 
