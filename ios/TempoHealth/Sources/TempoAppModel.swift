@@ -38,6 +38,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var activeTempoAccountId: String?
     private var lastManualWorkoutAccountId: String?
     private var lastDashboardRefresh: Date?
+    private var dashboardGeneration = UUID()
+    private var hasAttemptedStravaRecovery = false
     private var healthGeneration = UUID()
     private var healthUploadTask: Task<Void, Error>?
     private var healthDisconnectTask: Task<Void, Never>?
@@ -201,6 +203,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthSyncEnabled = false
         healthError = nil
         lastDashboardRefresh = nil
+        dashboardGeneration = UUID()
+        hasAttemptedStravaRecovery = false
         isLoadingDashboard = false
         isCoachLoading = false
         if let accountId {
@@ -530,9 +534,11 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     func refreshDashboard() async {
         guard let accessToken, let accountId = activeTempoAccountId, !isLoadingDashboard else { return }
         isLoadingDashboard = true
+        let generation = UUID()
+        dashboardGeneration = generation
         dashboardError = nil
         dashboardErrorDetails = nil
-        defer { if activeTempoAccountId == accountId, self.accessToken == accessToken { isLoadingDashboard = false } }
+        defer { if dashboardGeneration == generation { isLoadingDashboard = false } }
 
         // Retry transient network/server failures once. Repeating 4xx errors,
         // JSON decode failures, or a Strava rate limit only delays the screen.
@@ -569,6 +575,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 dashboard = decoded
                 Self.saveCachedDashboard(decoded, accountId: accountId)
                 lastDashboardRefresh = Date()
+                hasAttemptedStravaRecovery = false
                 status = "Strava verilerin güncel."
                 return
             } catch {
@@ -976,7 +983,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             if let activeTempoAccountId { Self.clearCachedDashboard(accountId: activeTempoAccountId) }
             dashboardError = nil
             dashboardErrorDetails = nil
-            todayWaterMl = 0
+            todayWaterMl = healthSyncEnabled ? Int((healthDays[Self.localDay()]?.waterMl ?? 0).rounded()) : 0
             UserDefaults.standard.set(true, forKey: Self.stravaSkippedKey)
             hasAttemptedAccountRestore = true
             isRestoringConnection = false
@@ -1035,6 +1042,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthLastSync = nil
         todayWaterMl = 0
         isRestoringConnection = false
+        dashboardGeneration = UUID()
+        isLoadingDashboard = false
+        hasAttemptedStravaRecovery = false
         isBusy = false
     }
 
@@ -1109,6 +1119,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                         throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı.")
                     }
                     accessToken = token
+                    hasAttemptedStravaRecovery = false
                     UserDefaults.standard.set(false, forKey: Self.stravaSkippedKey)
                     status = "Strava bağlı. Verilerin hazırlanıyor."
                     if let activeTempoAccountId { dashboard = Self.loadCachedDashboard(accountId: activeTempoAccountId) }
@@ -1148,12 +1159,17 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         Self.clearCachedDashboard(accountId: accountId)
         lastDashboardRefresh = nil
         dashboardError = "Strava oturumuna geçici olarak ulaşılamadı."
-        if let accountAccessToken {
+        // A repeatedly rejected token must not start an unbounded chain of
+        // restore -> dashboard -> restore background tasks. One recovery per
+        // failed connection is enough; successful data loading resets the gate.
+        if let accountAccessToken, !hasAttemptedStravaRecovery {
+            hasAttemptedStravaRecovery = true
             hasAttemptedAccountRestore = false
             status = "Strava bağlantısı Tempo hesabından yenileniyor…"
             Task { await restoreConnectionIfNeeded(accountToken: accountAccessToken, accountId: accountId) }
         } else {
-            status = "Strava bağlantısının yenilenmesi için Tempo hesabına giriş yap."
+            isRestoringConnection = false
+            status = "Strava bağlantısı yenilenemedi. Bağlantıyı yeniden kurabilirsin; Tempo ve Apple Sağlık çalışmaya devam eder."
         }
     }
 

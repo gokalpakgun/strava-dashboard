@@ -99,11 +99,20 @@ jobs:
           xcrun simctl boot "$DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID" -b
           xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          xcrun simctl io "$DEVICE_ID" recordVideo --codec=h264 --force "$RUNNER_TEMP/Tempo-launch.mp4" > "$RUNNER_TEMP/Tempo-launch-recording.log" 2>&1 &
+          VIDEO_PID=$!
+          trap 'kill -INT "$VIDEO_PID" 2>/dev/null || true' EXIT
+          sleep 0.5
           LAUNCH_OUTPUT="$(xcrun simctl launch --terminate-running-process "$DEVICE_ID" com.apitempo.tempohealth)"
           echo "$LAUNCH_OUTPUT"
           [[ "$LAUNCH_OUTPUT" =~ [0-9]+ ]]
 
+          sleep 0.5
           xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/Tempo-simulator-launch.png"
+          sleep 1.5
+          kill -INT "$VIDEO_PID"
+          wait "$VIDEO_PID" || true
+          trap - EXIT
 
       - name: Run user-flow UI tests on the iPhone simulator
         run: |
@@ -158,7 +167,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tempo-ios-simulator-launch
-          path: ${{ runner.temp }}/Tempo-simulator-launch.png
+          path: |
+            ${{ runner.temp }}/Tempo-simulator-launch.png
+            ${{ runner.temp }}/Tempo-launch.mp4
           if-no-files-found: ignore
           retention-days: 7
 

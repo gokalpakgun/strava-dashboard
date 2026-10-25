@@ -1349,3 +1349,12 @@
 "Bu yılki Tempo ve Apple Sağlık antrenmanların burada görünür." = "Your Tempo and Apple Health workouts from this year appear here.";
 "Son 12 ayın antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır." = "Import workouts from the last 12 months. Workout details stay on your device.";
 "%d alan bulundu; diğer harita kaynakları taranıyor…" = "%d places found; checking other map sources…";
+
+"Kişisel alanın" = "Your space";
+"PROFİL VE TOPLULUK" = "PROFILE AND COMMUNITY";
+"Keşfet" = "Explore";
+"HAREKET VE SAĞLIK" = "MOVEMENT AND HEALTH";
+"İlerlemen" = "Your progress";
+"Strava araçları" = "Strava tools";
+"İSTEĞE BAĞLI BAĞLANTI" = "OPTIONAL CONNECTION";
+"Strava bağlantısı yenilenemedi. Bağlantıyı yeniden kurabilirsin; Tempo ve Apple Sağlık çalışmaya devam eder." = "Could not restore your Strava connection. You can reconnect; Tempo and Apple Health continue to work.";
