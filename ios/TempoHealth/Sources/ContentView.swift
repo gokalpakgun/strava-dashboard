@@ -1940,7 +1940,7 @@ private enum SocialSection: String, CaseIterable, Identifiable {
     }
 }
 
-private struct SocialScreen: View {
+struct SocialScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
     @State private var snapshot: TempoSocialSnapshot?
