@@ -3946,6 +3946,47 @@ private struct ActivityRow: View {
     }
 }
 
+struct EmptyCard: View {
+    let icon: String; let text: String
+    var body: some View {
+        VStack(spacing: 11) { Image(systemName: icon).font(.title).foregroundStyle(TempoTheme.secondary); Text(text.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center) }
+            .padding(28).frame(maxWidth: .infinity).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct StravaOptionalCard: View {
+    @EnvironmentObject private var model: TempoAppModel
+    let title: String
+    let message: String
+
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(spacing: 12) {
+                    Image(systemName: "figure.run")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(TempoTheme.orange)
+                        .frame(width: 44, height: 44)
+                        .background(TempoTheme.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Text(title.tempoLocalized)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                Text(message.tempoLocalized)
+                    .font(.subheadline)
+                    .foregroundStyle(TempoTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(action: model.connectStrava) {
+                    Label((model.isBusy ? "Strava açılıyor…" : "Strava’yı bağla").tempoLocalized, systemImage: "figure.run")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(TempoPrimaryButtonStyle())
+                .disabled(model.isBusy)
+            }
+        }
+    }
+}
+
 private struct LoadingDashboardCard: View {
     @EnvironmentObject private var model: TempoAppModel
     var body: some View {
