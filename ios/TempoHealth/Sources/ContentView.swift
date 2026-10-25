@@ -112,14 +112,14 @@ private struct TempoMainShell: View {
                     .padding(.top, 10)
                     .padding(.bottom, 6)
             }
-        .task(id: notifications.route) {
-            guard let route = notifications.route else { return }
-            notifications.route = nil
+        .onChange(of: notifications.route, initial: true) { _, nextRoute in
+            guard let route = nextRoute else { return }
             switch route {
             case "summary": selectedTab = 0
             case "sports": selectedTab = 2
             default: presentedRoute = NotificationRoute(id: route)
             }
+            notifications.route = nil
         }
         .sheet(item: $presentedRoute) { route in
             NavigationStack {
@@ -3647,7 +3647,7 @@ private struct HomeHeader: View {
                     .font(.title3.bold())
             }
             Spacer()
-            Button { notifications.open(destination: "notifications") } label: {
+            NavigationLink(destination: TempoNotificationsScreen()) {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bell").font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44)
                     if notifications.unreadCount > 0 { Circle().fill(TempoTheme.green).frame(width: 7, height: 7).offset(x: -7, y: 6) }

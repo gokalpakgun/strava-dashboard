@@ -252,6 +252,7 @@ final class TempoHealthUserFlowTests: XCTestCase {
         try require(element("home.notifications", in: app).waitForExistence(timeout: 40), "Real notification recipient could not sign in", in: app)
         dismissPasswordSavePrompt(in: app, timeout: 3)
         element("home.notifications", in: app).tap()
+        try require(element("notifications.settings", in: app).waitForExistence(timeout: 10), "The home bell must push the notification inbox after a real login", in: app)
         let request = element("notification.friend_request", in: app)
         try require(request.waitForExistence(timeout: 25), "Real friend request did not appear in native notification inbox", in: app)
         capture(app, named: "Real friend request notification inbox")
@@ -418,7 +419,10 @@ final class TempoHealthUserFlowTests: XCTestCase {
         let prompt = app.sheets.matching(NSPredicate(format: "label == %@", "Save Password?")).firstMatch
         guard prompt.waitForExistence(timeout: timeout) else { return }
         let notNow = prompt.buttons["Not Now"]
-        if notNow.waitForExistence(timeout: 3), notNow.isHittable { notNow.tap() }
+        if notNow.waitForExistence(timeout: 3), notNow.isHittable {
+            notNow.tap()
+            _ = prompt.waitForNonExistence(timeout: 5)
+        }
     }
     private func require(_ condition: Bool, _ message: String, in app: XCUIApplication) throws {
         guard !condition else { return }

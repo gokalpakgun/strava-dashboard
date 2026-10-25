@@ -302,8 +302,13 @@ struct TempoNotificationsScreen: View {
                 }
             } else {
                 ForEach(notifications.notices) { notice in
-                    Button {
-                        Task { await notifications.markRead(notice); notifications.open(destination: notice.destination) }
+                    NavigationLink {
+                        switch notice.destination {
+                        case "social": SocialScreen()
+                        case "achievements": AchievementsScreen()
+                        case "sports": SportsHubScreen()
+                        default: TempoNotificationSettingsScreen()
+                        }
                     } label: {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: notice.icon).foregroundStyle(TempoTheme.green).frame(width: 38, height: 38).background(TempoTheme.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -316,6 +321,7 @@ struct TempoNotificationsScreen: View {
                             if !notice.read { Circle().fill(TempoTheme.green).frame(width: 7, height: 7) }
                         }.padding(15).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
                     }.buttonStyle(.plain).accessibilityIdentifier("notification.\(notice.type)")
+                        .simultaneousGesture(TapGesture().onEnded { Task { await notifications.markRead(notice) } })
                 }
             }
             if !notifications.message.isEmpty { Text(notifications.message).font(.caption).foregroundStyle(TempoTheme.secondary) }
