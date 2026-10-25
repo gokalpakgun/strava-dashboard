@@ -833,3 +833,11 @@
 "Strava araçları" = "Strava araçları";
 "İSTEĞE BAĞLI BAĞLANTI" = "İSTEĞE BAĞLI BAĞLANTI";
 "Strava bağlantısı yenilenemedi. Bağlantıyı yeniden kurabilirsin; Tempo ve Apple Sağlık çalışmaya devam eder." = "Strava bağlantısı yenilenemedi. Bağlantıyı yeniden kurabilirsin; Tempo ve Apple Sağlık çalışmaya devam eder.";
+
+/* Coach request lifecycle */
+"Durdur" = "Durdur";
+"Sohbet gizliliği" = "Sohbet gizliliği";
+"Kopyala" = "Kopyala";
+"Gönder" = "Gönder";
+"Sohbet çok uzun. Yeni bir sohbet başlat." = "Sohbet çok uzun. Yeni bir sohbet başlat.";
+"Her mesaj 1.500 karakteri aşmamalı." = "Her mesaj 1.500 karakteri aşmamalı.";

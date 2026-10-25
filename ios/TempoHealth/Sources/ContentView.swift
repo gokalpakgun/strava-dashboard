@@ -809,7 +809,6 @@ private struct ActivitiesScreen: View {
                     Button { isShowingPhoneTracker = true } label: { Label("Koşu / yürüyüş kaydet", systemImage: "location.north.circle.fill").frame(maxWidth: .infinity) }.buttonStyle(TempoPrimaryButtonStyle())
                     Button { isShowingManualWorkoutForm = true } label: { Label("Manuel kayıt", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }.buttonStyle(TempoSecondaryButtonStyle()).accessibilityIdentifier("activity.manual.add")
                 }
-                HealthWorkoutsSyncCard()
                 if !model.activityWorkouts.isEmpty {
                     HStack(spacing: 10) {
                         MetricCard(value: "\(model.activityWorkouts.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
@@ -848,22 +847,6 @@ private struct ActivitiesScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $isShowingManualWorkoutForm) { ManualWorkoutForm() }
             .sheet(isPresented: $isShowingPhoneTracker) { TempoPhoneTrackerScreen() }
-        }
-    }
-}
-
-struct HealthWorkoutsSyncCard: View {
-    @EnvironmentObject private var model: TempoAppModel
-    var body: some View {
-        TempoCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Apple Sağlık antrenmanları", systemImage: "heart.text.square.fill").font(.subheadline.weight(.semibold))
-                Text("Son 12 ayın antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır.").font(.caption).foregroundStyle(TempoTheme.secondary)
-                Button { model.connectAppleHealth() } label: {
-                    HStack { Text("Antrenman izinlerini güncelle ve eşitle".tempoLocalized); if model.isHealthSyncing { ProgressView().tint(TempoTheme.green) } }
-                }.buttonStyle(TempoSecondaryButtonStyle()).disabled(model.isHealthSyncing).accessibilityIdentifier("workouts.health.sync")
-                if let error = model.healthWorkoutError ?? model.healthError { Text(error).font(.caption).foregroundStyle(TempoTheme.secondary) }
-            }
         }
     }
 }
@@ -1762,167 +1745,178 @@ struct CoachScreen: View {
     @State private var messages: [TempoCoachMessage] = []
     @State private var draft = ""
     @State private var includeHealth = false
+    @State private var isSending = false
+    @State private var errorMessage: String?
+    @State private var requestID: UUID?
+    @State private var requestTask: Task<Void, Never>?
+    @State private var scrollTarget: String?
     @FocusState private var composerFocused: Bool
     private let suggestions = ["Bugün nasıl antrenman yapayım?", "Dinlenme gününde ne yapabilirim?", "Koşuya yeni başlıyorum; nasıl ilerleyeyim?", "Uyku toparlanmayı nasıl etkiler?"]
 
     var body: some View {
-        TempoPage {
-            PageTitle(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet asistanın")
-            if messages.isEmpty {
-                TempoCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Image(systemName: "sparkles")
-                            .font(.title2)
-                            .foregroundStyle(TempoTheme.green)
-                        Text("Nereden başlamak istersin?")
-                            .font(.title3.bold())
-                        Text("Antrenman, toparlanma, uyku veya günlük iyi oluş hakkında dilediğini sor. Strava hesabı gerekmiyor.")
-                            .font(.subheadline)
-                            .foregroundStyle(TempoTheme.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("Örnek sorular".tempoSentenceCased).font(.caption2.bold()).tracking(1.1).foregroundStyle(TempoTheme.secondary)
-                    ForEach(suggestions, id: \.self) { suggestion in
-                        Button { send(suggestion) } label: {
+        ZStack {
+            TempoAmbientBackground()
+            VStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        PageTitle(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet asistanın")
+                        if messages.isEmpty { welcome }
+                        ForEach(messages) { message in
+                            chatBubble(message).id(message.id.uuidString)
+                        }
+                        if isSending {
                             HStack(spacing: 10) {
-                                Image(systemName: "arrow.up.left")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(TempoTheme.green)
-                                Text(suggestion.tempoLocalized)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.white.opacity(0.9))
-                                Spacer()
-                            }
-                            .padding(13)
-                            .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                ProgressView().tint(TempoTheme.green)
+                                Text("Tempo Koç düşünüyor…").font(.caption).foregroundStyle(TempoTheme.secondary)
+                            }.padding(14).accessibilityIdentifier("coach.loading")
                         }
-                        .buttonStyle(.plain)
-                    }
-                }
-            } else {
-                HStack {
-                    Label("Sohbet", systemImage: "bubble.left.and.bubble.right.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(TempoTheme.secondary)
-                    Spacer()
-                    Button("Yeni sohbet") { messages.removeAll(); draft = "" }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(TempoTheme.green)
-                }
-                ScrollViewReader { reader in
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(messages) { message in
-                                chatBubble(message)
-                                    .id(message.id)
-                            }
-                            if model.isCoachLoading {
-                                HStack {
-                                    ProgressView().tint(TempoTheme.green)
-                                    Text("Tempo Koç düşünüyor…".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
-                                    Spacer()
-                                }
-                                .padding(13)
-                                .id("coach-loading")
-                            }
+                        if let errorMessage {
+                            Label(errorMessage, systemImage: "wifi.exclamationmark")
+                                .font(.footnote).foregroundStyle(TempoTheme.orange)
+                                .padding(14).accessibilityIdentifier("coach.error")
                         }
-                        .padding(.vertical, 8)
+                        Color.clear.frame(height: 1).id("coach-bottom")
                     }
-                    .frame(minHeight: 220, maxHeight: 430)
-                    .onChange(of: messages.count) { _, _ in
-                        if let last = messages.last { withAnimation { reader.scrollTo(last.id, anchor: .bottom) } }
-                    }
-                    .onChange(of: model.isCoachLoading) { _, loading in
-                        if loading { withAnimation { reader.scrollTo("coach-loading", anchor: .bottom) } }
-                    }
+                    .scrollTargetLayout()
+                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
                 }
+                .scrollPosition(id: $scrollTarget, anchor: .bottom)
+                .scrollDismissesKeyboard(.interactively)
+                composer
             }
-
-            TempoCard {
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle(isOn: $includeHealth) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Apple Sağlık özetimi kullan".tempoLocalized)
-                                .font(.subheadline.weight(.semibold))
-                            Text((model.healthSyncEnabled ? "Yalnızca bu sohbet isteğinde paylaşılır." : "Kişisel sağlık ölçüsü eklemek için önce Apple Sağlık’ı bağla.").tempoLocalized)
-                                .font(.caption)
-                                .foregroundStyle(TempoTheme.secondary)
-                        }
-                    }
-                    .tint(TempoTheme.green)
-                    .disabled(!model.healthSyncEnabled)
-                    Text("Kapalıyken Apple Sağlık verin gönderilmez. Sohbet geçmişi sunucuda saklanmaz. Strava verileri bu asistana aktarılmaz.".tempoLocalized)
-                        .font(.caption2)
-                        .foregroundStyle(TempoTheme.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            HStack(alignment: .bottom, spacing: 9) {
-                TextField("Tempo Koç’a bir şey sor…".tempoLocalized, text: $draft, axis: .vertical)
-                    .lineLimit(1...5)
-                    .focused($composerFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-                    .onSubmit { send() }
-                Button { send() } label: {
-                    Group {
-                        if model.isCoachLoading { ProgressView().tint(.black) }
-                        else { Image(systemName: "arrow.up").font(.headline.bold()) }
-                    }
-                    .frame(width: 46, height: 46)
-                    .foregroundStyle(.black)
-                    .background(TempoTheme.green, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(model.isCoachLoading || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .opacity(model.isCoachLoading || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
-            }
-            Text("Genel bilgilendirme içindir; tıbbi tanı veya tedavi yerine geçmez.".tempoLocalized)
-                .font(.caption2)
-                .foregroundStyle(TempoTheme.secondary)
         }
-        .navigationTitle("Tempo Koç")
-        .navigationBarTitleDisplayMode(.inline)
-        .tempoGlassBackButton()
+        .navigationTitle("Tempo Koç").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 14) {
+                    if isSending {
+                        Button("Durdur") { cancelRequest() }.accessibilityIdentifier("coach.stop")
+                    }
+                    Button { newConversation() } label: { Image(systemName: "square.and.pencil") }
+                        .accessibilityLabel("Yeni sohbet".tempoLocalized).accessibilityIdentifier("coach.new")
+                }.tint(TempoTheme.green)
+            }
+        }
+        .onDisappear { cancelRequest() }
     }
 
-    @ViewBuilder
+    private var welcome: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            TempoCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Image(systemName: "sparkles").font(.title2).foregroundStyle(TempoTheme.green)
+                    Text("Nereden başlamak istersin?").font(.title3.bold())
+                    Text("Antrenman, toparlanma, uyku veya günlük iyi oluş hakkında dilediğini sor. Strava hesabı gerekmiyor.")
+                        .font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                }
+            }
+            ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
+                Button { send(suggestion) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.up.left").font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                        Text(suggestion.tempoLocalized).font(.subheadline).foregroundStyle(.white.opacity(0.9))
+                        Spacer()
+                    }.padding(13).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }.buttonStyle(.plain).disabled(isSending || model.isCoachLoading).accessibilityIdentifier("coach.suggestion.\(index)")
+            }
+        }
+    }
+
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            DisclosureGroup("Sohbet gizliliği") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Apple Sağlık özetimi kullan", isOn: $includeHealth)
+                        .font(.subheadline).tint(TempoTheme.green)
+                        .disabled(!model.healthSyncEnabled || isSending)
+                    Text((model.healthSyncEnabled ? "Yalnızca bu sohbet isteğinde paylaşılır." : "Kişisel sağlık ölçüsü eklemek için önce Apple Sağlık’ı bağla.").tempoLocalized)
+                        .font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Text("Kapalıyken Apple Sağlık verin gönderilmez. Sohbet geçmişi sunucuda saklanmaz. Strava verileri bu asistana aktarılmaz.")
+                        .font(.caption2).foregroundStyle(TempoTheme.secondary)
+                }.padding(.top, 8)
+            }.font(.caption.weight(.medium)).tint(TempoTheme.secondary)
+            HStack(alignment: .bottom, spacing: 9) {
+                TextField("Tempo Koç’a bir şey sor…".tempoLocalized, text: $draft, axis: .vertical)
+                    .lineLimit(1...4).focused($composerFocused)
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+                    .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+                    .accessibilityIdentifier("coach.draft")
+                    .onSubmit { send() }
+                Button { send() } label: {
+                    Image(systemName: "arrow.up").font(.headline.bold())
+                        .frame(width: 46, height: 46).foregroundStyle(.black)
+                        .background(TempoTheme.green, in: Circle())
+                }.buttonStyle(.plain).accessibilityLabel("Gönder".tempoLocalized).accessibilityIdentifier("coach.send")
+                    .disabled(isSending || model.isCoachLoading || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.utf16.count > 1_500)
+                    .opacity(isSending || model.isCoachLoading || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+            }
+            if draft.utf16.count > 1_500 {
+                Text("Her mesaj 1.500 karakteri aşmamalı.").font(.caption2).foregroundStyle(TempoTheme.orange)
+            }
+            Text("Genel bilgilendirme içindir; tıbbi tanı veya tedavi yerine geçmez.")
+                .font(.caption2).foregroundStyle(TempoTheme.secondary)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(TempoTheme.background.opacity(0.98))
+    }
+
     private func chatBubble(_ message: TempoCoachMessage) -> some View {
         HStack {
             if message.role == "user" { Spacer(minLength: 36) }
             Text(message.content)
-                .font(.subheadline)
-                .lineSpacing(4)
-                .textSelection(.enabled)
-                .padding(13)
-                .background(
-                    message.role == "user" ? TempoTheme.green.opacity(0.18) : TempoTheme.card,
-                    in: RoundedRectangle(cornerRadius: 17, style: .continuous)
-                )
+                .font(.subheadline).lineSpacing(4).padding(13)
+                .background(message.role == "user" ? TempoTheme.green.opacity(0.18) : TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(.white.opacity(0.06)))
+                .accessibilityIdentifier("coach.message.\(message.role)")
+                .contextMenu { Button("Kopyala", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content } }
             if message.role != "user" { Spacer(minLength: 36) }
         }
     }
 
+    private func cancelRequest() {
+        requestID = nil
+        requestTask?.cancel()
+        requestTask = nil
+        isSending = false
+    }
+    private func newConversation() {
+        cancelRequest()
+        messages = []
+        draft = ""
+        errorMessage = nil
+        scrollTarget = nil
+    }
     private func send(_ suggested: String? = nil) {
-        let text = (suggested ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !model.isCoachLoading else { return }
+        let text = (suggested?.tempoLocalized ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.utf16.count <= 1_500, !isSending, !model.isCoachLoading else { return }
+        // Lock synchronously, before creating a Task. Button taps and keyboard
+        // submission in the same run-loop turn cannot enqueue duplicate calls.
+        isSending = true
+        errorMessage = nil
+        let id = UUID()
+        requestID = id
+        let previous = messages
+        let updated = Array((previous + [TempoCoachMessage(role: "user", content: text)]).suffix(12))
+        let shareHealth = includeHealth && model.healthSyncEnabled
+        messages = updated
         draft = ""
         composerFocused = false
-        let updated = Array((messages + [TempoCoachMessage(role: "user", content: text)]).suffix(12))
-        messages = updated
-        Task {
+        scrollTarget = "coach-bottom"
+        requestTask = Task { @MainActor in
+            defer {
+                if requestID == id { isSending = false; requestTask = nil; requestID = nil }
+            }
             do {
-                let answer = try await model.askSportsChat(messages: updated, includeHealth: includeHealth)
-                messages.append(TempoCoachMessage(role: "assistant", content: answer))
-                if messages.count > 12 { messages = Array(messages.suffix(12)) }
+                let answer = try await model.askSportsChat(messages: updated, includeHealth: shareHealth)
+                try Task.checkCancellation()
+                guard requestID == id else { return }
+                messages = Array((updated + [TempoCoachMessage(role: "assistant", content: answer)]).suffix(12))
+                scrollTarget = "coach-bottom"
             } catch {
-                messages.append(TempoCoachMessage(role: "assistant", content: "Yanıt alınamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)))
+                guard requestID == id, !Task.isCancelled, (error as? URLError)?.code != .cancelled else { return }
+                messages = previous
+                draft = text
+                errorMessage = "Yanıt alınamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
             }
         }
     }
@@ -2624,6 +2618,7 @@ private struct MoreScreen: View {
                     MoreLink(title: "Tempo Hesabı", subtitle: "Profil ve sporların", icon: "person.crop.circle.badge.checkmark", color: TempoTheme.green, destination: AnyView(AccountSettingsScreen()))
                     MoreLink(title: "Başarılar", subtitle: "Seviye ve rozetlerin", icon: "medal.fill", color: TempoTheme.orange, destination: AnyView(AchievementsScreen()))
                     MoreLink(title: "Tempo Koç", subtitle: "Kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue, destination: AnyView(CoachScreen()))
+                        .accessibilityIdentifier("more.coach")
                 }
                 SectionHeading(title: "Keşfet", caption: "HAREKET VE SAĞLIK", padding: false)
                 LazyVGrid(columns: columns, spacing: 12) {
@@ -3538,7 +3533,6 @@ private struct MonthlyStatsScreen: View {
                         .font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
             }
-            HealthWorkoutsSyncCard()
             Text("Tempo ve Apple Sağlık kayıtları kullanılır; aynı antrenman bir kez sayılır. Apple Sağlık geçmişi son 12 ayla sınırlıdır.")
                 .font(.caption2).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
             SectionHeading(title: "Ayın antrenmanları", caption: "TEMPO + APPLE SAĞLIK", padding: false)

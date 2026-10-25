@@ -38,6 +38,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var activeTempoAccountId: String?
     private var lastManualWorkoutAccountId: String?
     private var lastDashboardRefresh: Date?
+    private var coachGeneration = UUID()
     private var dashboardGeneration = UUID()
     private var hasAttemptedStravaRecovery = false
     private var healthGeneration = UUID()
@@ -206,6 +207,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         dashboardGeneration = UUID()
         hasAttemptedStravaRecovery = false
         isLoadingDashboard = false
+        coachGeneration = UUID()
         isCoachLoading = false
         if let accountId {
             lastManualWorkoutAccountId = accountId
@@ -939,7 +941,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
         guard !isCoachLoading else { throw APIError.server("Bir yanıt hazırlanıyor; biraz bekle.") }
         isCoachLoading = true
-        defer { isCoachLoading = false }
+        let generation = UUID()
+        coachGeneration = generation
+        defer { if coachGeneration == generation { isCoachLoading = false } }
+        try Task.checkCancellation()
+        guard !messages.isEmpty, messages.count <= 12,
+              messages.last?.role == "user",
+              messages.allSatisfy({ ["user", "assistant"].contains($0.role) && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.content.utf16.count <= ($0.role == "user" ? 1_500 : 6_000) }),
+              messages.reduce(0, { $0 + $1.content.utf16.count }) <= 48_000 else {
+            throw APIError.server("Sohbet çok uzun. Yeni bir sohbet başlat.")
+        }
         var request = URLRequest(url: URL(string: "/api/account/sports-chat", relativeTo: baseURL)!)
         request.httpMethod = "POST"
         request.timeoutInterval = 90
@@ -948,16 +959,19 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         request.httpBody = try JSONEncoder().encode(SportsChatRequest(
             messages: messages.map { SportsChatTurn(role: $0.role, content: $0.content) },
-            includeHealth: includeHealth
+            includeHealth: includeHealth && healthSyncEnabled
         ))
         let (data, response) = try await Self.apiSession.data(for: request)
-        guard activeTempoAccountId == accountId, self.accountAccessToken == accountAccessToken else {
+        try Task.checkCancellation()
+        guard coachGeneration == generation, activeTempoAccountId == accountId, self.accountAccessToken == accountAccessToken else {
             throw APIError.server("Tempo hesabı değişti. Koç yanıtı bu ekranda gösterilmedi.")
         }
         guard let http = response as? HTTPURLResponse else { throw APIError.server("Koç yanıtı alınamadı.") }
-        let result = try JSONDecoder().decode(TempoCoachResponse.self, from: data)
-        guard (200..<300).contains(http.statusCode), let answer = result.answer else {
-            throw APIError.server(result.error ?? "Koç yanıtı alınamadı.")
+        guard data.count <= 100_000 else { throw APIError.server("Koç yanıtı alınamadı.") }
+        let result = try? JSONDecoder().decode(TempoCoachResponse.self, from: data)
+        guard (200..<300).contains(http.statusCode), let answer = result?.answer,
+              !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, answer.utf16.count <= 6_000 else {
+            throw APIError.server(result?.error ?? "Koç yanıtı alınamadı.")
         }
         return answer
     }
@@ -1043,6 +1057,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         todayWaterMl = 0
         isRestoringConnection = false
         dashboardGeneration = UUID()
+        coachGeneration = UUID()
+        isCoachLoading = false
         isLoadingDashboard = false
         hasAttemptedStravaRecovery = false
         isBusy = false

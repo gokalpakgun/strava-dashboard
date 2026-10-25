@@ -1358,3 +1358,11 @@
 "Strava araçları" = "Strava tools";
 "İSTEĞE BAĞLI BAĞLANTI" = "OPTIONAL CONNECTION";
 "Strava bağlantısı yenilenemedi. Bağlantıyı yeniden kurabilirsin; Tempo ve Apple Sağlık çalışmaya devam eder." = "Could not restore your Strava connection. You can reconnect; Tempo and Apple Health continue to work.";
+
+/* Coach request lifecycle */
+"Durdur" = "Stop";
+"Sohbet gizliliği" = "Chat privacy";
+"Kopyala" = "Copy";
+"Gönder" = "Send";
+"Sohbet çok uzun. Yeni bir sohbet başlat." = "This chat is too long. Start a new conversation.";
+"Her mesaj 1.500 karakteri aşmamalı." = "Each message must be 1,500 characters or fewer.";

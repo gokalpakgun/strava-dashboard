@@ -22,7 +22,6 @@ struct SportsHubScreen: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         sportsHeader
-                        HealthWorkoutsSyncCard()
 
                         if selectedSports.isEmpty {
                             Text("Profilinden ilgilendiğin sporları seçerek bu alanı kişiselleştirebilirsin.")
