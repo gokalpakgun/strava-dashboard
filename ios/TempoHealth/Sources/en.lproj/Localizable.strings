@@ -888,7 +888,7 @@
 "ÇEVRİMDIŞI SPOR ALANI" = "OFFLINE SPORTS AREA";
 "SON 7 GÜN" = "LAST 7 DAYS";
 "SON AKTİVİTELER" = "RECENT ACTIVITIES";
-"%@ · %@%% eğim" = "%1$@ · %2$%% grade";
+"%@ · %@%% eğim" = "%1$@ · %2$@%% grade";
 "Adımlar" = "Steps";
 "Sosyal" = "Social";
 "Arkadaşlar ve yarışlar" = "Friends and challenges";
