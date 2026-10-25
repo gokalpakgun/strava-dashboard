@@ -39,7 +39,7 @@ struct ContentView: View {
         .background(TempoTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .task {
-            try? await Task.sleep(nanoseconds: 1_050_000_000)
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
                 minimumLaunchFinished = true
             }
@@ -475,6 +475,9 @@ private struct HomeScreen: View {
                 }
                 SectionHeading(title: "Bu hafta", caption: "TEMPO + APPLE SAĞLIK", padding: false)
                 weeklyMetrics
+                NavigationLink(destination: MonthlyStatsScreen()) {
+                    Label("Aylık ilerlemeni gör", systemImage: "chart.bar.xaxis").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(TempoSecondaryButtonStyle()).accessibilityIdentifier("home.monthly")
                 if !model.activityWorkouts.isEmpty {
                     SectionHeading(title: "Son antrenmanların", caption: "TEMPO + APPLE SAĞLIK", padding: false)
                     ForEach(Array(model.activityWorkouts.prefix(3))) { workout in ManualWorkoutRow(workout: workout) }
@@ -855,7 +858,7 @@ struct HealthWorkoutsSyncCard: View {
         TempoCard {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Apple Sağlık antrenmanları", systemImage: "heart.text.square.fill").font(.subheadline.weight(.semibold))
-                Text("Son 90 günün antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text("Son 12 ayın antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır.").font(.caption).foregroundStyle(TempoTheme.secondary)
                 Button { model.connectAppleHealth() } label: {
                     HStack { Text("Antrenman izinlerini güncelle ve eşitle".tempoLocalized); if model.isHealthSyncing { ProgressView().tint(TempoTheme.green) } }
                 }.buttonStyle(TempoSecondaryButtonStyle()).disabled(model.isHealthSyncing).accessibilityIdentifier("workouts.health.sync")
@@ -2624,6 +2627,7 @@ private struct MoreScreen: View {
                     MoreLink(title: "Spor Alanları", subtitle: "Yakınındaki tesisler", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
                     MoreLink(title: "Apple Sağlık", subtitle: "Uyku, su ve hareket", icon: "heart.text.square.fill", color: .pink, destination: AnyView(HealthScreen()))
                     MoreLink(title: "Aylık", subtitle: "Son 6 ay", icon: "chart.bar.fill", color: TempoTheme.green, destination: AnyView(MonthlyStatsScreen()))
+                        .accessibilityIdentifier("more.monthly")
                     MoreLink(title: "Ekipman", subtitle: "Bisiklet ve ayakkabı", icon: "bicycle", color: TempoTheme.orange, destination: AnyView(GearScreen()))
                     MoreLink(title: "Segmentler", subtitle: "Favorilerin", icon: "flag.checkered", color: TempoTheme.purple, destination: AnyView(SegmentsScreen()))
                     MoreLink(title: "Eddington", subtitle: "Koşu sayın", icon: "number", color: TempoTheme.blue, destination: AnyView(EddingtonScreen()))
@@ -3443,34 +3447,102 @@ private struct TempoBalanceFactorRow: View {
 
 private struct MonthlyStatsScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    var stats: [TempoMonthStat] { makeMonthStats(model.manualWorkouts) }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectedMonth: Date?
+    @State private var metric = 0
+
+    private var workouts: [TempoManualWorkout] { model.activityWorkouts }
+    private var stats: [TempoMonthStat] {
+        TempoWorkoutLedger.months(workouts.map { TempoWorkoutLedger.Record(id: $0.id, sportID: $0.sportId, startedAt: $0.startedAt, seconds: Double($0.durationSeconds ?? $0.durationMinutes * 60), distanceKm: $0.distanceKm, source: $0.recordSource ?? "manual") })
+    }
+    private var selection: TempoMonthStat? { stats.first { $0.date == selectedMonth } ?? stats.last }
+    private var selectedWorkouts: [TempoManualWorkout] {
+        guard let month = selection?.date else { return [] }
+        return workouts.filter { Calendar.current.isDate($0.startedAt, equalTo: month, toGranularity: .month) }
+    }
+    private var accent: Color { metric == 1 ? TempoTheme.blue : metric == 2 ? TempoTheme.purple : TempoTheme.green }
+    private var metricTitle: String { metric == 1 ? "Dakika".tempoLocalized : metric == 2 ? "Kilometre".tempoLocalized : "Antrenman".tempoLocalized }
+    private func value(_ item: TempoMonthStat) -> Double { metric == 1 ? item.seconds / 60 : metric == 2 ? item.distanceKm : Double(item.count) }
+
     var body: some View {
         TempoPage {
-            PageTitle(title: "Aylık İstatistikler", subtitle: "Son altı ay · Tempo kayıtların")
-            if model.manualWorkouts.isEmpty {
-                EmptyCard(icon: "chart.bar", text: "Tempo’da antrenman kaydettikçe aylık ilerlemen burada görünür.")
-            } else {
-                TempoCard {
-                    Chart(stats) { item in
-                        BarMark(x: .value("Ay", TempoFormat.month.string(from: item.date)), y: .value("Kilometre", item.distanceKm))
-                            .foregroundStyle(TempoTheme.green.gradient).cornerRadius(5)
+            PageTitle(title: "Aylık İstatistikler", subtitle: "Son altı ay · Tempo ve Apple Sağlık")
+            TempoCard {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(selection?.date.formatted(.dateTime.month(.wide).year()) ?? "")
+                                .font(.title3.weight(.semibold))
+                            Text("Hareketine daha geniş bak.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chart.bar.xaxis").font(.title2).foregroundStyle(accent)
                     }
+                    Picker("Ölçüm", selection: $metric) {
+                        Text("Antrenman").tag(0)
+                        Text("Süre").tag(1)
+                        Text("Mesafe").tag(2)
+                    }.pickerStyle(.segmented).accessibilityIdentifier("monthly.metric")
+                    Chart(stats) { item in
+                        BarMark(x: .value("Ay".tempoLocalized, item.date, unit: .month), y: .value(metricTitle, value(item)))
+                            .foregroundStyle(accent.opacity(item.date == selection?.date ? 1 : 0.35).gradient)
+                            .cornerRadius(6)
+                            .accessibilityLabel(item.date.formatted(.dateTime.month(.wide).year()))
+                            .accessibilityValue("\(value(item).formatted(.number.precision(.fractionLength(0...1)))) \(metricTitle)")
+                    }
+                    .chartXAxis { AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated)) } }
                     .chartYAxis { AxisMarks(position: .leading) }
-                    .frame(height: 250)
-                }
-                ForEach(stats.reversed()) { item in
-                    TempoCard {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(TempoFormat.monthLong.string(from: item.date).capitalized).font(.headline)
-                                Text("%d aktivite · %@".tempoFormatted(item.count, TempoFormat.duration(item.seconds))).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    .chartYScale(domain: 0...max(1, (stats.map(value).max() ?? 0) * 1.15))
+                    .frame(height: 185)
+                    .accessibilityIdentifier("monthly.chart")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(stats) { item in
+                                Button {
+                                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { selectedMonth = item.date }
+                                } label: {
+                                    Text(item.date.formatted(.dateTime.month(.abbreviated)))
+                                        .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 10)
+                                        .foregroundStyle(item.date == selection?.date ? .black : .white.opacity(0.8))
+                                        .background(item.date == selection?.date ? accent : TempoTheme.raised, in: Capsule())
+                                }.buttonStyle(.plain)
+                                    .accessibilityLabel(item.date.formatted(.dateTime.month(.wide).year()))
+                                    .accessibilityIdentifier(item.id == stats.last?.id ? "monthly.month.current" : "monthly.month.\(item.date.timeIntervalSince1970)")
                             }
-                            Spacer(); Text(TempoFormat.distance(item.distanceKm)).font(.headline).foregroundStyle(TempoTheme.green)
                         }
                     }
                 }
             }
-        }.navigationTitle("Aylık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+            if let selection {
+                HStack(spacing: 10) {
+                    MetricCard(value: "\(selection.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
+                        .accessibilityElement(children: .ignore).accessibilityLabel("Antrenman".tempoLocalized).accessibilityValue("\(selection.count)").accessibilityIdentifier("monthly.total.workouts")
+                    MetricCard(value: TempoFormat.duration(selection.seconds), label: "Süre", icon: "clock", color: TempoTheme.blue)
+                        .accessibilityElement(children: .ignore).accessibilityLabel("Süre".tempoLocalized).accessibilityValue(TempoFormat.duration(selection.seconds)).accessibilityIdentifier("monthly.total.duration")
+                    MetricCard(value: TempoFormat.distance(selection.distanceKm), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.purple)
+                        .accessibilityElement(children: .ignore).accessibilityLabel("Mesafe".tempoLocalized).accessibilityValue(TempoFormat.distance(selection.distanceKm)).accessibilityIdentifier("monthly.total.distance")
+                }
+                Text("%d hareketli gün".tempoFormatted(selection.activeDays)).font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.secondary)
+                if selection.count > 0 && selection.distanceRecordCount == 0 {
+                    Text("Bu ayki sporlarda mesafe kaydı yok. Süre ve antrenman sayısı yine de özetine katılır.")
+                        .font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
+            }
+            HealthWorkoutsSyncCard()
+            Text("Tempo ve Apple Sağlık kayıtları kullanılır; aynı antrenman bir kez sayılır. Apple Sağlık geçmişi son 12 ayla sınırlıdır.")
+                .font(.caption2).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+            SectionHeading(title: "Ayın antrenmanları", caption: "TEMPO + APPLE SAĞLIK", padding: false)
+            if selectedWorkouts.isEmpty {
+                EmptyCard(icon: "calendar", text: "Bu ay henüz antrenman yok. Başka bir ay seçebilir veya Apple Sağlık kayıtlarını eşitleyebilirsin.")
+            } else {
+                ForEach(selectedWorkouts) { workout in
+                    ManualWorkoutRow(workout: workout).accessibilityIdentifier("monthly.workout.\(workout.sportId)")
+                }
+            }
+        }
+        .refreshable { await model.reloadAll() }
+        .navigationTitle("Aylık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .accessibilityIdentifier("screen.monthly")
     }
 }
 
@@ -3537,18 +3609,18 @@ private struct SegmentsScreen: View {
 
 private struct EddingtonScreen: View {
     @EnvironmentObject private var model: TempoAppModel
-    private var number: Int { eddingtonNumber(model.manualWorkouts) }
+    private var number: Int { eddingtonNumber(model.activityWorkouts) }
     var body: some View {
         TempoPage {
-            PageTitle(title: "Eddington Sayısı", subtitle: "Tempo GPS kayıtlarındaki koşu istikrarın")
-            if !model.manualWorkouts.contains(where: { $0.sportId == "run" && ($0.distanceKm ?? 0) > 0 }) {
-                EmptyCard(icon: "figure.run", text: "Tempo’da GPS ile koşu kaydettikçe Eddington sayın oluşur.")
+            PageTitle(title: "Eddington Sayısı", subtitle: "Tempo ve Apple Sağlık koşuların")
+            if !model.activityWorkouts.contains(where: { $0.sportId == "run" && ($0.distanceKm ?? 0) > 0 }) {
+                EmptyCard(icon: "figure.run", text: "Mesafesi bulunan koşuların geldikçe Eddington sayın oluşur.")
             } else {
                 TempoCard {
                     VStack(spacing: 16) {
                         Text("\(number)").font(.system(size: 92, weight: .bold, design: .rounded)).foregroundStyle(TempoTheme.green)
                         Text("%d farklı günde en az %d km koştun.".tempoFormatted(number, number)).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-                        Text("Yalnızca Tempo GPS kayıtlarındaki koşular sayılır.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+                        Text("Mesafesi bulunan Tempo ve Apple Sağlık koşuları sayılır.").font(.subheadline).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
                     }.padding(.vertical, 28).frame(maxWidth: .infinity)
                 }
             }
@@ -3559,15 +3631,15 @@ private struct EddingtonScreen: View {
 private struct YearSummaryScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     private var workouts: [TempoManualWorkout] {
-        model.manualWorkouts.filter { workout in
+        model.activityWorkouts.filter { workout in
             Calendar.current.isDate(workout.startedAt, equalTo: Date(), toGranularity: .year)
         }
     }
     var body: some View {
         TempoPage {
-            PageTitle(title: "%d Özeti".tempoFormatted(Calendar.current.component(.year, from: Date())), subtitle: "Tempo’da kaydettiğin antrenmanlar")
+            PageTitle(title: "%d Özeti".tempoFormatted(Calendar.current.component(.year, from: Date())), subtitle: "Tempo ve Apple Sağlık antrenmanların")
             if workouts.isEmpty {
-                EmptyCard(icon: "calendar", text: "Tempo’da bu yıl antrenman kaydettikçe özetin burada görünür.")
+                EmptyCard(icon: "calendar", text: "Bu yılki Tempo ve Apple Sağlık antrenmanların burada görünür.")
             } else {
                 VStack(spacing: 10) {
                     SummaryLine(icon: "figure.run", title: "Antrenman", value: "\(workouts.count)", color: TempoTheme.orange)
@@ -3933,24 +4005,9 @@ struct TempoPrimaryButtonStyle: ButtonStyle {
 
 struct TempoSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.headline).foregroundStyle(.red).padding(.vertical, 15)
+        configuration.label.font(.headline).foregroundStyle(configuration.role == .destructive ? Color.red : TempoTheme.green).padding(.vertical, 15)
             .background(TempoTheme.card.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
-}
-
-private func makeMonthStats(_ workouts: [TempoManualWorkout]) -> [TempoMonthStat] {
-    let calendar = Calendar.current
-    let current = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
-    var result: [TempoMonthStat] = (0..<6).reversed().compactMap { offset in
-        calendar.date(byAdding: .month, value: -offset, to: current).map { TempoMonthStat(date: $0, distanceKm: 0, count: 0, seconds: 0) }
-    }
-    for workout in workouts {
-        guard let index = result.firstIndex(where: { calendar.isDate($0.date, equalTo: workout.startedAt, toGranularity: .month) }) else { continue }
-        result[index].distanceKm += workout.distanceKm ?? 0
-        result[index].count += 1
-        result[index].seconds += Double(workout.durationSeconds ?? workout.durationMinutes * 60)
-    }
-    return result
 }
 
 private func eddingtonNumber(_ workouts: [TempoManualWorkout]) -> Int {

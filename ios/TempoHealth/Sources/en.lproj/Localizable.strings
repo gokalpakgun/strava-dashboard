@@ -1329,3 +1329,23 @@
 "Henüz antrenman kaydı yok." = "No workouts recorded yet.";
 "Hedef bu sporun Tempo ve Apple Sağlık kayıtlarını sayar; dilediğinde değiştirebilirsin." = "This goal counts Tempo and Apple Health workouts for this sport. You can change it at any time.";
 "Bildirim izni ver" = "Allow notifications";
+
+/* Monthly insights and final navigation polish */
+"Son altı ay · Tempo ve Apple Sağlık" = "Last six months · Tempo and Apple Health";
+"Hareketine daha geniş bak." = "A wider view of your movement.";
+"Dakika" = "Minutes";
+"Kilometre" = "Kilometres";
+"Ay" = "Month";
+"%d hareketli gün" = "%d active days";
+"Bu ayki sporlarda mesafe kaydı yok. Süre ve antrenman sayısı yine de özetine katılır." = "No distance was recorded for this month’s sports. Duration and workout count still contribute to your summary.";
+"Tempo ve Apple Sağlık kayıtları kullanılır; aynı antrenman bir kez sayılır. Apple Sağlık geçmişi son 12 ayla sınırlıdır." = "Uses Tempo and Apple Health records; each workout is counted once. Apple Health history is limited to the last 12 months.";
+"Ayın antrenmanları" = "This month’s workouts";
+"Bu ay henüz antrenman yok. Başka bir ay seçebilir veya Apple Sağlık kayıtlarını eşitleyebilirsin." = "No workouts this month yet. Choose another month or sync your Apple Health records.";
+"Aylık ilerlemeni gör" = "View monthly progress";
+"Tempo ve Apple Sağlık koşuların" = "Your Tempo and Apple Health runs";
+"Mesafesi bulunan Tempo ve Apple Sağlık koşuları sayılır." = "Includes Tempo and Apple Health runs with a recorded distance.";
+"Mesafesi bulunan koşuların geldikçe Eddington sayın oluşur." = "Your Eddington number appears as runs with recorded distance are added.";
+"Tempo ve Apple Sağlık antrenmanların" = "Your Tempo and Apple Health workouts";
+"Bu yılki Tempo ve Apple Sağlık antrenmanların burada görünür." = "Your Tempo and Apple Health workouts from this year appear here.";
+"Son 12 ayın antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır." = "Import workouts from the last 12 months. Workout details stay on your device.";
+"%d alan bulundu; diğer harita kaynakları taranıyor…" = "%d places found; checking other map sources…";

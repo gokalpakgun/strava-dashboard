@@ -1402,6 +1402,9 @@ struct NearbyFacilitiesScreen: View {
         .onChange(of: searchModel.region?.center.latitude) { _, _ in
             if let region = searchModel.region { camera = .region(region) }
         }
+        .onChange(of: searchModel.region?.center.longitude) { _, _ in
+            if let region = searchModel.region { camera = .region(region) }
+        }
         .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in
             if let region = searchModel.region { camera = .region(region) }
         }
@@ -1506,19 +1509,24 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             return
         }
 
-        async let appleSearch = searchAppleMaps(for: sport, location: location, radiusMeters: radiusMeters)
-        async let openStreetMapSearch = searchOpenStreetMap(for: sport, location: location, radiusMeters: radiusMeters)
-
-        let applePlaces = await appleSearch
+        // Show whichever provider returns first; a slow Apple Maps search
+        // must not hide completed OpenStreetMap results (or the reverse).
+        places = []
+        await withTaskGroup(of: [NearbyPlace].self) { group in
+            group.addTask { await self.searchAppleMaps(for: sport, location: location, radiusMeters: radiusMeters) }
+            group.addTask { await self.searchOpenStreetMap(for: sport, location: location, radiusMeters: radiusMeters) }
+            var results: [NearbyPlace] = []
+            for await batch in group {
+                guard generation == searchGeneration, !Task.isCancelled else { group.cancelAll(); return }
+                results.append(contentsOf: batch.filter { $0.distanceMeters <= Double(radiusMeters) })
+                places = Self.deduplicated(results)
+                if !places.isEmpty { message = "%d alan bulundu; diğer harita kaynakları taranıyor…".tempoFormatted(places.count) }
+            }
+        }
         guard generation == searchGeneration else { return }
-        places = Self.deduplicated(applePlaces)
-        message = places.isEmpty ? "Açık harita kayıtları da taranıyor…" : "Apple Haritalar’dan %d alan bulundu; açık veriler taranıyor.".tempoFormatted(places.count)
-
-        let openPlaces = await openStreetMapSearch
-        guard generation == searchGeneration else { return }
-        places = Self.deduplicated(applePlaces + openPlaces)
-        resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), places: places)
         isSearching = false
+        guard !Task.isCancelled else { return }
+        resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), places: places)
         message = places.isEmpty
             ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
             : "%d alan bulundu · yakından uzağa sıralandı.".tempoFormatted(places.count)
@@ -1563,6 +1571,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             "https://overpass-api.de/api/interpreter",
         ]
         for endpoint in endpoints {
+            guard !Task.isCancelled else { return [] }
             guard let url = URL(string: endpoint) else { continue }
             var components = URLComponents()
             components.queryItems = [URLQueryItem(name: "data", value: query)]

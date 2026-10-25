@@ -804,3 +804,23 @@
 "Henüz antrenman kaydı yok." = "Henüz antrenman kaydı yok.";
 "Hedef bu sporun Tempo ve Apple Sağlık kayıtlarını sayar; dilediğinde değiştirebilirsin." = "Hedef bu sporun Tempo ve Apple Sağlık kayıtlarını sayar; dilediğinde değiştirebilirsin.";
 "Bildirim izni ver" = "Bildirim izni ver";
+
+/* Monthly insights and final navigation polish */
+"Son altı ay · Tempo ve Apple Sağlık" = "Son altı ay · Tempo ve Apple Sağlık";
+"Hareketine daha geniş bak." = "Hareketine daha geniş bak.";
+"Dakika" = "Dakika";
+"Kilometre" = "Kilometre";
+"Ay" = "Ay";
+"%d hareketli gün" = "%d hareketli gün";
+"Bu ayki sporlarda mesafe kaydı yok. Süre ve antrenman sayısı yine de özetine katılır." = "Bu ayki sporlarda mesafe kaydı yok. Süre ve antrenman sayısı yine de özetine katılır.";
+"Tempo ve Apple Sağlık kayıtları kullanılır; aynı antrenman bir kez sayılır. Apple Sağlık geçmişi son 12 ayla sınırlıdır." = "Tempo ve Apple Sağlık kayıtları kullanılır; aynı antrenman bir kez sayılır. Apple Sağlık geçmişi son 12 ayla sınırlıdır.";
+"Ayın antrenmanları" = "Ayın antrenmanları";
+"Bu ay henüz antrenman yok. Başka bir ay seçebilir veya Apple Sağlık kayıtlarını eşitleyebilirsin." = "Bu ay henüz antrenman yok. Başka bir ay seçebilir veya Apple Sağlık kayıtlarını eşitleyebilirsin.";
+"Aylık ilerlemeni gör" = "Aylık ilerlemeni gör";
+"Tempo ve Apple Sağlık koşuların" = "Tempo ve Apple Sağlık koşuların";
+"Mesafesi bulunan Tempo ve Apple Sağlık koşuları sayılır." = "Mesafesi bulunan Tempo ve Apple Sağlık koşuları sayılır.";
+"Mesafesi bulunan koşuların geldikçe Eddington sayın oluşur." = "Mesafesi bulunan koşuların geldikçe Eddington sayın oluşur.";
+"Tempo ve Apple Sağlık antrenmanların" = "Tempo ve Apple Sağlık antrenmanların";
+"Bu yılki Tempo ve Apple Sağlık antrenmanların burada görünür." = "Bu yılki Tempo ve Apple Sağlık antrenmanların burada görünür.";
+"Son 12 ayın antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır." = "Son 12 ayın antrenmanlarını içe aktar. Antrenman ayrıntıları cihazında kalır.";
+"%d alan bulundu; diğer harita kaynakları taranıyor…" = "%d alan bulundu; diğer harita kaynakları taranıyor…";

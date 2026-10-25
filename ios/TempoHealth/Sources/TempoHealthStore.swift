@@ -38,7 +38,7 @@ final class TempoHealthStore {
         try await store.requestAuthorization(toShare: [waterType], read: readTypes)
     }
 
-    func readRecentWorkouts(dayCount: Int = 90) async throws -> [TempoManualWorkout] {
+    func readRecentWorkouts(dayCount: Int = 365) async throws -> [TempoManualWorkout] {
         let now = Date()
         let start = Calendar.current.date(byAdding: .day, value: -min(max(dayCount, 1), 365), to: now) ?? now
         return try await withCheckedThrowingContinuation { continuation in

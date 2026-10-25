@@ -10,29 +10,41 @@ struct TempoLaunchView: View {
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
+            if !reduceMotion {
+                Circle()
+                    .fill(RadialGradient(colors: [TempoTheme.green.opacity(0.065), .clear], center: .center, startRadius: 5, endRadius: 155))
+                    .frame(width: 310, height: 310)
+                    .scaleEffect(hasAppeared ? 1.12 : 0.85)
+                    .animation(.easeOut(duration: 1.15), value: hasAppeared)
+                Circle()
+                    .trim(from: 0, to: hasAppeared ? 0.78 : 0)
+                    .stroke(AngularGradient(colors: [.clear, TempoTheme.green.opacity(0.45), TempoTheme.blue.opacity(0.4), .clear], center: .center), style: StrokeStyle(lineWidth: 1, lineCap: .round))
+                    .frame(width: 188, height: 188)
+                    .rotationEffect(.degrees(hasAppeared ? 55 : -95))
+                    .opacity(hasAppeared ? 0 : 0.8)
+                    .animation(.easeInOut(duration: 1.15), value: hasAppeared)
+            }
             VStack(spacing: 17) {
                 Image("TempoLaunchMark")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 140, height: 140)
+                    .resizable().scaledToFit().frame(width: 140, height: 140)
+                    .mask { Rectangle().scaleEffect(x: 1, y: hasAppeared || reduceMotion ? 1 : 0, anchor: .bottom) }
+                    .offset(y: hasAppeared || reduceMotion ? 0 : 12)
+                    .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.9)
+                    .opacity(hasAppeared ? 1 : 0)
+                    .animation(reduceMotion ? nil : .spring(response: 0.72, dampingFraction: 0.86), value: hasAppeared)
                     .accessibilityIdentifier("launch.brand")
-                    .offset(y: hasAppeared || reduceMotion ? 0 : 8)
-                    .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.94)
-                    .blur(radius: hasAppeared || reduceMotion ? 0 : 2)
-                    .opacity(hasAppeared ? 1 : 0)
-
                 Text("TEMPO")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .tracking(5)
-                    .foregroundStyle(.white.opacity(0.92))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .tracking(hasAppeared || reduceMotion ? 4.5 : 8)
+                    .foregroundStyle(.white.opacity(0.88))
                     .opacity(hasAppeared ? 1 : 0)
+                    .offset(y: hasAppeared || reduceMotion ? 0 : 5)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.55).delay(0.24), value: hasAppeared)
             }
         }
-        .onAppear {
-            withAnimation(reduceMotion ? nil : .spring(response: 0.65, dampingFraction: 0.9)) {
-                hasAppeared = true
-            }
-        }
+        .onAppear { hasAppeared = true }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Tempo")
     }
 }
 

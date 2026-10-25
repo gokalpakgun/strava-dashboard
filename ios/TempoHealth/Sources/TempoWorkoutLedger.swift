@@ -39,6 +39,38 @@ enum TempoWorkoutLedger {
         }
         return result.sorted { $0.startedAt == $1.startedAt ? $0.id.uuidString < $1.id.uuidString : $0.startedAt > $1.startedAt }
     }
+    struct MonthSummary: Identifiable, Equatable {
+        let date: Date
+        var distanceKm: Double = 0
+        var count = 0
+        var seconds: Double = 0
+        var activeDays = 0
+        var distanceRecordCount = 0
+        var id: Date { date }
+    }
+
+    /// Calendar-month buckets include zero months, local time boundaries and
+    /// duration-only sports. Deduplication is shared with the activity timeline.
+    static func months(_ records: [Record], count: Int = 6, now: Date = Date(), calendar: Calendar = .current) -> [MonthSummary] {
+        guard let current = calendar.dateInterval(of: .month, for: now)?.start else { return [] }
+        var result = (0..<min(max(count, 1), 12)).reversed().compactMap { offset in
+            calendar.date(byAdding: .month, value: -offset, to: current).map { MonthSummary(date: $0) }
+        }
+        var days: [Date: Set<Date>] = [:]
+        for record in merge(records, now: now) {
+            guard let index = result.firstIndex(where: { calendar.isDate($0.date, equalTo: record.startedAt, toGranularity: .month) }) else { continue }
+            result[index].count += 1
+            result[index].seconds += record.seconds
+            if let distance = record.distanceKm {
+                result[index].distanceKm += distance
+                result[index].distanceRecordCount += 1
+            }
+            days[result[index].date, default: []].insert(calendar.startOfDay(for: record.startedAt))
+        }
+        for index in result.indices { result[index].activeDays = days[result[index].date]?.count ?? 0 }
+        return result
+    }
+
     static func currentWeek(_ records: [Record], now: Date = Date(), calendar: Calendar = .current) -> [Record] {
         guard let week = calendar.dateInterval(of: .weekOfYear, for: now) else { return [] }
         return records.filter { $0.startedAt >= week.start && $0.startedAt < week.end && $0.startedAt <= now }

@@ -470,13 +470,7 @@ enum TempoAchievementFactory {
     }
 }
 
-struct TempoMonthStat: Identifiable {
-    let date: Date
-    var distanceKm: Double
-    var count: Int
-    var seconds: Double
-    var id: Date { date }
-}
+typealias TempoMonthStat = TempoWorkoutLedger.MonthSummary
 
 struct TempoCoachResponse: Decodable {
     let answer: String?

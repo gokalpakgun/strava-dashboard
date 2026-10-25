@@ -532,14 +532,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isLoadingDashboard = true
         dashboardError = nil
         dashboardErrorDetails = nil
-        defer { isLoadingDashboard = false }
+        defer { if activeTempoAccountId == accountId, self.accessToken == accessToken { isLoadingDashboard = false } }
 
         // Retry transient network/server failures once. Repeating 4xx errors,
         // JSON decode failures, or a Strava rate limit only delays the screen.
         let retryDelays: [UInt64] = [0, 300_000_000]
         for attempt in retryDelays.indices {
+            guard !Task.isCancelled else { return }
             if retryDelays[attempt] > 0 {
-                try? await Task.sleep(nanoseconds: retryDelays[attempt])
+                do { try await Task.sleep(nanoseconds: retryDelays[attempt]) } catch { return }
             }
             guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
             var attemptDiagnostic: String?
@@ -571,7 +572,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 status = "Strava verilerin güncel."
                 return
             } catch {
-                guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
+                guard !Task.isCancelled, (error as? URLError)?.code != .cancelled,
+                      activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
                 if attempt < retryDelays.count - 1, !(error is APIError), !(error is DecodingError) { continue }
                 dashboardError = error.localizedDescription.tempoLocalized
                 dashboardErrorDetails = attemptDiagnostic ?? Self.networkDiagnostic(error)
@@ -829,7 +831,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             let workouts = try? await workoutRead
             guard healthGeneration == generation, healthSyncEnabled,
                   activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
-            healthWorkouts = workouts ?? []
+            if let workouts { healthWorkouts = workouts }
             healthWorkoutError = workouts == nil ? "Apple Sağlık antrenmanları okunamadı. İzinlerini kontrol edip yeniden eşitle.".tempoLocalized : nil
             healthDays = days
             healthLastSync = Date()

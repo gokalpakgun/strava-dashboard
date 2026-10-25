@@ -216,6 +216,33 @@ final class TempoHealthUserFlowTests: XCTestCase {
         capture(app, named: "Workout ledger - basketball imported into Sports")
     }
 
+    func testMonthlySummaryIncludesHealthSportsAndAllMetrics() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-authenticated", "--ui-testing-workout-ledger", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        let monthly = element("home.monthly", in: app)
+        XCTAssertTrue(element("screen.summary", in: app).waitForExistence(timeout: 15))
+        for _ in 0..<7 where !monthly.isHittable { app.swipeUp() }
+        XCTAssertTrue(monthly.isHittable, "Monthly insights should be accessible from Home")
+        monthly.tap()
+        let total = element("monthly.total.workouts", in: app)
+        XCTAssertTrue(total.waitForExistence(timeout: 8))
+        XCTAssertEqual(total.value as? String, "3", "Monthly summary must include Health sports and count the phone copy once")
+        XCTAssertEqual(element("monthly.total.duration", in: app).value as? String, "1 hr 30 min")
+        XCTAssertEqual(element("monthly.total.distance", in: app).value as? String, "3.2 km")
+        capture(app, named: "Monthly Health and Tempo totals")
+        let picker = app.segmentedControls.matching(identifier: "monthly.metric").firstMatch
+        XCTAssertTrue(picker.exists)
+        picker.buttons["Duration"].tap()
+        capture(app, named: "Monthly duration chart")
+        picker.buttons["Distance"].tap()
+        XCTAssertEqual(total.value as? String, "3", "Switching the chart must not change the selected month's totals")
+        let tennis = element("monthly.workout.tennis", in: app)
+        for _ in 0..<7 where !tennis.isHittable { app.swipeUp() }
+        XCTAssertTrue(tennis.isHittable, "Apple Health tennis must appear in the selected month's history")
+        capture(app, named: "Monthly imported tennis history")
+    }
+
     @MainActor
     func testRealFriendRequestAppearsInNotificationInbox() async throws {
         let suffix = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)).lowercased()
