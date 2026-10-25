@@ -108,7 +108,7 @@ final class TempoHealthUserFlowTests: XCTestCase {
             ("tab.1", "page.title.Aktiviteler"),
             ("tab.2", "screen.sports"),
             ("tab.3", "page.title.Apple Sağlık"),
-            ("tab.4", "page.title.Profil ve araçlar")
+            ("tab.4", "page.title.Profil")
         ]
 
         for (tabID, screenID) in tabExpectations {

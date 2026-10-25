@@ -1390,3 +1390,26 @@
 
 "Başlangıç: %@" = "Starts: %@";
 "Skorlar mücadele başladığında hesaplanır." = "Scores are calculated when the challenge starts.";
+
+/* Clear sport metrics and simplified navigation */
+"Spor araçları" = "Sports tools";
+"Her spora uygun, sade bir özet." = "A clear summary tailored to each sport.";
+"Sporlarını düzenle" = "Edit your sports";
+"%d antrenman · bu hafta %d" = "%d workouts · %d this week";
+"Hareketli gün" = "Active days";
+"Spor ve sağlıklı yaşam için sohbet" = "Chat about sport and healthy living";
+"Hesabın, araçların ve bağlantıların" = "Your account, tools and connections";
+"Hesabın" = "Your account";
+"Tercihler ve gelen bildirimler" = "Preferences and inbox";
+"Topluluk ve koçluk" = "Community and coaching";
+"Arkadaşlar ve mücadeleler" = "Friends and challenges";
+"Aktivite rotaların" = "Your activity routes";
+"Bağlantılar" = "Connections";
+"Uyku, hareket ve sağlık izinleri" = "Sleep, movement and Health permissions";
+"Strava araçlarını kullanmak istersen buradan bağlanabilirsin." = "Connect here if you want to use Strava tools.";
+"Uyku ayrıntıları" = "Sleep details";
+"Kalp ve kondisyon" = "Heart and fitness";
+"Tempo Dengesi ayrıntıları" = "Tempo Balance details";
+"Su takibi" = "Hydration";
+
+"Günlük görünüm" = "Daily overview";

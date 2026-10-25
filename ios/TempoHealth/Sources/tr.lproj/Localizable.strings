@@ -865,3 +865,26 @@
 
 "Başlangıç: %@" = "Başlangıç: %@";
 "Skorlar mücadele başladığında hesaplanır." = "Skorlar mücadele başladığında hesaplanır.";
+
+/* Clear sport metrics and simplified navigation */
+"Spor araçları" = "Spor araçları";
+"Her spora uygun, sade bir özet." = "Her spora uygun, sade bir özet.";
+"Sporlarını düzenle" = "Sporlarını düzenle";
+"%d antrenman · bu hafta %d" = "%d antrenman · bu hafta %d";
+"Hareketli gün" = "Hareketli gün";
+"Spor ve sağlıklı yaşam için sohbet" = "Spor ve sağlıklı yaşam için sohbet";
+"Hesabın, araçların ve bağlantıların" = "Hesabın, araçların ve bağlantıların";
+"Hesabın" = "Hesabın";
+"Tercihler ve gelen bildirimler" = "Tercihler ve gelen bildirimler";
+"Topluluk ve koçluk" = "Topluluk ve koçluk";
+"Arkadaşlar ve mücadeleler" = "Arkadaşlar ve mücadeleler";
+"Aktivite rotaların" = "Aktivite rotaların";
+"Bağlantılar" = "Bağlantılar";
+"Uyku, hareket ve sağlık izinleri" = "Uyku, hareket ve sağlık izinleri";
+"Strava araçlarını kullanmak istersen buradan bağlanabilirsin." = "Strava araçlarını kullanmak istersen buradan bağlanabilirsin.";
+"Uyku ayrıntıları" = "Uyku ayrıntıları";
+"Kalp ve kondisyon" = "Kalp ve kondisyon";
+"Tempo Dengesi ayrıntıları" = "Tempo Dengesi ayrıntıları";
+"Su takibi" = "Su takibi";
+
+"Günlük görünüm" = "Günlük görünüm";

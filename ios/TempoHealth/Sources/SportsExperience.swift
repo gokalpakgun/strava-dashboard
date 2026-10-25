@@ -38,19 +38,13 @@ struct SportsHubScreen: View {
                             }
                         }
 
-                        Text("HIZLI ARAÇLAR".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary).padding(.top, 4)
-                        NavigationLink(destination: CoachScreen()) {
-                            ToolCard(title: "Tempo Koç", subtitle: "Tüm spor verilerine göre kişisel değerlendirme", icon: "sparkles", color: TempoTheme.blue)
+                        TempoDisclosureSection(title: "Spor araçları", icon: "slider.horizontal.3") {
+                            VStack(spacing: 10) {
+                                NavigationLink(destination: NearbyFacilitiesScreen()) { ToolCard(title: "Yakındaki spor alanları", subtitle: "Kort, saha, havuz ve spor salonlarını bul", icon: "mappin.and.ellipse", color: TempoTheme.green) }
+                                NavigationLink(destination: RoutesScreen()) { ToolCard(title: "Aktivite rotaları", subtitle: "Strava GPS rotalarını tek haritada incele", icon: "map", color: TempoTheme.blue) }
+                                NavigationLink(destination: CoachScreen()) { ToolCard(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet", icon: "sparkles", color: TempoTheme.purple) }
+                            }.buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        NavigationLink(destination: RoutesScreen()) {
-                            ToolCard(title: "Aktivite rotaları", subtitle: "Strava GPS rotalarını tek haritada incele", icon: "map.fill", color: TempoTheme.orange)
-                        }
-                        .buttonStyle(.plain)
-                        NavigationLink(destination: NearbyFacilitiesScreen()) {
-                            ToolCard(title: "Yakındaki spor alanları", subtitle: "Kort, saha, havuz ve spor salonlarını bul", icon: "location.fill", color: TempoTheme.green)
-                        }
-                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, TempoTheme.scrollBottomClearance)
                 }
@@ -60,35 +54,18 @@ struct SportsHubScreen: View {
     }
 
     private var sportsHeader: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 19, style: .continuous)
-                    .fill(LinearGradient(colors: [TempoTheme.green.opacity(0.22), TempoTheme.blue.opacity(0.16)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                Image(systemName: "figure.run")
-                    .font(.system(size: 23, weight: .semibold))
-                    .foregroundStyle(TempoTheme.green)
-            }
-            .frame(width: 54, height: 54)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SANA ÖZEL".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                Text("Sporlarım").font(.system(size: 27, weight: .bold, design: .rounded))
-                    .accessibilityIdentifier("screen.sports")
-                Text("Antrenmanların ve araçların tek yerde.")
-                    .font(.caption).foregroundStyle(TempoTheme.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Sporlarım").font(.system(size: 28, weight: .bold, design: .rounded)).accessibilityIdentifier("screen.sports")
+                Text("Her spora uygun, sade bir özet.").font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            Text("\(selectedSports.count)")
-                .font(.subheadline.bold().monospacedDigit())
-                .foregroundStyle(TempoTheme.green)
-                .frame(width: 34, height: 34)
-                .background(TempoTheme.green.opacity(0.10), in: Circle())
-        }
-        .padding(15)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .background(TempoTheme.card.opacity(0.78), in: RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 23, style: .continuous).stroke(.white.opacity(0.09), lineWidth: 1))
+            NavigationLink(destination: AccountSettingsScreen()) {
+                Image(systemName: "slider.horizontal.3").font(.subheadline).frame(width: 42, height: 42).background(TempoTheme.card, in: Circle())
+            }.tint(TempoTheme.green).accessibilityLabel("Sporlarını düzenle".tempoLocalized)
+        }.padding(.vertical, 8)
     }
+
 }
 
 private struct SportSummaryCard: View {
@@ -103,23 +80,27 @@ private struct SportSummaryCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: sport.symbol).font(.title2).foregroundStyle(.black)
                     .frame(width: 50, height: 50).background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(sport.title).font(.title3.bold())
-                    Text("%d antrenman".tempoFormatted(matchingManual.count)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Text(sport.title).font(.headline).fixedSize(horizontal: false, vertical: true)
+                    Text("%d antrenman · bu hafta %d".tempoFormatted(matchingManual.count, weekCount)).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
             }
-            HStack(spacing: 8) {
-                SportMetric(value: TempoFormat.distance(distance), label: "Mesafe")
-                SportMetric(value: TempoFormat.duration(seconds), label: "Süre")
-                SportMetric(value: "\(weekCount)", label: "Bu hafta")
+            TempoMetricGrid(columns: 2) {
+                SportMetric(value: TempoFormat.duration(seconds), label: "Toplam süre")
+                if sport.supportsDistance {
+                    SportMetric(value: sport.distanceText(distance), label: "Mesafe")
+                } else {
+                    SportMetric(value: "\(Set(matchingManual.map { Calendar.current.startOfDay(for: $0.startedAt) }).count)", label: "Hareketli gün")
+                }
             }
         }
+        .multilineTextAlignment(.leading)
         .padding(18)
         .background(
             LinearGradient(colors: [TempoTheme.green.opacity(0.09), TempoTheme.card, TempoTheme.blue.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing),
@@ -148,10 +129,10 @@ private struct SportMetric: View {
     let label: String
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(value).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
-            Text(label.tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            Text(value).font(.subheadline.monospacedDigit().weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            Text(label.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(11).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12).frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
         .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 }
@@ -543,6 +524,7 @@ private struct SportDetailScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
     let sport: TempoSportChoice
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var section: SportDetailSection = .overview
     @State private var weeklyTarget = 3
     @Namespace private var sectionAnimation
@@ -573,7 +555,7 @@ private struct SportDetailScreen: View {
                             SportPreparationSection(sport: sport, guide: guide)
                         }
                     }
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    .transition(.opacity)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
@@ -596,10 +578,11 @@ private struct SportDetailScreen: View {
             ForEach(SportDetailSection.allCases) { item in
                 Button {
                     TempoHaptics.selection()
-                    withAnimation(.snappy(duration: 0.28)) { section = item }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { section = item }
                 } label: {
-                    Label(item.rawValue.tempoLocalized, systemImage: item.symbol)
+                    Text(item.rawValue.tempoLocalized)
                         .font(.caption.weight(.semibold))
+                        .lineLimit(1).minimumScaleFactor(0.85)
                         .foregroundStyle(section == item ? .black : .white.opacity(0.72))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
@@ -622,54 +605,17 @@ private struct SportDetailScreen: View {
 
 private struct SportMotionArtwork: View {
     let sport: TempoSportChoice
-    @State private var animates = false
-
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [sport.accentColor.opacity(0.22), TempoTheme.card, TempoTheme.blue.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Circle()
-                .stroke(sport.accentColor.opacity(0.16), lineWidth: 1)
-                .frame(width: 230, height: 230)
-                .scaleEffect(animates ? 1.05 : 0.86)
-            Circle()
-                .stroke(TempoTheme.blue.opacity(0.14), lineWidth: 1)
-                .frame(width: 160, height: 160)
-                .scaleEffect(animates ? 0.90 : 1.08)
-
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("ÇEVRİMDIŞI SPOR ALANI".tempoSentenceCased)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(TempoTheme.secondary)
-                    Text(sport.title)
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                    Text(sport.offlineGuide.headline.tempoLocalized)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.64))
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 12)
-                Image(systemName: sport.symbol)
-                    .font(.system(size: 57, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(colors: [sport.accentColor, TempoTheme.blue], startPoint: .top, endPoint: .bottom)
-                    )
-                    .symbolEffect(.pulse, options: .repeating, value: animates)
-                    .frame(width: 95, height: 95)
-            }
-            .padding(23)
-        }
-        .frame(height: 190)
-        .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(.white.opacity(0.07)))
-        .onAppear { animates = true }
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: sport.symbol).font(.system(size: 30, weight: .medium)).foregroundStyle(sport.accentColor)
+                .frame(width: 58, height: 58).background(sport.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(sport.title).font(.title2.weight(.bold))
+                Text(sport.offlineGuide.headline.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22))
+            .multilineTextAlignment(.leading)
     }
 }
 
@@ -678,10 +624,18 @@ private struct SportOverviewSection: View {
     let manualWorkouts: [TempoManualWorkout]
     @Binding var weeklyTarget: Int
 
-    private var distance: Double { manualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) } }
     private var seconds: Double { manualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) } }
     private var weekCount: Int {
         manualWorkouts.filter { Calendar.current.isDateInCurrentWeek($0.startedAt) }.count
+    }
+    private var lastSevenDays: [TempoManualWorkout] {
+        let today = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.date(byAdding: .day, value: -6, to: today) ?? today
+        return manualWorkouts.filter { $0.startedAt >= start && $0.startedAt <= Date() }
+    }
+    private var recentMetric: String {
+        if sport.supportsDistance { return sport.distanceText(lastSevenDays.reduce(0) { $0 + ($1.distanceKm ?? 0) }) }
+        return TempoFormat.duration(lastSevenDays.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) })
     }
     private var recentEntries: [SportRecentEntry] {
         let local = manualWorkouts.map { workout in
@@ -700,7 +654,7 @@ private struct SportOverviewSection: View {
     private var stravaEntries: [TempoActivity] { (model.dashboard?.activities ?? []).filter { sport.matches(activityType: $0.type) } }
     var body: some View {
         VStack(spacing: 15) {
-            HStack(spacing: 8) {
+            TempoMetricGrid {
                 SportMetric(value: "\(manualWorkouts.count)", label: "Antrenman")
                     .accessibilityElement(children: .ignore).accessibilityLabel("Antrenman".tempoLocalized).accessibilityValue("\(manualWorkouts.count)").accessibilityIdentifier("sport.total.workouts")
                 SportMetric(value: TempoFormat.duration(seconds), label: "Toplam süre")
@@ -731,7 +685,7 @@ private struct SportOverviewSection: View {
                             Text("Hareket ritmin".tempoLocalized).font(.title3.bold())
                         }
                         Spacer()
-                        Text(TempoFormat.distance(distance)).font(.subheadline.bold()).foregroundStyle(sport.accentColor)
+                        Text(recentMetric).font(.subheadline.monospacedDigit().bold()).foregroundStyle(sport.accentColor).fixedSize()
                     }
                     WeeklySportChart(sport: sport, manualWorkouts: manualWorkouts)
                 }

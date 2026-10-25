@@ -67,6 +67,9 @@ enum TempoSportChoice: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    var supportsDistance: Bool { TempoSport(rawValue: rawValue).supportsDistance }
+    func distanceText(_ kilometres: Double) -> String { TempoSport(rawValue: rawValue).distanceText(kilometres) }
+
     var facilitySearchQueries: [String] {
         switch self {
         case .run: return ["koşu parkuru", "atletizm pisti", "running track"]

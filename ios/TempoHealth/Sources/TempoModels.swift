@@ -226,6 +226,19 @@ enum TempoSport: Hashable {
         else { self = .other }
     }
 
+    var supportsDistance: Bool {
+        switch self { case .run, .ride, .walk, .hike, .swim: return true; default: return false }
+    }
+    var supportsElevation: Bool {
+        switch self { case .run, .ride, .walk, .hike: return true; default: return false }
+    }
+    func distanceText(_ kilometres: Double) -> String {
+        if self == .swim {
+            return "\((max(0, kilometres.isFinite ? kilometres : 0) * 1_000).formatted(.number.precision(.fractionLength(0)))) m"
+        }
+        return TempoFormat.distance(kilometres)
+    }
+
     var title: String {
         switch self {
         case .run: return "Koşu".tempoLocalized

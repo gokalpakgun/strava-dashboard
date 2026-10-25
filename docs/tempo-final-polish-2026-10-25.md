@@ -34,3 +34,12 @@ Phone running/walking supports an explicit timer-only mode without location perm
 Challenge friends can be selected directly in the creation form, a blank name gets a default, the returned server-created challenge is displayed immediately, and a visible dialog reports success or failure. The social transport has a separate bounded timeout for server name moderation. Scheduled start time is displayed so pre-start scores are understandable. No server safety/moderation bypass was introduced.
 
 At the user’s request, no new full test suite was run for these changes. The next TestFlight archive is the compile/package check; physical-device flows are left for the user’s review.
+
+## 26 October: simplified navigation and modern Health layout
+
+- Distance is shown for running, cycling, walking, hiking and swimming. Court/team sports, fitness and yoga emphasize session count, duration and active days; swimming distance uses metres. This also applies to workout rows and direct Strava activity details. Source measurements are retained.
+- The sport list uses smaller headers and two focused metrics; the seven-day chart header now uses that seven-day interval rather than all-time distance. Secondary sport tools expand on demand.
+- Home puts Health and the weekly summary first. Optional Strava activities are grouped in a disclosure. The former More tab is now Profile, with aligned rows grouped by purpose instead of a large tile grid. Existing destinations remain reachable.
+- Health has a calmer graphite background, a compact daily balance overview and consistently aligned measurement tiles. Sleep, cardio, score factors and water details expand separately. Daily/history selection and underlying metrics remain available.
+- Shared metric grids switch to one column at accessibility text sizes. Long titles and summary values can wrap or stack vertically; numerical values use monospaced digits. Existing future UI navigation assertions were updated for the renamed Profile destination, but were not executed.
+- Per the user, no build, TestFlight upload or full test run was started for this menu refresh. TestFlight publication is the user’s next step.

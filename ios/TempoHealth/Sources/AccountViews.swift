@@ -65,20 +65,20 @@ struct TempoAmbientBackground: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.075, green: 0.088, blue: 0.083),
+                        Color(red: 0.07, green: 0.075, blue: 0.085),
                         TempoTheme.background,
-                        Color(red: 0.035, green: 0.043, blue: 0.044)
+                        Color(red: 0.045, green: 0.05, blue: 0.06)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Circle()
-                    .fill(TempoTheme.green.opacity(0.075))
+                    .fill(TempoTheme.green.opacity(0.035))
                     .frame(width: proxy.size.width * 0.92)
                     .blur(radius: 125)
                     .offset(x: proxy.size.width * 0.48, y: -proxy.size.height * 0.40)
                 Circle()
-                    .fill(TempoTheme.blue.opacity(0.045))
+                    .fill(TempoTheme.blue.opacity(0.025))
                     .frame(width: proxy.size.width * 0.78)
                     .blur(radius: 120)
                     .offset(x: -proxy.size.width * 0.48, y: proxy.size.height * 0.38)
