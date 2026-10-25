@@ -24,3 +24,13 @@ Both UI and transport enforce the existing service limits: 12 retained turns, 1,
 - The initial monthly implementation compiled successfully in GitHub macOS CI and its 32 workout/month regressions passed. The UI stage was cancelled when subsequent changes superseded that revision; this is not a completed final UI test run.
 - At the user's explicit request, the new complete simulator run was cancelled and no further full test suite is started for the final Coach revision. The final native check is limited to the TestFlight archive/build; device behavior is to be reviewed by the user.
 - No new native simulator or physical-device crash-free claim is made for this final revision.
+
+## 26 October: save and invitation follow-up
+
+Personal manual workouts can be saved without optional sensor support and are explicitly labelled unverified; photos do not turn them into verified records or server challenge scores. Optional signal lookup is no longer a mandatory permission/query gate. The manual save action locks synchronously and duration changes avoid a future end time.
+
+Phone running/walking supports an explicit timer-only mode without location permission. Completed elapsed time can be saved even if a GPS route was not obtained; route and distance remain absent and the source is labelled phone timer. Short sessions display seconds rather than zero minutes.
+
+Challenge friends can be selected directly in the creation form, a blank name gets a default, the returned server-created challenge is displayed immediately, and a visible dialog reports success or failure. The social transport has a separate bounded timeout for server name moderation. Scheduled start time is displayed so pre-start scores are understandable. No server safety/moderation bypass was introduced.
+
+At the user’s request, no new full test suite was run for these changes. The next TestFlight archive is the compile/package check; physical-device flows are left for the user’s review.

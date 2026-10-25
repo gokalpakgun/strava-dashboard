@@ -1366,3 +1366,27 @@
 "Gönder" = "Send";
 "Sohbet çok uzun. Yeni bir sohbet başlat." = "This chat is too long. Start a new conversation.";
 "Her mesaj 1.500 karakteri aşmamalı." = "Each message must be 1,500 characters or fewer.";
+
+/* Personal workout saving and challenge invitations */
+"Kayıt türü" = "Record type";
+"Sağlık ve hareket sinyali ekle (isteğe bağlı)" = "Add Health and movement signals (optional)";
+"Sinyal olmadan kişisel kayıt tutulur; doğrulanmış antrenman veya mücadele puanı sayılmaz." = "Without sensor signals, this is a personal record. It is not verified exercise and does not award challenge points.";
+"Bitiş: %@" = "Ends: %@";
+"Apple Watch gerekmez. İstersen antrenman saatindeki hareket veya Sağlık sinyallerini ekleyebilirsin. Fotoğraf tek başına doğrulama değildir. Sinyal bulunamazsa kayıt doğrulanmamış olarak cihazında kalır." = "Apple Watch is optional. You can add movement or Health signals for the workout time. A photo alone does not verify exercise. Without supporting signals, the record stays unverified on your device.";
+"Telefonla süre kaydı · rota yok" = "Phone timer · no route";
+"Elle eklendi · doğrulanmadı" = "Manually added · unverified";
+"Kayıt süresi veya mesafe geçersiz." = "The recorded duration or distance is invalid.";
+"Kaydetmek için önce kısa bir kayıt başlat." = "Start a short recording before saving.";
+"GPS rotası yok; yalnızca süre kaydedilecek." = "No GPS route is available; only duration will be saved.";
+"GPS olmadan süre kaydet" = "Record time without GPS";
+"%d sn" = "%d sec";
+"Mücadele" = "Challenge";
+"Yarışma adı (isteğe bağlı)" = "Challenge name (optional)";
+"Davet göndermek istediğin arkadaşları seç." = "Choose the friends you want to invite.";
+"Mücadele daveti gönder" = "Send challenge invitation";
+"Bir mücadele başlatmak için önce arkadaşlık isteğinin kabul edilmesi gerekiyor." = "Your friend request must be accepted before you can invite that person to a challenge.";
+"Haftalık hareket" = "Weekly movement";
+"Mücadele daveti gönderildi. Arkadaşın kabul ettiğinde katılır." = "Challenge invitation sent. Your friend joins when they accept.";
+
+"Başlangıç: %@" = "Starts: %@";
+"Skorlar mücadele başladığında hesaplanır." = "Scores are calculated when the challenge starts.";

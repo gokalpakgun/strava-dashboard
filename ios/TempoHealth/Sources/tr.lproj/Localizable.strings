@@ -841,3 +841,27 @@
 "Gönder" = "Gönder";
 "Sohbet çok uzun. Yeni bir sohbet başlat." = "Sohbet çok uzun. Yeni bir sohbet başlat.";
 "Her mesaj 1.500 karakteri aşmamalı." = "Her mesaj 1.500 karakteri aşmamalı.";
+
+/* Personal workout saving and challenge invitations */
+"Kayıt türü" = "Kayıt türü";
+"Sağlık ve hareket sinyali ekle (isteğe bağlı)" = "Sağlık ve hareket sinyali ekle (isteğe bağlı)";
+"Sinyal olmadan kişisel kayıt tutulur; doğrulanmış antrenman veya mücadele puanı sayılmaz." = "Sinyal olmadan kişisel kayıt tutulur; doğrulanmış antrenman veya mücadele puanı sayılmaz.";
+"Bitiş: %@" = "Bitiş: %@";
+"Apple Watch gerekmez. İstersen antrenman saatindeki hareket veya Sağlık sinyallerini ekleyebilirsin. Fotoğraf tek başına doğrulama değildir. Sinyal bulunamazsa kayıt doğrulanmamış olarak cihazında kalır." = "Apple Watch gerekmez. İstersen antrenman saatindeki hareket veya Sağlık sinyallerini ekleyebilirsin. Fotoğraf tek başına doğrulama değildir. Sinyal bulunamazsa kayıt doğrulanmamış olarak cihazında kalır.";
+"Telefonla süre kaydı · rota yok" = "Telefonla süre kaydı · rota yok";
+"Elle eklendi · doğrulanmadı" = "Elle eklendi · doğrulanmadı";
+"Kayıt süresi veya mesafe geçersiz." = "Kayıt süresi veya mesafe geçersiz.";
+"Kaydetmek için önce kısa bir kayıt başlat." = "Kaydetmek için önce kısa bir kayıt başlat.";
+"GPS rotası yok; yalnızca süre kaydedilecek." = "GPS rotası yok; yalnızca süre kaydedilecek.";
+"GPS olmadan süre kaydet" = "GPS olmadan süre kaydet";
+"%d sn" = "%d sn";
+"Mücadele" = "Mücadele";
+"Yarışma adı (isteğe bağlı)" = "Yarışma adı (isteğe bağlı)";
+"Davet göndermek istediğin arkadaşları seç." = "Davet göndermek istediğin arkadaşları seç.";
+"Mücadele daveti gönder" = "Mücadele daveti gönder";
+"Bir mücadele başlatmak için önce arkadaşlık isteğinin kabul edilmesi gerekiyor." = "Bir mücadele başlatmak için önce arkadaşlık isteğinin kabul edilmesi gerekiyor.";
+"Haftalık hareket" = "Haftalık hareket";
+"Mücadele daveti gönderildi. Arkadaşın kabul ettiğinde katılır." = "Mücadele daveti gönderildi. Arkadaşın kabul ettiğinde katılır.";
+
+"Başlangıç: %@" = "Başlangıç: %@";
+"Skorlar mücadele başladığında hesaplanır." = "Skorlar mücadele başladığında hesaplanır.";

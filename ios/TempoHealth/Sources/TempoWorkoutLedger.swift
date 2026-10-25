@@ -12,7 +12,7 @@ enum TempoWorkoutLedger {
         let source: String
     }
     static func merge(_ records: [Record], now: Date = Date()) -> [Record] {
-        let valid = records.filter { $0.seconds.isFinite && $0.seconds > 0 && ["manual", "phone-gps", "health-supported-manual", "apple-health"].contains($0.source) && $0.startedAt.timeIntervalSince1970.isFinite && $0.startedAt <= now && ($0.distanceKm == nil || ($0.distanceKm!.isFinite && $0.distanceKm! >= 0)) }
+        let valid = records.filter { $0.seconds.isFinite && $0.seconds > 0 && ["manual", "phone-gps", "phone-timer", "health-supported-manual", "apple-health"].contains($0.source) && $0.startedAt.timeIntervalSince1970.isFinite && $0.startedAt <= now && ($0.distanceKm == nil || ($0.distanceKm!.isFinite && $0.distanceKm! >= 0)) }
         let preferred = valid.sorted {
             let a = $0.source == "apple-health" ? 1 : 0
             let b = $1.source == "apple-health" ? 1 : 0

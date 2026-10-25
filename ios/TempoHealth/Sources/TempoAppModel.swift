@@ -281,6 +281,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         durationMinutes: Int,
         notes: String,
         photoData: Data?,
+        checkHealthSignals: Bool = false,
         perceivedEffort: Int? = nil,
         enjoyment: Int? = nil
     ) async throws {
@@ -292,24 +293,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             throw APIError.server("Antrenman bitiş zamanı gelecekte olamaz.")
         }
         var healthSignal: TempoWorkoutHealthSignal?
-        var healthSignalError: String?
-        do {
-            healthSignal = try await healthStore.workoutHealthSignal(start: startedAt, durationMinutes: safeDuration)
-        } catch {
-            healthSignalError = error.localizedDescription.tempoLocalized
+        if checkHealthSignals {
+            healthSignal = try? await healthStore.workoutHealthSignal(start: startedAt, durationMinutes: safeDuration)
         }
+        try Task.checkCancellation()
         guard activeTempoAccountId == accountId else {
             throw APIError.server("Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi.")
         }
-
-        guard healthSignal?.hasSupportingMeasurement == true else {
-            let baseMessage = "Fotoğraf tek başına yeterli değil. Antrenman saatinde anlamlı adım/hareket, yeterli nabız veya solunum artışı ya da egzersiz/enerji ve Sağlık antrenmanı sinyalleri bulunamadı."
-            if let healthSignalError {
-                throw APIError.server("Fotoğraf tek başına yeterli değil. Sağlık veya iPhone hareket sinyali okunamadı: %@".tempoFormatted(healthSignalError))
-            }
-            throw APIError.server(baseMessage)
-        }
-
+        // Personal notes may be saved without a sensor. That is a self-reported
+        // record, never proof of exercise and never input to server challenge scores.
         let directory = Self.manualWorkoutDirectory(accountId: accountId)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         Self.excludeFromDeviceBackup(directory)
@@ -333,7 +325,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             durationSeconds: nil,
             distanceKm: nil,
             routeCoordinates: nil,
-            recordSource: "health-supported-manual",
+            recordSource: healthSignal?.hasSupportingMeasurement == true ? "health-supported-manual" : "manual",
             perceivedEffort: perceivedEffort.map { min(max($0, 1), 5) },
             enjoyment: enjoyment.map { min(max($0, 1), 5) }
         )
@@ -363,11 +355,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 && (-90...90).contains($0.latitude)
                 && (-180...180).contains($0.longitude)
         }
-        guard startedAt <= Date(), safeSeconds >= 60,
-              distanceKm.isFinite, distanceKm > 0, distanceKm <= 500,
-              cleanRoute.count >= 2 else {
-            throw APIError.server("GPS kaydı için en az 1 dakika ve iki konum noktası gerekiyor.")
+        guard startedAt <= Date(), safeSeconds >= 1, distanceKm.isFinite, distanceKm >= 0, distanceKm <= 500 else {
+            throw APIError.server("Kayıt süresi veya mesafe geçersiz.")
         }
+        let hasRoute = cleanRoute.count >= 2 && distanceKm > 0
 
         let workout = TempoManualWorkout(
             id: UUID(),
@@ -380,9 +371,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             photoFilename: nil,
             healthSignal: nil,
             durationSeconds: safeSeconds,
-            distanceKm: distanceKm,
-            routeCoordinates: cleanRoute,
-            recordSource: "phone-gps",
+            distanceKm: hasRoute ? distanceKm : nil,
+            routeCoordinates: hasRoute ? cleanRoute : nil,
+            recordSource: hasRoute ? "phone-gps" : "phone-timer",
             perceivedEffort: perceivedEffort.map { min(max($0, 1), 5) },
             enjoyment: enjoyment.map { min(max($0, 1), 5) }
         )

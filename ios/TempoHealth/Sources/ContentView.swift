@@ -1076,6 +1076,7 @@ private struct ManualWorkoutForm: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var photoImage: UIImage?
+    @State private var checkHealthSignals = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var errorTitle = "Antrenman kaydedilemedi"
@@ -1095,6 +1096,10 @@ private struct ManualWorkoutForm: View {
                     startedAt: $startedAt,
                     durationMinutes: $durationMinutes
                 )
+                Section("Kayıt türü") {
+                    Toggle("Sağlık ve hareket sinyali ekle (isteğe bağlı)", isOn: $checkHealthSignals)
+                    Text("Sinyal olmadan kişisel kayıt tutulur; doğrulanmış antrenman veya mücadele puanı sayılmaz.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
                 ManualWorkoutFeedbackSection(effort: $perceivedEffort, enjoyment: $enjoyment)
                 ManualWorkoutEvidenceSection(
                     photoItem: $photoItem,
@@ -1121,6 +1126,7 @@ private struct ManualWorkoutForm: View {
             }
         }
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(isSaving)
     }
 
     private func loadPhoto(_ item: PhotosPickerItem?) async {
@@ -1131,12 +1137,13 @@ private struct ManualWorkoutForm: View {
     }
 
     private func saveTapped() {
+        guard !isSaving else { return }
+        isSaving = true
         Task { await saveWorkout() }
     }
 
     @MainActor
     private func saveWorkout() async {
-        isSaving = true
         defer { isSaving = false }
         do {
             try await model.addManualWorkout(
@@ -1147,6 +1154,7 @@ private struct ManualWorkoutForm: View {
                 durationMinutes: durationMinutes,
                 notes: notes,
                 photoData: photoData,
+                checkHealthSignals: checkHealthSignals,
                 perceivedEffort: perceivedEffort,
                 enjoyment: enjoyment
             )
@@ -1214,6 +1222,7 @@ private struct ManualWorkoutToolbar: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("İptal", action: onCancel)
+                .disabled(isSaving)
                 .accessibilityIdentifier("activity.manual.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
@@ -1241,7 +1250,11 @@ private struct ManualWorkoutDetailsSection: View {
             }
             TextField("Antrenman adı (isteğe bağlı)", text: $title)
             DatePicker("Başlangıç zamanı", selection: $startedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-            Stepper("Süre: %d dk".tempoFormatted(durationMinutes), value: $durationMinutes, in: 5...360, step: 5)
+            Stepper("Süre: %d dk".tempoFormatted(durationMinutes), value: $durationMinutes, in: 1...360)
+                .onChange(of: durationMinutes) { _, duration in
+                    startedAt = min(startedAt, Date().addingTimeInterval(-Double(duration) * 60))
+                }
+            Text("Bitiş: %@".tempoFormatted(startedAt.addingTimeInterval(Double(durationMinutes) * 60).formatted(date: .abbreviated, time: .shortened))).font(.caption).foregroundStyle(TempoTheme.secondary)
         }
     }
 }
@@ -1266,7 +1279,7 @@ private struct ManualWorkoutEvidenceSection: View {
                 }
             }
             TextField("Not (isteğe bağlı)", text: $notes, axis: .vertical).lineLimit(2...5)
-            Text("Apple Watch gerekmez; iPhone’un hareket sensörü de adım ölçebilir. Kaydetmek için antrenman saatinde anlamlı bir hareket veya Sağlık sinyali gerekir. Fotoğraf tek başına yeterli değildir; ölçümler kesin doğrulama sayılmaz ve kayıtlar cihazda kalır.")
+            Text("Apple Watch gerekmez. İstersen antrenman saatindeki hareket veya Sağlık sinyallerini ekleyebilirsin. Fotoğraf tek başına doğrulama değildir. Sinyal bulunamazsa kayıt doğrulanmamış olarak cihazında kalır.")
                 .font(.caption).foregroundStyle(TempoTheme.secondary)
             Text("iPhone adım ölçümü için Hareket ve Fitness izni gerekebilir. iPhone sensöründeki adım geçmişi son 7 gün için sorgulanabilir.")
                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
@@ -1951,9 +1964,16 @@ struct SocialScreen: View {
     @State private var notice = ""
     @State private var pendingBlockProfile: TempoSocialProfile?
     @State private var showBlockConfirmation = false
+    @State private var createdChallenges: [TempoSocialChallenge] = []
+    @State private var showChallengeFeedback = false
 
     private var friends: [TempoSocialProfile] { snapshot?.friends ?? [] }
-    private var challenges: [TempoSocialChallenge] { snapshot?.challenges ?? [] }
+    private var challenges: [TempoSocialChallenge] {
+        var seen = Set<String>()
+        return (createdChallenges + (snapshot?.challenges ?? [])).filter {
+            seen.insert($0.id).inserted && (TempoFormat.date(from: $0.endsAt) ?? .distantPast) > Date()
+        }
+    }
     private var featuredChallenges: [TempoSocialChallenge] {
         Array(challenges.filter { $0.myStatus == "accepted" || $0.myStatus == "invited" }.prefix(2))
     }
@@ -1999,6 +2019,7 @@ struct SocialScreen: View {
 #endif
             await refresh()
         }
+        .alert("Mücadele", isPresented: $showChallengeFeedback) { Button("Tamam") {} } message: { Text(notice) }
         .confirmationDialog("Bu kullanıcıyı engelle?", isPresented: $showBlockConfirmation, titleVisibility: .visible) {
             Button("Engelle", role: .destructive) {
                 if let profile = pendingBlockProfile { Task { await setBlocked(profile, blocked: true) } }
@@ -2219,7 +2240,8 @@ struct SocialScreen: View {
                 TempoCard {
                     VStack(alignment: .leading, spacing: 11) {
                         Label("Haftalık yarış oluştur", systemImage: "trophy.fill").font(.headline).foregroundStyle(TempoTheme.orange)
-                        TextField("Yarışma adı", text: $title).padding(12).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 14))
+                        TextField("Yarışma adı (isteğe bağlı)", text: $title).padding(12).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 14))
+                            .onChange(of: title) { _, value in if value.count > 60 { title = String(value.prefix(60)) } }
                         Picker("Hedef", selection: $metric) {
                             ForEach(TempoSocialMetric.allCases) { option in Label(option.title, systemImage: option.symbol).tag(option) }
                         }.pickerStyle(.menu)
@@ -2227,28 +2249,39 @@ struct SocialScreen: View {
                             Text("Hareket günü, en az 3.000 adım veya 10 dakika egzersiz olarak sayılır.")
                                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
                         }
-                        Button { selectedSection = .friends } label: {
-                            HStack {
-                                Label(selectedFriends.isEmpty ? "Arkadaş seç" : "%d arkadaş seçildi".tempoFormatted(selectedFriends.count), systemImage: "person.2.fill")
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                        Text("Davet göndermek istediğin arkadaşları seç.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(friends) { friend in
+                                    Button {
+                                        if selectedFriends.contains(friend.id) { selectedFriends.remove(friend.id) }
+                                        else if selectedFriends.count < 20 { selectedFriends.insert(friend.id) }
+                                    } label: {
+                                        Label(friend.displayName.isEmpty ? friend.username : friend.displayName, systemImage: selectedFriends.contains(friend.id) ? "checkmark.circle.fill" : "person.crop.circle")
+                                            .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 11)
+                                            .foregroundStyle(selectedFriends.contains(friend.id) ? .black : .white)
+                                            .background(selectedFriends.contains(friend.id) ? TempoTheme.green : TempoTheme.raised, in: Capsule())
+                                    }.buttonStyle(.plain).disabled(working)
+                                        .accessibilityIdentifier("social.challenge.friend.\(friend.id)")
+                                }
                             }
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.green)
-                            .padding(12).background(TempoTheme.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
-                        .buttonStyle(.plain)
                         Button { Task { await createChallenge() } } label: {
-                            Label("Seçilenlerle yarışı başlat", systemImage: "flag.checkered").frame(maxWidth: .infinity)
+                            HStack {
+                                if working { ProgressView().tint(.black) }
+                                Label("Mücadele daveti gönder", systemImage: "flag.checkered")
+                            }.frame(maxWidth: .infinity)
                         }
                         .buttonStyle(TempoPrimaryButtonStyle())
-                        .disabled(working || selectedFriends.isEmpty || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(working || selectedFriends.isEmpty)
+                        .accessibilityIdentifier("social.challenge.send")
                     }
                 }
             } else {
                 TempoCard {
                     VStack(alignment: .leading, spacing: 9) {
                         Label("Önce arkadaşlarını ekle", systemImage: "person.2.fill").font(.headline).foregroundStyle(TempoTheme.orange)
-                        Text("Bir yarışma başlatmak için Arkadaşlar bölümünden Tempo kullanıcı adıyla istek gönder.")
+                        Text("Bir mücadele başlatmak için önce arkadaşlık isteğinin kabul edilmesi gerekiyor.")
                             .font(.caption).foregroundStyle(TempoTheme.secondary)
                         Button { selectedSection = .friends } label: {
                             Label("Arkadaş bul", systemImage: "person.badge.plus").frame(maxWidth: .infinity)
@@ -2288,6 +2321,8 @@ struct SocialScreen: View {
         do {
             snapshot = try await account.loadSocial()
             selectedFriends.formIntersection(Set(snapshot?.friends.map(\.id) ?? []))
+            let confirmed = Set(snapshot?.challenges.map(\.id) ?? [])
+            createdChallenges.removeAll { confirmed.contains($0.id) }
             if clearNotice { notice = "" }
         } catch { notice = error.localizedDescription.tempoLocalized }
     }
@@ -2315,9 +2350,14 @@ struct SocialScreen: View {
         guard !working else { return }
         working = true; defer { working = false }
         do {
-            try await account.createSocialChallenge(title: title, metric: metric, friendIds: Array(selectedFriends))
-            title = ""; selectedFriends.removeAll(); notice = "Haftalık yarışma oluşturuldu."; await refresh()
-        } catch { notice = error.localizedDescription.tempoLocalized }
+            let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let created = try await account.createSocialChallenge(title: name.isEmpty ? "Haftalık hareket".tempoLocalized : name, metric: metric, friendIds: Array(selectedFriends))
+            createdChallenges.insert(created, at: 0)
+            if createdChallenges.count > 40 { createdChallenges = Array(createdChallenges.prefix(40)) }
+            title = ""; selectedFriends.removeAll()
+            notice = "Mücadele daveti gönderildi. Arkadaşın kabul ettiğinde katılır.".tempoLocalized
+            showChallengeFeedback = true
+        } catch { notice = error.localizedDescription.tempoLocalized; showChallengeFeedback = true }
     }
 
     private func updateChallenge(_ challenge: TempoSocialChallenge, action: String) async {
@@ -2543,6 +2583,13 @@ private struct SocialChallengeCard: View {
                         Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(TempoTheme.secondary)
                     }
                     Image(systemName: "trophy.fill").foregroundStyle(TempoTheme.orange)
+                }
+                if let starts = TempoFormat.date(from: challenge.startsAt) {
+                    Text("Başlangıç: %@".tempoFormatted(starts.formatted(date: .abbreviated, time: .shortened)))
+                        .font(.caption).foregroundStyle(TempoTheme.secondary)
+                    if starts > Date() {
+                        Text("Skorlar mücadele başladığında hesaplanır.").font(.caption2).foregroundStyle(TempoTheme.secondary)
+                    }
                 }
                 if challenge.myStatus == "invited" {
                     Text("Bir arkadaşın seni bu haftalık yarışmaya çağırdı.").font(.caption).foregroundStyle(TempoTheme.secondary)

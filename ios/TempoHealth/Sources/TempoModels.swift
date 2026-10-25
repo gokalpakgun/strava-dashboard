@@ -192,6 +192,8 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
         switch recordSource {
         case "apple-health": return "Apple Sağlık".tempoLocalized
         case "phone-gps": return "iPhone GPS kaydı".tempoLocalized
+        case "phone-timer": return "Telefonla süre kaydı · rota yok".tempoLocalized
+        case "manual": return "Elle eklendi · doğrulanmadı".tempoLocalized
         default: return healthSignal == nil ? "Elle eklendi".tempoLocalized : "Elle eklendi · Sağlık sinyali".tempoLocalized
         }
     }
@@ -877,7 +879,10 @@ enum TempoFormat {
         kilometers.formatted(.number.locale(.autoupdatingCurrent).precision(.fractionLength(1))) + " km"
     }
     static func duration(_ seconds: Double) -> String {
-        let totalMinutes = Int(seconds / 60)
+        guard seconds.isFinite else { return "—" }
+        let safeSeconds = min(max(seconds, 0), 365 * 24 * 60 * 60)
+        if safeSeconds > 0 && safeSeconds < 60 { return "%d sn".tempoFormatted(max(1, Int(safeSeconds))) }
+        let totalMinutes = Int(safeSeconds / 60)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
         return hours > 0

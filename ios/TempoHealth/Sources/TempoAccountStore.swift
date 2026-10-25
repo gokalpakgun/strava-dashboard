@@ -159,6 +159,17 @@ final class TempoAccountStore: ObservableObject {
         return URLSession(configuration: configuration)
     }()
 
+    // Challenge names can require server-side moderation. Keep this bounded
+    // session separate from the faster account login/registration transport.
+    private static let socialSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 35
+        configuration.timeoutIntervalForResource = 45
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }()
+
     var isAuthenticated: Bool { profile != nil && sessionToken != nil }
     var authorizationToken: String? { sessionToken }
 
@@ -289,8 +300,9 @@ final class TempoAccountStore: ObservableObject {
         _ = try await socialRequest(path: "/api/account/social/requests", method: "POST", body: SocialFriendResponse(requestId: id, action: accept ? "accept" : "decline"))
     }
 
-    func createSocialChallenge(title: String, metric: TempoSocialMetric, friendIds: [String]) async throws {
-        _ = try await socialRequest(path: "/api/account/social/challenges", method: "POST", body: SocialChallengeCreate(title: title, metric: metric.rawValue, friendIds: friendIds))
+    func createSocialChallenge(title: String, metric: TempoSocialMetric, friendIds: [String]) async throws -> TempoSocialChallenge {
+        let data = try await socialRequest(path: "/api/account/social/challenges", method: "POST", body: SocialChallengeCreate(title: title, metric: metric.rawValue, friendIds: friendIds))
+        return try JSONDecoder().decode(SocialChallengeCreated.self, from: data).challenge
     }
 
     func respondToSocialChallenge(id: String, action: String) async throws {
@@ -362,14 +374,15 @@ final class TempoAccountStore: ObservableObject {
         guard let sessionToken, !sessionToken.isEmpty else { throw AccountError.server("Tempo hesabına yeniden giriş yapman gerekiyor.") }
         var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
         request.httpMethod = method
-        request.timeoutInterval = 20
+        request.timeoutInterval = 35
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
         }
-        let (data, response) = try await Self.apiSession.data(for: request)
+        let (data, response) = try await Self.socialSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sosyal bölümden yanıt alınamadı.") }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401, self.sessionToken == sessionToken { clearLocalSession() }
@@ -542,6 +555,7 @@ private struct SocialFriendRequestResult: Decodable { let accepted: Bool? }
 private struct SocialFriendResponse: Encodable { let requestId: String; let action: String }
 private struct SocialBlockAction: Encodable { let userId: String; let action: String }
 private struct SocialReportRequest: Encodable { let userId: String?; let challengeId: String?; let category: String }
+private struct SocialChallengeCreated: Decodable { let challenge: TempoSocialChallenge }
 private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String] }
 private struct SocialChallengeAction: Encodable { let action: String; var share: Bool? = nil }
 private struct AccountEnvelope: Decodable {

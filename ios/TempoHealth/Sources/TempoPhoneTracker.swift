@@ -4,11 +4,12 @@ import MapKit
 import SwiftUI
 
 @MainActor
-private final class TempoLocationRecorder: NSObject, ObservableObject, CLLocationManagerDelegate {
+private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     @Published private(set) var route: [CLLocation] = []
     @Published private(set) var elapsedSeconds = 0
     @Published private(set) var isRecording = false
     @Published private(set) var isReadyToSave = false
+    private var tracksLocation = true
     @Published var errorMessage: String?
 
     private let manager = CLLocationManager()
@@ -38,12 +39,19 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, CLLocatio
         route.map { TempoCoordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) }
     }
 
-    var canSave: Bool { elapsedSeconds >= 60 && route.count >= 2 && distanceMeters > 0 }
+    var canSave: Bool { elapsedSeconds > 0 }
 
     func report(_ message: String) { errorMessage = message }
 
+    func startWithoutLocation() {
+        shouldStartAfterPermission = false
+        errorMessage = nil
+        beginSegment(usingLocation: false)
+    }
+
     func start() {
         errorMessage = nil
+        if hasStarted && !tracksLocation { beginSegment(usingLocation: false); return }
         switch manager.authorizationStatus {
         case .notDetermined:
             shouldStartAfterPermission = true
@@ -88,6 +96,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, CLLocatio
     }
 
     func cancel() {
+        shouldStartAfterPermission = false
         timer?.invalidate()
         timer = nil
         manager.stopUpdatingLocation()
@@ -101,6 +110,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, CLLocatio
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard isRecording, tracksLocation else { return }
         for location in locations {
             guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 35,
                   abs(location.timestamp.timeIntervalSinceNow) <= 15,
@@ -117,13 +127,14 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, CLLocatio
         errorMessage = "Konum alınamadı: %@".tempoFormatted(error.localizedDescription)
     }
 
-    private func beginSegment() {
+    private func beginSegment(usingLocation: Bool = true) {
         guard !isRecording else { return }
         if startedAt == nil { startedAt = Date() }
         segmentStartedAt = Date()
         isRecording = true
         isReadyToSave = false
-        manager.startUpdatingLocation()
+        tracksLocation = usingLocation
+        if usingLocation { manager.startUpdatingLocation() }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -176,8 +187,11 @@ struct TempoPhoneTrackerScreen: View {
                             .lineLimit(2...4)
                             .padding(13).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 15))
                         compactRatings
+                        if recorder.route.count < 2 {
+                            Text("GPS rotası yok; yalnızca süre kaydedilecek.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }
                         if !recorder.canSave {
-                            Label("Kaydedebilmek için en az 1 dakika ve yeterli GPS rotası gerekli.", systemImage: "location.slash")
+                            Label("Kaydetmek için önce kısa bir kayıt başlat.", systemImage: "location.slash")
                                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
                         }
                     }
@@ -316,6 +330,11 @@ struct TempoPhoneTrackerScreen: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(TempoPrimaryButtonStyle())
+            if !recorder.hasStarted {
+                Button { recorder.startWithoutLocation() } label: {
+                    Label("GPS olmadan süre kaydet", systemImage: "timer").frame(maxWidth: .infinity)
+                }.buttonStyle(TempoSecondaryButtonStyle())
+            }
         }
     }
 
