@@ -15,7 +15,10 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
     private let manager = CLLocationManager()
     private var startedAt: Date?
     private var segmentStartedAt: Date?
-    private var accumulatedSeconds = 0
+    private var accumulatedSeconds: TimeInterval = 0
+    @Published private(set) var distanceMeters: Double = 0
+    private var segmentLastLocation: CLLocation?
+    private var segmentStartIndices = Set<Int>()
     private var timer: Timer?
     private var shouldStartAfterPermission = false
 
@@ -32,12 +35,10 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         manager.allowsBackgroundLocationUpdates = false
     }
 
-    var distanceMeters: Double {
-        zip(route, route.dropFirst()).reduce(0) { $0 + $1.0.distance(from: $1.1) }
-    }
-
     var coordinates: [TempoCoordinate] {
-        route.map { TempoCoordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) }
+        route.enumerated().map { index, location in
+            TempoCoordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, startsNewSegment: segmentStartIndices.contains(index) ? true : nil)
+        }
     }
 
     var canSave: Bool { elapsedSeconds > 0 }
@@ -84,9 +85,9 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         guard isRecording else { return }
         timer?.invalidate()
         timer = nil
-        if let segmentStartedAt { accumulatedSeconds += Int(Date().timeIntervalSince(segmentStartedAt)) }
+        if let segmentStartedAt { accumulatedSeconds += max(0, Date().timeIntervalSince(segmentStartedAt)) }
         segmentStartedAt = nil
-        elapsedSeconds = accumulatedSeconds
+        elapsedSeconds = Int(accumulatedSeconds)
         manager.stopUpdatingLocation()
         isRecording = false
     }
@@ -102,6 +103,9 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         timer = nil
         manager.stopUpdatingLocation()
         route.removeAll()
+        segmentLastLocation = nil
+        segmentStartIndices.removeAll()
+        distanceMeters = 0
         startedAt = nil
         segmentStartedAt = nil
         accumulatedSeconds = 0
@@ -113,13 +117,26 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard isRecording, tracksLocation else { return }
         for location in locations {
-            guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 35,
+            guard CLLocationCoordinate2DIsValid(location.coordinate),
+                  location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 35,
                   abs(location.timestamp.timeIntervalSinceNow) <= 15,
+                  let segmentStartedAt, location.timestamp >= segmentStartedAt,
                   location.speed < 0 || location.speed <= 8 else { continue }
-            if let previous = route.last {
+            var beginsSegment = segmentLastLocation == nil
+            if let previous = segmentLastLocation {
+                let interval = location.timestamp.timeIntervalSince(previous.timestamp)
+                guard interval > 0 else { continue }
                 let segment = previous.distance(from: location)
-                guard segment >= 2, segment <= 250 else { continue }
+                if interval > 30 {
+                    // A GPS gap has no measured path; resume without estimating it.
+                    beginsSegment = true
+                } else {
+                    guard segment >= 2, segment <= 250, segment / interval <= 8 else { continue }
+                    distanceMeters += segment
+                }
             }
+            if beginsSegment { segmentStartIndices.insert(route.count) }
+            segmentLastLocation = location
             route.append(location)
         }
     }
@@ -132,6 +149,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         guard !isRecording else { return }
         if startedAt == nil { startedAt = Date() }
         segmentStartedAt = Date()
+        segmentLastLocation = nil
         isRecording = true
         isReadyToSave = false
         tracksLocation = usingLocation
@@ -140,7 +158,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let segmentStartedAt = self.segmentStartedAt else { return }
-                self.elapsedSeconds = self.accumulatedSeconds + Int(Date().timeIntervalSince(segmentStartedAt))
+                self.elapsedSeconds = Int(self.accumulatedSeconds + max(0, Date().timeIntervalSince(segmentStartedAt)))
             }
         }
     }
@@ -163,6 +181,9 @@ struct TempoPhoneTrackerScreen: View {
     ))
 
     private var routeCoordinates: [CLLocationCoordinate2D] { recorder.route.map(\.coordinate) }
+    private var routeSegments: [[CLLocationCoordinate2D]] {
+        TempoCoordinate.segments(recorder.coordinates).map { $0.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) } }
+    }
     private var sportTitle: String { selectedSport == "run" ? "Koşu".tempoLocalized : "Yürüyüş".tempoLocalized }
 
     var body: some View {
@@ -197,7 +218,7 @@ struct TempoPhoneTrackerScreen: View {
                         }
                     }
 
-                    recorderControls
+                    recorderControls.disabled(isSaving)
                 }
                 .padding(16)
                 .padding(.bottom, TempoTheme.scrollBottomClearance)
@@ -220,6 +241,7 @@ struct TempoPhoneTrackerScreen: View {
                 Text("Çıkarsan bu rota kaydedilmeyecek.")
             }
             .interactiveDismissDisabled(recorder.hasStarted || isSaving)
+            .onDisappear { recorder.cancel() }
             .onChange(of: recorder.route.count) { _, _ in updateRegion() }
             .onChange(of: scenePhase) { _, phase in
                 if phase != .active && recorder.isRecording { recorder.pause() }
@@ -232,7 +254,9 @@ struct TempoPhoneTrackerScreen: View {
         ZStack(alignment: .topLeading) {
             Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
                 if routeCoordinates.count >= 2 {
-                    MapPolyline(coordinates: routeCoordinates).stroke(TempoTheme.green, lineWidth: 5)
+                    ForEach(routeSegments.indices, id: \.self) { index in
+                        MapPolyline(coordinates: routeSegments[index]).stroke(TempoTheme.green, lineWidth: 5)
+                    }
                 }
             }
             .mapStyle(.standard(elevation: .flat))

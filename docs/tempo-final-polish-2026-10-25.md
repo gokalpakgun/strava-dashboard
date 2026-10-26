@@ -59,3 +59,12 @@ The preceding user-triggered TestFlight run 40238498065 completed successfully. 
 - Water-write completion and loading state cannot spill into a later account session.
 - Onboarding, account settings and manual-workout photo tasks cancel with selection changes or screen exit. Late photos cannot overwrite the latest selection. Manual saving waits for photo preparation, and an unreadable attachment displays the existing localized error instead of silently disappearing.
 - Only static source and diff review was performed for this batch, as requested. No full tests, simulator run, build or TestFlight upload were started.
+
+## 26 October: recording continuity, social refresh and nearby courts
+
+- Phone GPS distance is accumulated only inside continuous recording segments. Pauses and GPS gaps over 30 seconds start a new segment, with no straight-line distance or map bridge across the unmeasured interval. Old route files remain readable because the new segment marker is optional. Stale/out-of-order coordinates and implausible point-to-point speed are ignored.
+- Pause/resume keeps fractional elapsed time instead of losing it at every pause. Leaving the recording screen stops its timer, pending permission start and location updates. Controls are disabled during the successful save transition.
+- Social refreshes have response ownership: an older response cannot replace a newer post-action list. Manual refresh buttons are disabled during active requests. Action success messages survive their follow-up refresh and use existing translations. Both friend selectors enforce the same 20-person invitation limit.
+- If storing a manual workout fails after its photo was written, the unattached new photo is removed. Optional sensor lookup also checks the original account session before persisting the record.
+- Nearby facility matching preserves distinct same-provider courts instead of merging every pair within 70 metres or names within 700 metres. Cross-provider duplicate matching uses a much tighter distance.
+- Static source/diff review only; no full tests, simulator, build or TestFlight upload started, per the user's preference.

@@ -1555,8 +1555,12 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             let duplicate = result.contains { existing in
                 let distance = CLLocation(latitude: existing.coordinate.latitude, longitude: existing.coordinate.longitude)
                     .distance(from: CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude))
+                if existing.id == place.id { return true }
+                // Distinct courts from one provider must not disappear merely
+                // because they are next to each other or share a generic name.
+                guard existing.source != place.source else { return false }
                 let sameName = existing.normalizedName == place.normalizedName
-                return distance < 70 || (sameName && distance < 700)
+                return distance < 12 || (sameName && distance < 60)
             }
             if !duplicate { result.append(place) }
             if result.count >= 100 { break }

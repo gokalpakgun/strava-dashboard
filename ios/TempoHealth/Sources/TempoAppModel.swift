@@ -288,6 +288,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         guard let accountId = activeTempoAccountId, !accountId.isEmpty else {
             throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
         }
+        let accountToken = accountAccessToken
         let safeDuration = min(max(durationMinutes, 1), 24 * 60)
         guard startedAt.addingTimeInterval(Double(safeDuration) * 60) <= Date() else {
             throw APIError.server("Antrenman bitiş zamanı gelecekte olamaz.")
@@ -297,7 +298,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthSignal = try? await healthStore.workoutHealthSignal(start: startedAt, durationMinutes: safeDuration)
         }
         try Task.checkCancellation()
-        guard activeTempoAccountId == accountId else {
+        guard activeTempoAccountId == accountId, accountAccessToken == accountToken else {
             throw APIError.server("Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi.")
         }
         // Personal notes may be saved without a sensor. That is a self-reported
@@ -331,7 +332,13 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         )
         var updated = manualWorkouts
         updated.insert(workout, at: 0)
-        try Self.saveManualWorkouts(updated, accountId: accountId)
+        do {
+            try Self.saveManualWorkouts(updated, accountId: accountId)
+        } catch {
+            // Keep a failed save from leaving an unattached private photo behind.
+            if let filename { try? FileManager.default.removeItem(at: directory.appendingPathComponent(filename)) }
+            throw error
+        }
         manualWorkouts = updated
     }
 

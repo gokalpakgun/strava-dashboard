@@ -1004,6 +1004,10 @@ private struct ManualWorkoutRouteScreen: View {
         span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
     ))
 
+    private var routeSegments: [[CLLocationCoordinate2D]] {
+        TempoCoordinate.segments(workout.routeCoordinates ?? []).map { $0.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) } }
+    }
+
     private var coordinates: [CLLocationCoordinate2D] {
         (workout.routeCoordinates ?? []).map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
@@ -1013,7 +1017,9 @@ private struct ManualWorkoutRouteScreen: View {
             VStack(spacing: 0) {
                 if coordinates.count >= 2 {
                     Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
-                        MapPolyline(coordinates: coordinates).stroke(TempoTheme.green, lineWidth: 5)
+                        ForEach(routeSegments.indices, id: \.self) { index in
+                            MapPolyline(coordinates: routeSegments[index]).stroke(TempoTheme.green, lineWidth: 5)
+                        }
                     }
                     .mapStyle(.standard(elevation: .flat))
                     .overlay(alignment: .top) {
@@ -2023,6 +2029,7 @@ struct SocialScreen: View {
     @State private var metric: TempoSocialMetric = .steps
     @State private var selectedFriends: Set<String> = []
     @State private var selectedSection: SocialSection = .overview
+    @State private var refreshGeneration = UUID()
     @State private var loading = false
     @State private var working = false
     @State private var notice = ""
@@ -2065,7 +2072,7 @@ struct SocialScreen: View {
                 TempoCard {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Sosyal bilgiler yüklenemedi", systemImage: "wifi.exclamationmark").font(.subheadline.weight(.semibold))
-                        Button("Tekrar dene") { Task { await refresh() } }.buttonStyle(TempoSecondaryButtonStyle())
+                        Button("Tekrar dene") { Task { await refresh() } }.buttonStyle(TempoSecondaryButtonStyle()).disabled(loading || working)
                     }
                 }
             } else {
@@ -2242,6 +2249,7 @@ struct SocialScreen: View {
                     SectionHeading(title: "Arkadaşların", caption: "%d KİŞİ".tempoFormatted(friends.count), padding: false)
                     Spacer()
                     Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise").foregroundStyle(TempoTheme.green) }
+                        .disabled(loading || working)
                         .accessibilityLabel("Arkadaş listesini yenile")
                 }
                 if friends.isEmpty {
@@ -2250,7 +2258,7 @@ struct SocialScreen: View {
                     ForEach(friends) { friend in
                         Button {
                             if selectedFriends.contains(friend.id) { selectedFriends.remove(friend.id) }
-                            else { selectedFriends.insert(friend.id) }
+                            else if selectedFriends.count < 20 { selectedFriends.insert(friend.id) }
                         } label: {
                             HStack {
                                 SocialPersonRow(profile: friend, detail: "@\(friend.username)")
@@ -2260,6 +2268,7 @@ struct SocialScreen: View {
                             .padding(10).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                         }
                         .buttonStyle(.plain)
+                        .disabled(working)
                         .contextMenu { safetyMenu(for: friend) }
                     }
                 }
@@ -2359,6 +2368,7 @@ struct SocialScreen: View {
                     SectionHeading(title: "Yarışmalar", caption: "APPLE SAĞLIK · İSTEĞE BAĞLI", padding: false)
                     Spacer()
                     Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise").foregroundStyle(TempoTheme.green) }
+                        .disabled(loading || working)
                         .accessibilityLabel("Yarışmaları yenile")
                 }
                 if challenges.isEmpty {
@@ -2380,15 +2390,22 @@ struct SocialScreen: View {
     }
 
     private func refresh(clearNotice: Bool = true) async {
-        guard !loading else { return }
-        loading = true; defer { loading = false }
+        let generation = UUID()
+        refreshGeneration = generation
+        loading = true
+        defer { if refreshGeneration == generation { loading = false } }
         do {
-            snapshot = try await account.loadSocial()
+            let updated = try await account.loadSocial()
+            guard !Task.isCancelled, refreshGeneration == generation else { return }
+            snapshot = updated
             selectedFriends.formIntersection(Set(snapshot?.friends.map(\.id) ?? []))
             let confirmed = Set(snapshot?.challenges.map(\.id) ?? [])
             createdChallenges.removeAll { confirmed.contains($0.id) }
             if clearNotice { notice = "" }
-        } catch { notice = error.localizedDescription.tempoLocalized }
+        } catch {
+            guard !Task.isCancelled, refreshGeneration == generation, !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
+            notice = error.localizedDescription.tempoLocalized
+        }
     }
 
     private func sendRequest() async {
@@ -2397,7 +2414,7 @@ struct SocialScreen: View {
         do {
             let becameFriends = try await account.sendFriendRequest(username: username.trimmingCharacters(in: .whitespacesAndNewlines))
             username = ""
-            notice = becameFriends ? "Karşılıklı istek eşleşti; artık arkadaşsınız." : "Arkadaşlık isteği gönderildi."
+            notice = (becameFriends ? "Karşılıklı istek eşleşti; artık arkadaşsınız." : "Arkadaşlık isteği gönderildi.").tempoLocalized
             await refresh(clearNotice: false)
         }
         catch { notice = error.localizedDescription.tempoLocalized }
@@ -2406,7 +2423,7 @@ struct SocialScreen: View {
     private func answer(_ request: TempoSocialRequest, accept: Bool) async {
         guard !working else { return }
         working = true; defer { working = false }
-        do { try await account.respondToFriendRequest(id: request.id, accept: accept); notice = accept ? "Arkadaşlık isteği kabul edildi." : "Arkadaşlık isteği reddedildi."; await refresh(clearNotice: false) }
+        do { try await account.respondToFriendRequest(id: request.id, accept: accept); notice = (accept ? "Arkadaşlık isteği kabul edildi." : "Arkadaşlık isteği reddedildi.").tempoLocalized; await refresh(clearNotice: false) }
         catch { notice = error.localizedDescription.tempoLocalized }
     }
 
@@ -2427,14 +2444,14 @@ struct SocialScreen: View {
     private func updateChallenge(_ challenge: TempoSocialChallenge, action: String) async {
         guard !working else { return }
         working = true; defer { working = false }
-        do { try await account.respondToSocialChallenge(id: challenge.id, action: action); notice = "Yarışma davetin güncellendi."; await refresh() }
+        do { try await account.respondToSocialChallenge(id: challenge.id, action: action); notice = "Yarışma davetin güncellendi.".tempoLocalized; await refresh(clearNotice: false) }
         catch { notice = error.localizedDescription.tempoLocalized }
     }
 
     private func shareHealth(_ challenge: TempoSocialChallenge, enabled: Bool) async {
         guard !working else { return }
         working = true; defer { working = false }
-        do { try await account.setSocialChallengeHealthSharing(id: challenge.id, enabled: enabled); notice = "Yarışma paylaşım tercihin kaydedildi."; await refresh() }
+        do { try await account.setSocialChallengeHealthSharing(id: challenge.id, enabled: enabled); notice = "Yarışma paylaşım tercihin kaydedildi.".tempoLocalized; await refresh(clearNotice: false) }
         catch { notice = error.localizedDescription.tempoLocalized }
     }
 
@@ -2457,9 +2474,9 @@ struct SocialScreen: View {
         working = true; defer { working = false }
         do {
             try await account.setSocialBlock(userId: profile.id, blocked: blocked)
-            notice = blocked ? "Kullanıcı engellendi." : "Engel kaldırıldı."
+            notice = (blocked ? "Kullanıcı engellendi." : "Engel kaldırıldı.").tempoLocalized
             pendingBlockProfile = nil
-            await refresh()
+            await refresh(clearNotice: false)
         } catch { notice = error.localizedDescription.tempoLocalized }
     }
 
@@ -2468,7 +2485,7 @@ struct SocialScreen: View {
         working = true; defer { working = false }
         do {
             try await account.reportSocialUser(userId: profile.id, category: category)
-            notice = "Bildirim inceleme kuyruğuna gönderildi."
+            notice = "Bildirim inceleme kuyruğuna gönderildi.".tempoLocalized
         } catch { notice = error.localizedDescription.tempoLocalized }
     }
 
@@ -2477,7 +2494,7 @@ struct SocialScreen: View {
         working = true; defer { working = false }
         do {
             try await account.reportSocialChallenge(id: challenge.id, category: category)
-            notice = "Bildirim inceleme kuyruğuna gönderildi."
+            notice = "Bildirim inceleme kuyruğuna gönderildi.".tempoLocalized
         } catch { notice = error.localizedDescription.tempoLocalized }
     }
 }

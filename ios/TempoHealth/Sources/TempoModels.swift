@@ -203,6 +203,23 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
 struct TempoCoordinate: Codable, Equatable {
     let latitude: Double
     let longitude: Double
+    // Optional for compatibility with routes already stored on the device.
+    let startsNewSegment: Bool?
+
+    init(latitude: Double, longitude: Double, startsNewSegment: Bool? = nil) {
+        self.latitude = latitude
+        self.longitude = longitude
+        self.startsNewSegment = startsNewSegment
+    }
+
+    static func segments(_ route: [TempoCoordinate]) -> [[TempoCoordinate]] {
+        var result: [[TempoCoordinate]] = []
+        for point in route {
+            if result.isEmpty || point.startsNewSegment == true { result.append([]) }
+            result[result.count - 1].append(point)
+        }
+        return result.filter { $0.count >= 2 }
+    }
 }
 
 enum TempoSport: Hashable {
