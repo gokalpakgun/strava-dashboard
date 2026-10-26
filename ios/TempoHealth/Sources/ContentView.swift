@@ -1151,6 +1151,7 @@ private struct ManualWorkoutForm: View {
     @State private var photoData: Data?
     @State private var photoImage: UIImage?
     @State private var checkHealthSignals = false
+    @State private var workoutSessionID: UUID?
     @State private var isSaving = false
     @State private var isPreparingPhoto = false
     @State private var errorMessage: String?
@@ -1183,6 +1184,7 @@ private struct ManualWorkoutForm: View {
                     notes: $notes
                 )
             }
+            .disabled(isSaving)
             .accessibilityIdentifier("activity.manual.form")
             .scrollContentBackground(.hidden)
             .background(TempoTheme.background)
@@ -1202,6 +1204,8 @@ private struct ManualWorkoutForm: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving)
+        .onAppear { if workoutSessionID == nil { workoutSessionID = model.activitySessionID } }
+        .onChange(of: model.activitySessionID) { _, _ in dismiss() }
     }
 
     private func loadPhoto(_ item: PhotosPickerItem?) async {
@@ -1240,6 +1244,9 @@ private struct ManualWorkoutForm: View {
     @MainActor
     private func saveWorkout() async {
         do {
+            guard workoutSessionID == model.activitySessionID else {
+                throw NSError(domain: "TempoWorkoutSession", code: 1, userInfo: [NSLocalizedDescriptionKey: "Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi.".tempoLocalized])
+            }
             try await model.addManualWorkout(
                 sportId: sportId,
                 sportTitle: sportTitle,

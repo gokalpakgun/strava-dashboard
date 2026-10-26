@@ -184,6 +184,7 @@ struct TempoPhoneTrackerScreen: View {
     @State private var notes = ""
     @State private var perceivedEffort: Int?
     @State private var enjoyment: Int?
+    @State private var workoutSessionID: UUID?
     @State private var isSaving = false
     @State private var showCloseConfirmation = false
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
@@ -252,6 +253,8 @@ struct TempoPhoneTrackerScreen: View {
                 Text("Çıkarsan bu rota kaydedilmeyecek.")
             }
             .interactiveDismissDisabled(recorder.hasStarted || isSaving)
+            .onAppear { if workoutSessionID == nil { workoutSessionID = model.activitySessionID } }
+            .onChange(of: model.activitySessionID) { _, _ in recorder.cancel(); dismiss() }
             .onDisappear { recorder.cancel() }
             .onChange(of: recorder.route.count) { _, _ in updateRegion() }
             .onChange(of: scenePhase) { _, phase in
@@ -393,6 +396,9 @@ struct TempoPhoneTrackerScreen: View {
         guard !isSaving, recorder.canSave, let startedAt = recorder.sessionStartedAt else { return }
         isSaving = true
         do {
+            guard workoutSessionID == model.activitySessionID else {
+                throw NSError(domain: "TempoWorkoutSession", code: 1, userInfo: [NSLocalizedDescriptionKey: "Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi.".tempoLocalized])
+            }
             try model.addPhoneTrackedWorkout(
                 sportId: selectedSport,
                 sportTitle: sportTitle,

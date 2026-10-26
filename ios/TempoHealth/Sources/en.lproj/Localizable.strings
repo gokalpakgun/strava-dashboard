@@ -1437,3 +1437,5 @@
 "Tempo hesabından çıkış yapıldı." = "Signed out of Tempo.";
 "Tempo hesabı silindi." = "Your Tempo account was deleted.";
 "Strava bağlantısı Tempo hesabından yenileniyor…" = "Restoring your Strava connection from your Tempo account…";
+
+"Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi." = "Your Tempo account changed. The workout was not saved to this account.";

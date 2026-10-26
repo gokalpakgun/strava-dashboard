@@ -76,28 +76,31 @@ final class TempoHealthStore {
         guard durationMinutes > 0, durationMinutes <= 24 * 60,
               start.timeIntervalSince1970.isFinite, end <= Date() else { throw HealthStoreError.invalidWorkoutInterval }
         let baselineStart = start.addingTimeInterval(-20 * 60)
-        try await store.requestAuthorization(toShare: [], read: [heartRateType, stepType, respiratoryRateType, energyType, exerciseTimeType, HKObjectType.workoutType()])
-
-        async let workoutHeartRates = heartRateSamples(from: start, to: end)
-        async let baselineHeartRates = heartRateSamples(from: baselineStart, to: start)
-        async let workoutRespiratoryRates = quantitySamples(type: respiratoryRateType, unit: .count().unitDivided(by: .minute()), from: start, to: end)
-        async let baselineRespiratoryRates = quantitySamples(type: respiratoryRateType, unit: .count().unitDivided(by: .minute()), from: baselineStart, to: start)
-        async let workoutSteps = stepCount(from: start, to: end)
-        async let baselineSteps = stepCount(from: baselineStart, to: start)
-        async let workoutEnergy = quantitySum(type: energyType, unit: .kilocalorie(), from: start, to: end)
-        async let workoutExerciseMinutes = quantitySum(type: exerciseTimeType, unit: .minute(), from: start, to: end)
-        async let matchingWorkoutMinutes = matchingHealthWorkoutMinutes(start: start, end: end)
-        let values = try await (
+        // A missing Health stream must not discard other real measurements or phone steps.
+        // Authorization failure still permits the independent Core Motion lookup.
+        try? await store.requestAuthorization(toShare: [], read: [heartRateType, stepType, respiratoryRateType, energyType, exerciseTimeType, HKObjectType.workoutType()])
+        try Task.checkCancellation()
+        async let workoutHeartRates = try? heartRateSamples(from: start, to: end)
+        async let baselineHeartRates = try? heartRateSamples(from: baselineStart, to: start)
+        async let workoutRespiratoryRates = try? quantitySamples(type: respiratoryRateType, unit: .count().unitDivided(by: .minute()), from: start, to: end)
+        async let baselineRespiratoryRates = try? quantitySamples(type: respiratoryRateType, unit: .count().unitDivided(by: .minute()), from: baselineStart, to: start)
+        async let workoutSteps = try? stepCount(from: start, to: end)
+        async let baselineSteps = try? stepCount(from: baselineStart, to: start)
+        async let workoutEnergy = try? quantitySum(type: energyType, unit: .kilocalorie(), from: start, to: end)
+        async let workoutExerciseMinutes = try? quantitySum(type: exerciseTimeType, unit: .minute(), from: start, to: end)
+        async let matchingWorkoutMinutes = try? matchingHealthWorkoutMinutes(start: start, end: end)
+        let values = await (
             workoutHeartRates, baselineHeartRates, workoutRespiratoryRates, baselineRespiratoryRates,
             workoutSteps, baselineSteps, workoutEnergy, workoutExerciseMinutes, matchingWorkoutMinutes
         )
+        try Task.checkCancellation()
 
-        let heartRates = values.0
-        let baselineRates = values.1
+        let heartRates = values.0 ?? []
+        let baselineRates = values.1 ?? []
         let average = heartRates.isEmpty ? nil : heartRates.reduce(0, +) / Double(heartRates.count)
         let baseline = baselineRates.isEmpty ? nil : baselineRates.reduce(0, +) / Double(baselineRates.count)
-        let respiratoryRates = values.2
-        let baselineRespiratory = values.3
+        let respiratoryRates = values.2 ?? []
+        let baselineRespiratory = values.3 ?? []
         let averageRespiratory = respiratoryRates.isEmpty ? nil : respiratoryRates.reduce(0, +) / Double(respiratoryRates.count)
         let averageBaselineRespiratory = baselineRespiratory.isEmpty ? nil : baselineRespiratory.reduce(0, +) / Double(baselineRespiratory.count)
         let duringSteps = values.4
