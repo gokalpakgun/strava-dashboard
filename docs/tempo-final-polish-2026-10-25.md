@@ -43,3 +43,11 @@ At the user’s request, no new full test suite was run for these changes. The n
 - Health has a calmer graphite background, a compact daily balance overview and consistently aligned measurement tiles. Sleep, cardio, score factors and water details expand separately. Daily/history selection and underlying metrics remain available.
 - Shared metric grids switch to one column at accessibility text sizes. Long titles and summary values can wrap or stack vertically; numerical values use monospaced digits. Existing future UI navigation assertions were updated for the renamed Profile destination, but were not executed.
 - Per the user, no build, TestFlight upload or full test run was started for this menu refresh. TestFlight publication is the user’s next step.
+
+## Logo-only launch and recording follow-up
+
+The launch now contains only the centered transparent T mark, enlarged from 140 to 154 points. The existing logo reveal animation and Reduce Motion behavior remain; the decorative circle, radial background and TEMPO wordmark are removed.
+
+Manual and phone workout saves keep their save lock through successful dismissal so a second tap cannot create a duplicate during the closing transition. A started phone session retains its sport and real start time through pauses. A repeated Health connect action during an active sync returns without incorrectly reporting Health as unavailable.
+
+The preceding user-triggered TestFlight run 40238498065 completed successfully. These follow-up changes receive static source/diff review only; no new build, full test suite or TestFlight upload is started.

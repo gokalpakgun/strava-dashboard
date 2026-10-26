@@ -20,6 +20,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
     private var shouldStartAfterPermission = false
 
     var hasStarted: Bool { startedAt != nil }
+    var sessionStartedAt: Date? { startedAt }
 
     override init() {
         super.init()
@@ -263,7 +264,7 @@ struct TempoPhoneTrackerScreen: View {
                 .background(selectedSport == id ? TempoTheme.green : TempoTheme.card, in: Capsule())
         }
         .buttonStyle(.plain)
-        .disabled(recorder.isRecording || recorder.isReadyToSave)
+        .disabled(recorder.hasStarted || isSaving)
     }
 
     private var metrics: some View {
@@ -353,14 +354,13 @@ struct TempoPhoneTrackerScreen: View {
     }
 
     private func saveWorkout() {
-        guard recorder.canSave else { return }
+        guard !isSaving, recorder.canSave, let startedAt = recorder.sessionStartedAt else { return }
         isSaving = true
-        defer { isSaving = false }
         do {
             try model.addPhoneTrackedWorkout(
                 sportId: selectedSport,
                 sportTitle: sportTitle,
-                startedAt: Date().addingTimeInterval(-Double(recorder.elapsedSeconds)),
+                startedAt: startedAt,
                 durationSeconds: recorder.elapsedSeconds,
                 distanceKm: recorder.distanceMeters / 1_000,
                 routeCoordinates: recorder.coordinates,
@@ -370,6 +370,7 @@ struct TempoPhoneTrackerScreen: View {
             )
             dismiss()
         } catch {
+            isSaving = false
             recorder.report(error.localizedDescription.tempoLocalized)
         }
     }

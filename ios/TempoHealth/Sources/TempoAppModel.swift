@@ -785,10 +785,11 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             healthError = "Apple Sağlık eşitlemesi için önce Tempo hesabına giriş yap."
             return
         }
-        guard healthStore.isAvailable, !isHealthSyncing else {
+        guard healthStore.isAvailable else {
             healthError = "Apple Sağlık bu cihazda kullanılamıyor."
             return
         }
+        guard !isHealthSyncing else { return }
         isHealthSyncing = true
         let generation = UUID()
         healthGeneration = generation

@@ -1184,7 +1184,6 @@ private struct ManualWorkoutForm: View {
 
     @MainActor
     private func saveWorkout() async {
-        defer { isSaving = false }
         do {
             try await model.addManualWorkout(
                 sportId: sportId,
@@ -1200,6 +1199,7 @@ private struct ManualWorkoutForm: View {
             )
             dismiss()
         } catch {
+            isSaving = false
             errorTitle = "Antrenman kaydedilemedi"
             errorMessage = error.localizedDescription.tempoLocalized
             showingError = true
