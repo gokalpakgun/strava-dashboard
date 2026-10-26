@@ -125,11 +125,17 @@ private struct TempoMainTab: Identifiable {
     ]
 }
 
+private struct TempoChatTabBarPreference: PreferenceKey {
+    static var defaultValue: Bool { false }
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
 private struct TempoMainShell: View {
     @Binding var selectedTab: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var notifications = TempoNotifications.shared
     @State private var presentedRoute: NotificationRoute?
+    @State private var hidesTabBarForChat = false
     private struct NotificationRoute: Identifiable { let id: String }
 
     @ViewBuilder
@@ -159,11 +165,14 @@ private struct TempoMainShell: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                TempoGlassTabBar(selectedTab: $selectedTab)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
+                if !hidesTabBarForChat {
+                    TempoGlassTabBar(selectedTab: $selectedTab)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, 6)
+                }
             }
+        .onPreferenceChange(TempoChatTabBarPreference.self) { hidesTabBarForChat = $0 }
         .onChange(of: notifications.route, initial: true) { _, nextRoute in
             guard let route = nextRoute else { return }
             switch route {
@@ -516,6 +525,7 @@ private struct HomeScreen: View {
                 AppleHealthHomeCard(balance: model.tempoBalance, connected: model.healthSyncEnabled)
                 SectionHeading(title: "Bu hafta", caption: "TEMPO + APPLE SAĞLIK", padding: false)
                 weeklyMetrics
+                if let error = model.manualWorkoutError { Text(error).font(.footnote).foregroundStyle(TempoTheme.orange) }
                 HomeMovementMenuCard()
                 NavigationLink(destination: MonthlyStatsScreen()) {
                     Label("Aylık ilerlemeni gör", systemImage: "chart.bar.xaxis").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, alignment: .leading)
@@ -819,6 +829,7 @@ private struct DailyMotivationCard: View {
 private struct ActivitiesScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @State private var search = ""
+    @State private var deletionError: String?
     @State private var selectedFilter = ActivityTimelineFilter.all
     @State private var isShowingManualWorkoutForm = false
     @State private var isShowingPhoneTracker = false
@@ -857,6 +868,9 @@ private struct ActivitiesScreen: View {
                     }
                     Text("Toplamlar Tempo ve Apple Sağlık kayıtlarını içerir. Aynı antrenmanın farklı kaynaklardaki kopyaları birleştirilir.").font(.caption2).foregroundStyle(TempoTheme.secondary)
                 }
+                if let error = model.manualWorkoutError {
+                    Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if let error = model.healthWorkoutError {
                     Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -874,7 +888,10 @@ private struct ActivitiesScreen: View {
                 SectionHeading(title: "Antrenmanların", caption: "TEMPO + APPLE SAĞLIK", padding: false)
                 ForEach(localRecords) { workout in
                     ManualWorkoutRow(workout: workout).accessibilityIdentifier("workout.record.\(workout.sportId)").contextMenu {
-                        if workout.isLocalRecord { Button(role: .destructive) { model.deleteManualWorkout(workout) } label: { Label("Antrenmanı sil", systemImage: "trash") } }
+                        if workout.isLocalRecord { Button(role: .destructive) {
+                            do { try model.deleteManualWorkout(workout) }
+                            catch { deletionError = error.localizedDescription.tempoLocalized }
+                        } label: { Label("Antrenmanı sil", systemImage: "trash") } }
                     }
                 }
                 if localRecords.isEmpty { EmptyCard(icon: "figure.run", text: "Bu filtrede Tempo veya Apple Sağlık antrenmanı yok.") }
@@ -889,6 +906,9 @@ private struct ActivitiesScreen: View {
                 } else { StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Bağladığında Strava kayıtlarını burada ayrı kaynak etiketiyle görebilirsin.") }
             }.refreshable { await model.reloadAll() }
             .toolbar(.hidden, for: .navigationBar)
+            .alert("Antrenman silinemedi".tempoLocalized, isPresented: Binding(get: { deletionError != nil }, set: { if !$0 { deletionError = nil } })) {
+                Button("Tamam") { deletionError = nil }
+            } message: { Text(deletionError ?? "") }
             .sheet(isPresented: $isShowingManualWorkoutForm) { ManualWorkoutForm() }
             .sheet(isPresented: $isShowingPhoneTracker) { TempoPhoneTrackerScreen() }
         }
@@ -900,6 +920,7 @@ private struct TempoWorkoutHistoryScreen: View {
     var body: some View {
         TempoPage {
             PageTitle(title: "Antrenman geçmişi", subtitle: "TEMPO + APPLE SAĞLIK")
+            if let error = model.manualWorkoutError { Text(error).font(.footnote).foregroundStyle(TempoTheme.orange) }
             ForEach(model.activityWorkouts) { workout in ManualWorkoutRow(workout: workout) }
             if model.activityWorkouts.isEmpty { EmptyCard(icon: "figure.run", text: "Henüz antrenman kaydı yok.") }
         }.navigationTitle("Antrenman geçmişi").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
@@ -1846,35 +1867,36 @@ struct CoachScreen: View {
     var body: some View {
         ZStack {
             TempoAmbientBackground()
-            VStack(spacing: 0) {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        PageTitle(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet asistanın")
-                        if messages.isEmpty { welcome }
-                        ForEach(messages) { message in
-                            chatBubble(message).id(message.id.uuidString)
-                        }
-                        if isSending {
-                            HStack(spacing: 10) {
-                                ProgressView().tint(TempoTheme.green)
-                                Text("Tempo Koç düşünüyor…").font(.caption).foregroundStyle(TempoTheme.secondary)
-                            }.padding(14).accessibilityIdentifier("coach.loading")
-                        }
-                        if let errorMessage {
-                            Label(errorMessage, systemImage: "wifi.exclamationmark")
-                                .font(.footnote).foregroundStyle(TempoTheme.orange)
-                                .padding(14).accessibilityIdentifier("coach.error")
-                        }
-                        Color.clear.frame(height: 1).id("coach-bottom")
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    PageTitle(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet asistanın")
+                    privacyControls
+                    if messages.isEmpty { welcome }
+                    ForEach(messages) { message in
+                        chatBubble(message).id(message.id.uuidString)
                     }
-                    .scrollTargetLayout()
-                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+                    if isSending {
+                        HStack(spacing: 10) {
+                            ProgressView().tint(TempoTheme.green)
+                            Text("Tempo Koç düşünüyor…").font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }.padding(14).accessibilityIdentifier("coach.loading")
+                    }
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.bubble")
+                            .font(.footnote).foregroundStyle(TempoTheme.orange)
+                            .padding(14).accessibilityIdentifier("coach.error")
+                    }
+                    Color.clear.frame(height: 1).id("coach-bottom")
                 }
-                .scrollPosition(id: $scrollTarget, anchor: .bottom)
-                .scrollDismissesKeyboard(.interactively)
-                composer
+                .scrollTargetLayout()
+                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
             }
+            .scrollPosition(id: $scrollTarget, anchor: .bottom)
+            .scrollDismissesKeyboard(.interactively)
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+        .preference(key: TempoChatTabBarPreference.self, value: true)
+        .toolbar(.visible, for: .navigationBar)
         .navigationTitle("Tempo Koç").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -1901,7 +1923,7 @@ struct CoachScreen: View {
                 }
             }
             ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
-                Button { send(suggestion) } label: {
+                Button { send(suggestion.tempoLocalized) } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "arrow.up.left").font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
                         Text(suggestion.tempoLocalized).font(.subheadline).foregroundStyle(.white.opacity(0.9))
@@ -1912,25 +1934,29 @@ struct CoachScreen: View {
         }
     }
 
+    private var privacyControls: some View {
+        DisclosureGroup("Sohbet gizliliği") {
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Apple Sağlık özetimi kullan", isOn: $includeHealth)
+                    .font(.subheadline).tint(TempoTheme.green)
+                    .disabled(!model.healthSyncEnabled || isSending)
+                Text((model.healthSyncEnabled ? "Yalnızca bu sohbet isteğinde paylaşılır." : "Kişisel sağlık ölçüsü eklemek için önce Apple Sağlık’ı bağla.").tempoLocalized)
+                    .font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text("Kapalıyken Apple Sağlık verin gönderilmez. Sohbet geçmişi sunucuda saklanmaz. Strava verileri bu asistana aktarılmaz.")
+                    .font(.caption2).foregroundStyle(TempoTheme.secondary)
+            }.padding(.top, 8)
+        }.font(.caption.weight(.medium)).tint(TempoTheme.secondary)
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DisclosureGroup("Sohbet gizliliği") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle("Apple Sağlık özetimi kullan", isOn: $includeHealth)
-                        .font(.subheadline).tint(TempoTheme.green)
-                        .disabled(!model.healthSyncEnabled || isSending)
-                    Text((model.healthSyncEnabled ? "Yalnızca bu sohbet isteğinde paylaşılır." : "Kişisel sağlık ölçüsü eklemek için önce Apple Sağlık’ı bağla.").tempoLocalized)
-                        .font(.caption).foregroundStyle(TempoTheme.secondary)
-                    Text("Kapalıyken Apple Sağlık verin gönderilmez. Sohbet geçmişi sunucuda saklanmaz. Strava verileri bu asistana aktarılmaz.")
-                        .font(.caption2).foregroundStyle(TempoTheme.secondary)
-                }.padding(.top, 8)
-            }.font(.caption.weight(.medium)).tint(TempoTheme.secondary)
             HStack(alignment: .bottom, spacing: 9) {
                 TextField("Tempo Koç’a bir şey sor…".tempoLocalized, text: $draft, axis: .vertical)
                     .lineLimit(1...4).focused($composerFocused)
                     .padding(.horizontal, 14).padding(.vertical, 12)
                     .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
                     .accessibilityIdentifier("coach.draft")
+                    .submitLabel(.send)
                     .onSubmit { send() }
                 Button { send() } label: {
                     Image(systemName: "arrow.up").font(.headline.bold())
@@ -1977,7 +2003,7 @@ struct CoachScreen: View {
         scrollTarget = nil
     }
     private func send(_ suggested: String? = nil) {
-        let text = (suggested?.tempoLocalized ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (suggested ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.utf16.count <= 1_500, !isSending, !model.isCoachLoading else { return }
         // Lock synchronously, before creating a Task. Button taps and keyboard
         // submission in the same run-loop turn cannot enqueue duplicate calls.
@@ -1989,8 +2015,7 @@ struct CoachScreen: View {
         let updated = Array((previous + [TempoCoachMessage(role: "user", content: text)]).suffix(12))
         let shareHealth = includeHealth && model.healthSyncEnabled
         messages = updated
-        draft = ""
-        composerFocused = false
+        if suggested == nil || draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { draft = "" }
         scrollTarget = "coach-bottom"
         requestTask = Task { @MainActor in
             defer {
@@ -2005,7 +2030,7 @@ struct CoachScreen: View {
             } catch {
                 guard requestID == id, !Task.isCancelled, (error as? URLError)?.code != .cancelled else { return }
                 messages = previous
-                draft = text
+                if draft.isEmpty { draft = text }
                 errorMessage = "Yanıt alınamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
             }
         }

@@ -23,6 +23,10 @@ struct SportsHubScreen: View {
                     VStack(alignment: .leading, spacing: 16) {
                         sportsHeader
 
+                        if let error = model.manualWorkoutError {
+                            Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
                         if let error = model.healthWorkoutError {
                             Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
                                 .frame(maxWidth: .infinity, alignment: .leading)

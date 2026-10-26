@@ -19,6 +19,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var healthWorkouts: [TempoManualWorkout] = []
     @Published private(set) var healthWorkoutError: String?
     @Published private(set) var manualWorkouts: [TempoManualWorkout] = []
+    @Published private(set) var manualWorkoutError: String?
     @Published private(set) var healthLastSync: Date?
     @Published private(set) var healthError: String?
     @Published private(set) var dashboard: TempoDashboard?
@@ -54,6 +55,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         configuration.timeoutIntervalForResource = 30
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpAdditionalHeaders = ["Accept": "application/json"]
+        return URLSession(configuration: configuration)
+    }()
+    // Model inference can exceed the dashboard's 30-second resource limit.
+    // This remains cancellable and does not hold offline requests indefinitely.
+    private static let coachSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 90
+        configuration.timeoutIntervalForResource = 100
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: configuration)
     }()
     // Strava permits only a short-lived cache. A one-day local window also
@@ -229,7 +240,12 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 Task { await syncAppleHealth() }
             }
         }
-        manualWorkouts = accountId.map(Self.loadManualWorkouts) ?? []
+        manualWorkouts = []
+        manualWorkoutError = nil
+        if let accountId {
+            do { manualWorkouts = try Self.loadManualWorkouts(accountId: accountId) }
+            catch { manualWorkoutError = "Kayıtlı antrenmanlar okunamadı. Verilerini korumak için kayıt dosyası değiştirilmedi.".tempoLocalized }
+        }
 #if DEBUG && targetEnvironment(simulator)
         if accountId == "ui-test-account", ProcessInfo.processInfo.arguments.contains("--ui-testing-workout-ledger") { seedWorkoutLedgerForUITesting() }
 #endif
@@ -305,6 +321,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         guard activeTempoAccountId == accountId, accountAccessToken == accountToken else {
             throw APIError.server("Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi.")
         }
+        try ensureManualWorkoutsLoaded(accountId: accountId)
         // Personal notes may be saved without a sensor. That is a self-reported
         // record, never proof of exercise and never input to server challenge scores.
         let directory = Self.manualWorkoutDirectory(accountId: accountId)
@@ -360,6 +377,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         guard let accountId = activeTempoAccountId, !accountId.isEmpty else {
             throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
         }
+        try ensureManualWorkoutsLoaded(accountId: accountId)
         let safeSeconds = min(max(durationSeconds, 1), 24 * 60 * 60)
         let cleanRoute = TempoCoordinate.compacted(routeCoordinates.filter {
             $0.latitude.isFinite && $0.longitude.isFinite
@@ -394,17 +412,27 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         manualWorkouts = updated
     }
 
-    func deleteManualWorkout(_ workout: TempoManualWorkout) {
-        guard let accountId = activeTempoAccountId else { return }
-        let updated = manualWorkouts.filter { $0.id != workout.id }
+    func deleteManualWorkout(_ workout: TempoManualWorkout) throws {
+        guard let accountId = activeTempoAccountId else {
+            throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
+        }
+        try ensureManualWorkoutsLoaded(accountId: accountId)
+        guard let stored = manualWorkouts.first(where: { $0.id == workout.id }), stored.isLocalRecord else { return }
+        let updated = manualWorkouts.filter { $0.id != stored.id }
+        try Self.saveManualWorkouts(updated, accountId: accountId)
+        manualWorkouts = updated
+        if let filename = stored.photoFilename {
+            try? FileManager.default.removeItem(at: Self.manualWorkoutDirectory(accountId: accountId).appendingPathComponent(filename))
+        }
+    }
+
+    private func ensureManualWorkoutsLoaded(accountId: String) throws {
+        guard manualWorkoutError != nil else { return }
         do {
-            try Self.saveManualWorkouts(updated, accountId: accountId)
-            if let filename = workout.photoFilename {
-                try? FileManager.default.removeItem(at: Self.manualWorkoutDirectory(accountId: accountId).appendingPathComponent(filename))
-            }
-            manualWorkouts = updated
+            manualWorkouts = try Self.loadManualWorkouts(accountId: accountId)
+            manualWorkoutError = nil
         } catch {
-            status = "Antrenman silinemedi: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
+            throw APIError.server("Kayıtlı antrenmanlar okunamadı. Verilerini korumak için kayıt dosyası değiştirilmedi.")
         }
     }
 
@@ -552,6 +580,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func reloadAll() async {
+        if let accountId = activeTempoAccountId { try? ensureManualWorkoutsLoaded(accountId: accountId) }
         async let dashboardRefresh: Void = refreshDashboard()
         if healthSyncEnabled {
             async let healthRefresh: Void = syncAppleHealth()
@@ -1036,7 +1065,19 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             messages: messages.map { SportsChatTurn(role: $0.role, content: $0.content) },
             includeHealth: includeHealth && healthSyncEnabled
         ))
-        let (data, response) = try await Self.apiSession.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await Self.coachSession.data(for: request) }
+        catch let error as URLError {
+            if error.code == .cancelled { throw error }
+            if error.code == .timedOut {
+                throw APIError.server("Yanıt gecikti. Sorunu yeniden gönderebilirsin.")
+            }
+            if [.notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost].contains(error.code) {
+                throw APIError.server("Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.")
+            }
+            throw error
+        }
         try Task.checkCancellation()
         guard coachGeneration == generation, activeTempoAccountId == accountId, self.accountAccessToken == accountAccessToken else {
             throw APIError.server("Tempo hesabı değişti. Koç yanıtı bu ekranda gösterilmedi.")
@@ -1118,6 +1159,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
         activeTempoAccountId = nil
         lastManualWorkoutAccountId = nil
+        manualWorkoutError = nil
         manualWorkouts = []
         SecureTokenStore.delete()
         accessToken = nil
@@ -1151,9 +1193,11 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             .appendingPathComponent(digest, isDirectory: true)
     }
 
-    private static func loadManualWorkouts(accountId: String) -> [TempoManualWorkout] {
+    private static func loadManualWorkouts(accountId: String) throws -> [TempoManualWorkout] {
         let url = manualWorkoutDirectory(accountId: accountId).appendingPathComponent("workouts.json")
-        guard let data = try? Data(contentsOf: url), let workouts = try? JSONDecoder().decode([TempoManualWorkout].self, from: data) else { return [] }
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        let data = try Data(contentsOf: url)
+        let workouts = try JSONDecoder().decode([TempoManualWorkout].self, from: data)
         return workouts.sorted { $0.startedAt > $1.startedAt }
     }
 

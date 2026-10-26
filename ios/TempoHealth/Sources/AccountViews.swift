@@ -794,6 +794,9 @@ struct AccountProfileCard: View {
 struct TempoProfileShareScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
     @State private var isSaving = false
+    @State private var saveTask: Task<Void, Never>?
+    @State private var saveID: UUID?
+    @State private var photoPermissionDenied = false
     @State private var shareURL: URL?
     @State private var showShareSheet = false
     @State private var notice = ""
@@ -836,17 +839,31 @@ struct TempoProfileShareScreen: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(TempoSecondaryButtonStyle())
-                .disabled(account.profile == nil)
+                .disabled(isSaving || showShareSheet || account.profile == nil)
             }
 
+            if photoPermissionDenied {
+                Button("iPhone Ayarları’nı aç") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }.buttonStyle(TempoSecondaryButtonStyle())
+            }
             if !notice.isEmpty {
-                Text(notice).font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text(notice.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .navigationTitle("Profil kartı").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .sheet(isPresented: $showShareSheet, onDismiss: removeTemporaryShareFile) {
             if let shareURL { TempoProfileActivitySheet(items: [shareURL]) }
+        }
+        .onChange(of: account.profile?.id) { _, _ in
+            cancelSave()
+            showShareSheet = false
+            removeTemporaryShareFile()
+        }
+        .onDisappear {
+            cancelSave()
+            if !showShareSheet { removeTemporaryShareFile() }
         }
     }
 
@@ -860,35 +877,55 @@ struct TempoProfileShareScreen: View {
 
     @MainActor
     private func saveToPhotos() {
-        guard !isSaving, let imageData = renderedPNG(), let image = UIImage(data: imageData) else {
+        guard !isSaving else { return }
+        guard let owner = account.profile?.id, let imageData = renderedPNG() else {
             notice = "Profil kartı oluşturulamadı. Tekrar deneyebilirsin."
             return
         }
+        let operation = UUID()
+        saveID = operation
         isSaving = true
+        photoPermissionDenied = false
         notice = ""
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            guard status == .authorized || status == .limited else {
-                DispatchQueue.main.async {
-                    isSaving = false
-                    notice = status == .denied || status == .restricted
-                        ? "Fotoğraflar’a ekleme izni kapalı. iPhone Ayarları’ndan izin verebilirsin."
-                        : "Fotoğraflar izni alınamadı."
-                }
+        saveTask = Task { @MainActor in
+            defer {
+                if saveID == operation { isSaving = false; saveTask = nil; saveID = nil }
+            }
+            let permission = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard !Task.isCancelled, saveID == operation, account.profile?.id == owner else { return }
+            guard permission == .authorized || permission == .limited else {
+                photoPermissionDenied = permission == .denied || permission == .restricted
+                notice = photoPermissionDenied
+                    ? "Fotoğraflar’a ekleme izni kapalı. iPhone Ayarları’ndan izin verebilirsin."
+                    : "Fotoğraflar izni alınamadı."
                 return
             }
-            PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.creationRequestForAsset(from: image)
-            } completionHandler: { success, error in
-                DispatchQueue.main.async {
-                    isSaving = false
-                    notice = success ? "Profil kartı PNG olarak Fotoğraflar’a kaydedildi." : "Fotoğraf kaydedilemedi: %@".tempoFormatted(error?.localizedDescription ?? "Bilinmeyen hata")
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    let options = PHAssetResourceCreationOptions()
+                    options.originalFilename = "Tempo-Profil.png"
+                    PHAssetCreationRequest.forAsset().addResource(with: .photo, data: imageData, options: options)
                 }
+                guard !Task.isCancelled, saveID == operation, account.profile?.id == owner else { return }
+                notice = "Profil kartı PNG olarak Fotoğraflar’a kaydedildi."
+            } catch {
+                guard !Task.isCancelled, saveID == operation, account.profile?.id == owner else { return }
+                notice = "Fotoğraf kaydedilemedi: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
             }
         }
     }
 
+    private func cancelSave() {
+        saveID = nil
+        saveTask?.cancel()
+        saveTask = nil
+        isSaving = false
+    }
+
     @MainActor
     private func prepareShare() {
+        guard !isSaving, !showShareSheet else { return }
+        removeTemporaryShareFile()
         guard let data = renderedPNG() else {
             notice = "Profil kartı oluşturulamadı. Tekrar deneyebilirsin."
             return

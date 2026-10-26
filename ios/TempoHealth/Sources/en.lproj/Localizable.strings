@@ -1419,3 +1419,21 @@
 
 "Harita kaynaklarına ulaşılamadı. İnternetini kontrol edip tekrar dene." = "Could not reach the map services. Check your connection and try again.";
 "Bazı harita kaynakları yüklenemedi. Bulunan yerleri gösteriyoruz." = "Some map services could not load. Available places are shown.";
+
+"Kayıtlı antrenmanlar okunamadı. Verilerini korumak için kayıt dosyası değiştirilmedi." = "Saved workouts could not be read. The recording file was left unchanged to protect your data.";
+"Antrenman silinemedi" = "Could not delete workout";
+
+"Yanıt gecikti. Sorunu yeniden gönderebilirsin." = "The response took too long. You can send your question again.";
+
+"Aktiviteler" = "Activities";
+"Su" = "Water";
+"En uzun seans" = "Longest session";
+"Zorluk" = "Effort";
+"Keyif" = "Enjoyment";
+"Doğa Yürüyüşü" = "Hiking";
+"Strava bağlantısı bu Tempo hesabına ait değil." = "This Strava connection does not belong to this Tempo account.";
+"Strava’yı bağlamak için önce Tempo hesabına giriş yap." = "Sign in to your Tempo account before connecting Strava.";
+"Strava bağlantı bilgisi veya Tempo oturumu doğrulanamadı. Yeniden dene." = "Could not verify the Strava connection or Tempo session. Try connecting again.";
+"Tempo hesabından çıkış yapıldı." = "Signed out of Tempo.";
+"Tempo hesabı silindi." = "Your Tempo account was deleted.";
+"Strava bağlantısı Tempo hesabından yenileniyor…" = "Restoring your Strava connection from your Tempo account…";

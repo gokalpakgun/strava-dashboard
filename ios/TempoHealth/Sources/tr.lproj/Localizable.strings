@@ -894,3 +894,21 @@
 
 "Harita kaynaklarına ulaşılamadı. İnternetini kontrol edip tekrar dene." = "Harita kaynaklarına ulaşılamadı. İnternetini kontrol edip tekrar dene.";
 "Bazı harita kaynakları yüklenemedi. Bulunan yerleri gösteriyoruz." = "Bazı harita kaynakları yüklenemedi. Bulunan yerleri gösteriyoruz.";
+
+"Kayıtlı antrenmanlar okunamadı. Verilerini korumak için kayıt dosyası değiştirilmedi." = "Kayıtlı antrenmanlar okunamadı. Verilerini korumak için kayıt dosyası değiştirilmedi.";
+"Antrenman silinemedi" = "Antrenman silinemedi";
+
+"Yanıt gecikti. Sorunu yeniden gönderebilirsin." = "Yanıt gecikti. Sorunu yeniden gönderebilirsin.";
+
+"Aktiviteler" = "Aktiviteler";
+"Su" = "Su";
+"En uzun seans" = "En uzun seans";
+"Zorluk" = "Zorluk";
+"Keyif" = "Keyif";
+"Doğa Yürüyüşü" = "Doğa Yürüyüşü";
+"Strava bağlantısı bu Tempo hesabına ait değil." = "Strava bağlantısı bu Tempo hesabına ait değil.";
+"Strava’yı bağlamak için önce Tempo hesabına giriş yap." = "Strava’yı bağlamak için önce Tempo hesabına giriş yap.";
+"Strava bağlantı bilgisi veya Tempo oturumu doğrulanamadı. Yeniden dene." = "Strava bağlantı bilgisi veya Tempo oturumu doğrulanamadı. Yeniden dene.";
+"Tempo hesabından çıkış yapıldı." = "Tempo hesabından çıkış yapıldı.";
+"Tempo hesabı silindi." = "Tempo hesabı silindi.";
+"Strava bağlantısı Tempo hesabından yenileniyor…" = "Strava bağlantısı Tempo hesabından yenileniyor…";
