@@ -120,3 +120,13 @@ Build 40324756292 (#46) was verified already cancelled. No new workflow, simulat
 - Profile-card gallery export submits the original PNG bytes through PhotoKit's resource API rather than handing over a UIImage for implicit re-encoding. Permission denial offers Settings, asynchronous completion belongs to its original screen/account and share actions guard against duplicate temporary files.
 - An unreadable saved-workout file is no longer silently treated as a new empty collection that can overwrite existing records. Its error remains visible, saving/deletion retries the read and proceeds only when successful, and the previous file is preserved on failure. Workout deletion errors are now surfaced in Activities.
 - Static JavaScript syntax, source declaration inventory, localization keys and diff integrity were checked. No full tests, simulator run, native iOS build or TestFlight upload was started. Native layout/export behavior remains for the user's device review.
+
+## 27 October: challenge responses and cancelled connection restores
+
+The production challenge configuration issue was resolved separately by replacing the invalid moderation administration token; the safety gate remains enabled. A targeted live flow using two disposable accounts passed signup, friendship, challenge creation (201), receipt and acceptance (200), and account cleanup. Credentials and the token value are absent from this report and Git.
+
+The native follow-up consumes the challenge object returned by accept/decline/sharing mutations and retains it until the read snapshot agrees with the user's new state. A stale snapshot cannot revert a successful acceptance or sharing choice. Declined invitations remain hidden as in the server list, local responses are deduplicated, and blocking someone clears associated local overlays before refreshing. New text typed while a previous friend/challenge request is in flight is preserved rather than cleared by that previous request's success.
+
+Strava restore attempts now have request ownership. Concurrent callers do not unlock an active restore, cancellation clears its attempt flag for a later foreground retry, renewed Tempo tokens permit a fresh restore, and choosing to skip Strava invalidates an outstanding restore response. Existing OAuth and disconnect generation checks remain intact.
+
+The user-triggered build 40414108075 succeeded on c5f7885. The newer native changes above received static source/diff review only; no new build, full test suite, simulator run or TestFlight upload was started. No feature or destination was removed.

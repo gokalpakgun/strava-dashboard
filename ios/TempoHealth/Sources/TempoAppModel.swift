@@ -37,6 +37,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var pendingOAuthAccountId: String?
     private var isCompletingAuthorization = false
     private var hasAttemptedAccountRestore = false
+    private var connectionRestoreID: UUID?
     private var accountAccessToken: String?
     private var activeTempoAccountId: String?
     private var lastManualWorkoutAccountId: String?
@@ -98,11 +99,16 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             return
         }
         if activeTempoAccountId != accountId { setTempoAccount(accountId) }
+        if accountAccessToken != accountToken {
+            connectionRestoreID = nil
+            hasAttemptedAccountRestore = false
+        }
         accountAccessToken = accountToken
         if healthSyncEnabled, accountToken != nil, activeTempoAccountId != nil {
             startHealthObservers()
             Task { await syncAppleHealth() }
         }
+        guard connectionRestoreID == nil else { return }
         guard !hasAttemptedAccountRestore else {
             isRestoringConnection = false
             return
@@ -120,6 +126,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
         hasAttemptedAccountRestore = true
         let generation = connectionGeneration
+        let restoringID = UUID()
+        connectionRestoreID = restoringID
+        defer {
+            if connectionRestoreID == restoringID {
+                connectionRestoreID = nil
+                isRestoringConnection = false
+                if Task.isCancelled { hasAttemptedAccountRestore = false }
+            }
+        }
         let hadLocalToken = accessToken != nil
         isRestoringConnection = !hadLocalToken
 
@@ -133,7 +148,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             }
 
             let (data, response) = try await Self.apiSession.data(for: request)
-            guard !Task.isCancelled, connectionGeneration == generation,
+            guard !Task.isCancelled, connectionRestoreID == restoringID, connectionGeneration == generation,
                   activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             guard let http = response as? HTTPURLResponse else {
                 throw APIError.server("Sunucudan yanıt alınamadı.")
@@ -186,7 +201,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
             throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
         } catch {
-            guard !Task.isCancelled, connectionGeneration == generation,
+            guard !Task.isCancelled, connectionRestoreID == restoringID, connectionGeneration == generation,
                   activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             isRestoringConnection = false
             hasAttemptedAccountRestore = false
@@ -438,6 +453,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     private func invalidateConnectionOperations() {
         connectionGeneration = UUID()
+        connectionRestoreID = nil
         authorizationID = nil
         webAuthSession?.cancel()
         webAuthSession = nil
@@ -459,6 +475,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         let authID = UUID()
         authorizationID = authID
         connectionGeneration = UUID()
+        connectionRestoreID = nil
         let generation = connectionGeneration
         webAuthSession?.cancel()
 
@@ -512,6 +529,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     func skipStravaForNow() {
         guard accessToken == nil else { return }
+        connectionRestoreID = nil
         UserDefaults.standard.set(true, forKey: Self.stravaSkippedKey)
         isRestoringConnection = false
         hasAttemptedAccountRestore = true
@@ -1095,6 +1113,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     func disconnect() {
         guard !isBusy, let accountId = activeTempoAccountId else { return }
         connectionGeneration = UUID()
+        connectionRestoreID = nil
         let generation = connectionGeneration
         let token = accessToken
         isBusy = true

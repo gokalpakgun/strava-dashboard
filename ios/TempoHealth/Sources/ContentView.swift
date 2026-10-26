@@ -2074,7 +2074,7 @@ struct SocialScreen: View {
     private var challenges: [TempoSocialChallenge] {
         var seen = Set<String>()
         return (createdChallenges + (snapshot?.challenges ?? [])).filter {
-            seen.insert($0.id).inserted && (TempoFormat.date(from: $0.endsAt) ?? .distantPast) > Date()
+            seen.insert($0.id).inserted && $0.myStatus != "declined" && (TempoFormat.date(from: $0.endsAt) ?? .distantPast) > Date()
         }
     }
     private var featuredChallenges: [TempoSocialChallenge] {
@@ -2431,8 +2431,12 @@ struct SocialScreen: View {
             guard !Task.isCancelled, refreshGeneration == generation else { return }
             snapshot = updated
             selectedFriends.formIntersection(Set(snapshot?.friends.map(\.id) ?? []))
-            let confirmed = Set(snapshot?.challenges.map(\.id) ?? [])
-            createdChallenges.removeAll { confirmed.contains($0.id) }
+            let serverChallenges = snapshot?.challenges ?? []
+            createdChallenges.removeAll { local in
+                serverChallenges.contains { remote in
+                    remote.id == local.id && remote.myStatus == local.myStatus && remote.myShareHealth == local.myShareHealth
+                }
+            }
             if clearNotice { notice = "" }
         } catch {
             guard !Task.isCancelled, refreshGeneration == generation, !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
@@ -2444,8 +2448,9 @@ struct SocialScreen: View {
         guard !working else { return }
         working = true; defer { working = false }
         do {
-            let becameFriends = try await account.sendFriendRequest(username: username.trimmingCharacters(in: .whitespacesAndNewlines))
-            username = ""
+            let submittedUsername = username
+            let becameFriends = try await account.sendFriendRequest(username: submittedUsername.trimmingCharacters(in: .whitespacesAndNewlines))
+            if username == submittedUsername { username = "" }
             notice = (becameFriends ? "Karşılıklı istek eşleşti; artık arkadaşsınız." : "Arkadaşlık isteği gönderildi.").tempoLocalized
             await refresh(clearNotice: false)
         }
@@ -2463,28 +2468,44 @@ struct SocialScreen: View {
         guard !working else { return }
         working = true; defer { working = false }
         do {
-            let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let created = try await account.createSocialChallenge(title: name.isEmpty ? "Haftalık hareket".tempoLocalized : name, metric: metric, friendIds: Array(selectedFriends))
-            createdChallenges.insert(created, at: 0)
-            if createdChallenges.count > 40 { createdChallenges = Array(createdChallenges.prefix(40)) }
-            title = ""; selectedFriends.removeAll()
+            let submittedTitle = title
+            let submittedFriends = selectedFriends
+            let name = submittedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let created = try await account.createSocialChallenge(title: name.isEmpty ? "Haftalık hareket".tempoLocalized : name, metric: metric, friendIds: Array(submittedFriends))
+            retainChallengeResponse(created)
+            if title == submittedTitle { title = "" }
+            if selectedFriends == submittedFriends { selectedFriends.removeAll() }
             notice = "Mücadele daveti gönderildi. Arkadaşın kabul ettiğinde katılır.".tempoLocalized
             showChallengeFeedback = true
         } catch { notice = error.localizedDescription.tempoLocalized; showChallengeFeedback = true }
     }
 
+    private func retainChallengeResponse(_ challenge: TempoSocialChallenge) {
+        createdChallenges.removeAll { $0.id == challenge.id }
+        createdChallenges.insert(challenge, at: 0)
+        if createdChallenges.count > 40 { createdChallenges = Array(createdChallenges.prefix(40)) }
+    }
+
     private func updateChallenge(_ challenge: TempoSocialChallenge, action: String) async {
         guard !working else { return }
         working = true; defer { working = false }
-        do { try await account.respondToSocialChallenge(id: challenge.id, action: action); notice = "Yarışma davetin güncellendi.".tempoLocalized; await refresh(clearNotice: false) }
-        catch { notice = error.localizedDescription.tempoLocalized }
+        do {
+            let updated = try await account.respondToSocialChallenge(id: challenge.id, action: action)
+            retainChallengeResponse(updated)
+            notice = "Yarışma davetin güncellendi.".tempoLocalized
+            await refresh(clearNotice: false)
+        } catch { notice = error.localizedDescription.tempoLocalized }
     }
 
     private func shareHealth(_ challenge: TempoSocialChallenge, enabled: Bool) async {
         guard !working else { return }
         working = true; defer { working = false }
-        do { try await account.setSocialChallengeHealthSharing(id: challenge.id, enabled: enabled); notice = "Yarışma paylaşım tercihin kaydedildi.".tempoLocalized; await refresh(clearNotice: false) }
-        catch { notice = error.localizedDescription.tempoLocalized }
+        do {
+            let updated = try await account.setSocialChallengeHealthSharing(id: challenge.id, enabled: enabled)
+            retainChallengeResponse(updated)
+            notice = "Yarışma paylaşım tercihin kaydedildi.".tempoLocalized
+            await refresh(clearNotice: false)
+        } catch { notice = error.localizedDescription.tempoLocalized }
     }
 
     @ViewBuilder
@@ -2506,6 +2527,7 @@ struct SocialScreen: View {
         working = true; defer { working = false }
         do {
             try await account.setSocialBlock(userId: profile.id, blocked: blocked)
+            if blocked { createdChallenges.removeAll { $0.participants.contains(where: { $0.userId == profile.id }) } }
             notice = (blocked ? "Kullanıcı engellendi." : "Engel kaldırıldı.").tempoLocalized
             pendingBlockProfile = nil
             await refresh(clearNotice: false)

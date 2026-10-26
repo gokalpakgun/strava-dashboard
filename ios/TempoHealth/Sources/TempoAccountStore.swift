@@ -317,8 +317,10 @@ final class TempoAccountStore: ObservableObject {
         return try JSONDecoder().decode(SocialChallengeCreated.self, from: data).challenge
     }
 
-    func respondToSocialChallenge(id: String, action: String) async throws {
-        _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: action))
+    @discardableResult
+    func respondToSocialChallenge(id: String, action: String) async throws -> TempoSocialChallenge {
+        let data = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: action))
+        return try JSONDecoder().decode(SocialChallengeCreated.self, from: data).challenge
     }
 
     func setSocialBlock(userId: String, blocked: Bool) async throws {
@@ -333,8 +335,10 @@ final class TempoAccountStore: ObservableObject {
         _ = try await socialRequest(path: "/api/account/social/reports", method: "POST", body: SocialReportRequest(userId: nil, challengeId: id, category: category))
     }
 
-    func setSocialChallengeHealthSharing(id: String, enabled: Bool) async throws {
-        _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: "share", share: enabled))
+    @discardableResult
+    func setSocialChallengeHealthSharing(id: String, enabled: Bool) async throws -> TempoSocialChallenge {
+        let data = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: "share", share: enabled))
+        return try JSONDecoder().decode(SocialChallengeCreated.self, from: data).challenge
     }
 
     func restoreSessionIfNeeded() {
