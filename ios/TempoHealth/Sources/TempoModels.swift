@@ -212,6 +212,22 @@ struct TempoCoordinate: Codable, Equatable {
         self.startsNewSegment = startsNewSegment
     }
 
+    static func compacted(_ route: [TempoCoordinate], limit: Int = 12_000) -> [TempoCoordinate] {
+        let capacity = max(limit, 2)
+        guard route.count > capacity else { return route }
+        let step = Int(ceil(Double(route.count - 1) / Double(capacity - 1)))
+        var output: [TempoCoordinate] = []
+        var needsBreak = false
+        for (index, point) in route.enumerated() {
+            needsBreak = needsBreak || point.startsNewSegment == true
+            if index % step == 0 || index == route.count - 1 {
+                output.append(TempoCoordinate(latitude: point.latitude, longitude: point.longitude, startsNewSegment: needsBreak ? true : nil))
+                needsBreak = false
+            }
+        }
+        return output
+    }
+
     static func segments(_ route: [TempoCoordinate]) -> [[TempoCoordinate]] {
         var result: [[TempoCoordinate]] = []
         for point in route {

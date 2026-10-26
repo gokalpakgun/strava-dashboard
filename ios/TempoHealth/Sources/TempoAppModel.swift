@@ -237,6 +237,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     /// This display ledger stays on the device and is not used as Strava-derived
     /// input for coaching, competition, goals or achievement scoring.
+    var activityAccountID: String? { activeTempoAccountId }
+
     var activityWorkouts: [TempoManualWorkout] {
         let all = manualWorkouts + healthWorkouts
         let records = all.map { TempoWorkoutLedger.Record(id: $0.id, sportID: $0.sportId, startedAt: $0.startedAt, seconds: Double($0.durationSeconds ?? $0.durationMinutes * 60), distanceKm: $0.distanceKm, source: $0.recordSource ?? "manual") }
@@ -359,11 +361,11 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
         }
         let safeSeconds = min(max(durationSeconds, 1), 24 * 60 * 60)
-        let cleanRoute = Array(routeCoordinates.prefix(12_000)).filter {
+        let cleanRoute = TempoCoordinate.compacted(routeCoordinates.filter {
             $0.latitude.isFinite && $0.longitude.isFinite
                 && (-90...90).contains($0.latitude)
                 && (-180...180).contains($0.longitude)
-        }
+        })
         guard startedAt <= Date(), safeSeconds >= 1, distanceKm.isFinite, distanceKm >= 0, distanceKm <= 500 else {
             throw APIError.server("Kayıt süresi veya mesafe geçersiz.")
         }
@@ -577,14 +579,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             if retryDelays[attempt] > 0 {
                 do { try await Task.sleep(nanoseconds: retryDelays[attempt]) } catch { return }
             }
-            guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
+            guard !Task.isCancelled, dashboardGeneration == generation, activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
             var attemptDiagnostic: String?
             do {
                 var request = URLRequest(url: URL(string: "/api/mobile/dashboard", relativeTo: baseURL)!)
                 request.timeoutInterval = 30
                 request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                 let (data, response) = try await Self.apiSession.data(for: request)
-                guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
+                guard !Task.isCancelled, dashboardGeneration == generation, activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
                 attemptDiagnostic = Self.dashboardDiagnostic(http)
 
@@ -609,11 +611,12 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 return
             } catch {
                 guard !Task.isCancelled, (error as? URLError)?.code != .cancelled,
-                      activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
+                      dashboardGeneration == generation, activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
                 if attempt < retryDelays.count - 1, !(error is APIError), !(error is DecodingError) { continue }
                 dashboardError = error.localizedDescription.tempoLocalized
                 dashboardErrorDetails = attemptDiagnostic ?? Self.networkDiagnostic(error)
                 status = "Veriler yenilenemedi: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
+                return
             }
         }
     }

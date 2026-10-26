@@ -1336,8 +1336,12 @@ struct NearbyFacilitiesScreen: View {
                             Text(message.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
                             Spacer()
                             if searchModel.needsPermission {
-                                Button("İzin ver") { searchModel.requestLocation() }
+                                Button("İzin ver") { searchModel.requestLocation(openSettingsIfDenied: true) }
                                     .font(.caption.bold()).foregroundStyle(TempoTheme.green)
+                            } else if searchModel.searchFailed && !searchModel.isSearching, let selectedSport {
+                                Button("Tekrar dene") {
+                                    Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) }
+                                }.font(.caption.bold()).foregroundStyle(TempoTheme.green)
                             }
                         }
                         .padding(.horizontal, 18)
@@ -1406,6 +1410,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     @Published var message: String? = "Yakındaki spor alanlarını görmek için konum izni ver."
     @Published var region: MKCoordinateRegion?
     @Published var needsPermission = true
+    @Published private(set) var searchFailed = false
 
     var hasOpenStreetMapPlaces: Bool { places.contains { $0.source == .openStreetMap } }
 
@@ -1422,7 +1427,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
-    func requestLocation() {
+    func requestLocation(openSettingsIfDenied: Bool = false) {
         switch manager.authorizationStatus {
         case .notDetermined:
             needsPermission = true
@@ -1433,6 +1438,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         case .denied, .restricted:
             needsPermission = true
             message = "Konum izni kapalı. iPhone Ayarlar’dan Tempo için konuma izin verebilirsin."
+            if openSettingsIfDenied, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
         @unknown default:
             needsPermission = true
         }
@@ -1449,6 +1455,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         searchGeneration += 1
         let generation = searchGeneration
         isSearching = true
+        searchFailed = false
         message = nil
         let radiusMeters = max(5_000, min(radiusKm, 50) * 1_000)
         region = MKCoordinateRegion(
@@ -1470,13 +1477,15 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         // Show whichever provider returns first; a slow Apple Maps search
         // must not hide completed OpenStreetMap results (or the reverse).
         places = []
-        await withTaskGroup(of: [NearbyPlace].self) { group in
+        var providersSucceeded = true
+        await withTaskGroup(of: FacilitySearchBatch.self) { group in
             group.addTask { await self.searchAppleMaps(for: sport, location: location, radiusMeters: radiusMeters) }
             group.addTask { await self.searchOpenStreetMap(for: sport, location: location, radiusMeters: radiusMeters) }
             var results: [NearbyPlace] = []
             for await batch in group {
                 guard generation == searchGeneration, !Task.isCancelled else { group.cancelAll(); return }
-                results.append(contentsOf: batch.filter { $0.distanceMeters <= Double(radiusMeters) })
+                providersSucceeded = providersSucceeded && batch.succeeded
+                results.append(contentsOf: batch.places.filter { $0.distanceMeters <= Double(radiusMeters) })
                 places = Self.deduplicated(results)
                 if !places.isEmpty { message = "%d alan bulundu; diğer harita kaynakları taranıyor…".tempoFormatted(places.count) }
             }
@@ -1484,39 +1493,49 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         guard generation == searchGeneration else { return }
         isSearching = false
         guard !Task.isCancelled else { return }
+        guard providersSucceeded else {
+            searchFailed = true
+            message = places.isEmpty
+                ? "Harita kaynaklarına ulaşılamadı. İnternetini kontrol edip tekrar dene."
+                : "Bazı harita kaynakları yüklenemedi. Bulunan yerleri gösteriyoruz."
+            return
+        }
         resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), places: places)
         message = places.isEmpty
             ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
             : "%d alan bulundu · yakından uzağa sıralandı.".tempoFormatted(places.count)
     }
 
-    private func searchAppleMaps(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> [NearbyPlace] {
+    private func searchAppleMaps(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> FacilitySearchBatch {
         let searchRegion = MKCoordinateRegion(
             center: location.coordinate,
             latitudinalMeters: CLLocationDistance(radiusMeters * 2),
             longitudinalMeters: CLLocationDistance(radiusMeters * 2)
         )
-        return await withTaskGroup(of: [NearbyPlace].self, returning: [NearbyPlace].self) { group in
+        return await withTaskGroup(of: FacilitySearchBatch.self, returning: FacilitySearchBatch.self) { group in
             for query in sport.facilitySearchQueries {
                 group.addTask {
                     let request = MKLocalSearch.Request()
                     request.naturalLanguageQuery = query
                     request.region = searchRegion
                     request.resultTypes = .pointOfInterest
-                    guard let response = try? await MKLocalSearch(request: request).start() else { return [] }
-                    return response.mapItems.prefix(35).map { NearbyPlace($0, origin: location) }
+                    guard !Task.isCancelled, let response = try? await MKLocalSearch(request: request).start() else { return FacilitySearchBatch(places: [], succeeded: false) }
+                    return FacilitySearchBatch(places: response.mapItems.prefix(35).map { NearbyPlace($0, origin: location) }, succeeded: !Task.isCancelled)
                 }
             }
             var results: [NearbyPlace] = []
+            var succeeded = true
             for await batch in group {
-                results.append(contentsOf: batch)
+                if Task.isCancelled { group.cancelAll(); return FacilitySearchBatch(places: results, succeeded: false) }
+                results.append(contentsOf: batch.places)
+                succeeded = succeeded && batch.succeeded
             }
-            return Self.deduplicated(results)
+            return FacilitySearchBatch(places: Self.deduplicated(results), succeeded: succeeded)
         }
     }
 
-    private func searchOpenStreetMap(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> [NearbyPlace] {
-        guard !sport.openStreetMapSelectors.isEmpty else { return [] }
+    private func searchOpenStreetMap(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> FacilitySearchBatch {
+        guard !sport.openStreetMapSelectors.isEmpty else { return FacilitySearchBatch(places: [], succeeded: true) }
         let latitude = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), location.coordinate.latitude)
         let longitude = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), location.coordinate.longitude)
         let selectors = sport.openStreetMapSelectors
@@ -1529,7 +1548,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             "https://overpass-api.de/api/interpreter",
         ]
         for endpoint in endpoints {
-            guard !Task.isCancelled else { return [] }
+            guard !Task.isCancelled else { return FacilitySearchBatch(places: [], succeeded: false) }
             guard let url = URL(string: endpoint) else { continue }
             var components = URLComponents()
             components.queryItems = [URLQueryItem(name: "data", value: query)]
@@ -1543,14 +1562,14 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { continue }
                 let decoded = try JSONDecoder().decode(OpenStreetMapResponse.self, from: data)
-                return decoded.elements.prefix(160).compactMap {
+                return FacilitySearchBatch(places: decoded.elements.prefix(160).compactMap {
                     NearbyPlace(openStreetMapElement: $0, sportTitle: sport.title, origin: location)
-                }
+                }, succeeded: !Task.isCancelled)
             } catch {
                 continue
             }
         }
-        return []
+        return FacilitySearchBatch(places: [], succeeded: false)
     }
 
     private static func deduplicated(_ input: [NearbyPlace]) -> [NearbyPlace] {
@@ -1602,8 +1621,14 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         isSearching = false
+        searchFailed = true
         message = "Konum alınamadı. Konum servislerini kontrol edip yeniden deneyebilirsin."
     }
+}
+
+private struct FacilitySearchBatch: Sendable {
+    let places: [NearbyPlace]
+    let succeeded: Bool
 }
 
 private struct CachedFacilitySearch {

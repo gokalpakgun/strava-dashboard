@@ -1416,3 +1416,6 @@
 
 "Ölçüm dönemi: %@" = "Measurement period: %@";
 "Ölçüm dönemi: %@ – %@" = "Measurement period: %@ – %@";
+
+"Harita kaynaklarına ulaşılamadı. İnternetini kontrol edip tekrar dene." = "Could not reach the map services. Check your connection and try again.";
+"Bazı harita kaynakları yüklenemedi. Bulunan yerleri gösteriyoruz." = "Some map services could not load. Available places are shown.";

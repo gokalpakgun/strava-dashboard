@@ -82,3 +82,30 @@ The preceding user-triggered TestFlight run 40238498065 completed successfully. 
 ## Balance visibility correction requested by the user
 
 The previous freshness cutoff hid Tempo Balance for users whose latest available measurements were older than yesterday. This changed feature availability without being requested. The cutoff is removed: the original factor formulas, weights and available-history baseline are preserved, and the latest available measurements can produce the score again. Home, Health and balance details display a localized measurement date/range when inputs are from different dates or an earlier day. Missing measurements are still not fabricated. The independent Health read, sync and water-source bug fixes remain in place. No build or TestFlight upload was started.
+
+## Consolidated source audit — 26 October
+
+Scope: registration/login/reset/profile persistence, Strava authorization/restore/dashboard, phone/manual workout persistence and route display, weekly/monthly ledger summaries, Health read/sync/disconnect/scoring, Coach request/history lifecycle, friend/challenge actions, notifications/reminders and facility search. This is source review, not a claim of exhaustive runtime verification. Existing features and the no-measurement/no-score guard remain present.
+
+### Fixed in this consolidated pass
+
+- Notification binding, permission completion, inbox loading and APNs registration results now check their owning account/session. Account changes reset stale loading and error state without allowing old completions to unlock the new request. APNs writes remain serialized across accounts.
+- A new inbox event during an active load queues one follow-up refresh. Locally read notifications do not become unread again when an older server snapshot arrives. Achievement tracking checks the workout account and retains previously earned IDs through temporary empty loads.
+- Reminder scheduling is serialized and versioned. A late scheduling completion after logout or a preference change is removed before the latest preference is scheduled. Logout/account switch also clears pending achievement alerts. The APNs device token is retained as device identity, and registration is renewed at least daily while the app remains alive, matching the server record's finite lifetime.
+- Facility provider failures are distinguished from successful empty searches. Failed/partial results are not cached as a complete empty search for ten minutes. Existing partial places remain visible; localized error text and an explicit retry action are available. If location permission was denied, the explicit permission action opens iPhone settings instead of looping on the same denied request.
+- Strava dashboard cancellation/session-generation checks run before consuming a response. Terminal API/decode errors stop immediately; they no longer fall through into an unintended second attempt.
+- Phone routes longer than the existing 12,000-point storage budget are sampled across their whole duration instead of truncating the end. Endpoint and pause/gap boundary information are retained.
+
+### Reviewed paths retained from earlier fixes
+
+| Area | Source review outcome |
+| --- | --- |
+| Account/auth/profile | Session ownership, bounded transport, cancellation, password-reset endpoint and photo preparation/save gates retained. |
+| Manual/phone saving | Save locks, local unverified/timer labels, photo rollback, original start time and pause-safe GPS segments retained. |
+| Activity/Sports/week/month | Shared deduplicated local/Health ledger and sport-appropriate metrics retained. |
+| Apple Health | Independent workout/daily reads, coalesced refreshes, ordered disconnect cleanup and water-source ownership retained. A score still requires actual supported measurements. |
+| Coach | One owned request, bounded conversation, cancellation and account ownership retained; no Strava data added to Coach context. |
+| Friends/challenges | Shared social transport and response ownership retained; moderation is not bypassed. |
+| Branding/navigation | No menus, score rings, logos or existing feature destinations removed. |
+
+Build 40324756292 (#46) was verified already cancelled. No new workflow, simulator, full test suite or TestFlight upload was started. Static checks cover whitespace/diff integrity, retained Swift declarations and duplicate/missing localization keys. Physical-device and live-service behavior is not asserted from these checks.

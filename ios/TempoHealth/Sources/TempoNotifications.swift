@@ -93,7 +93,13 @@ final class TempoNotifications: ObservableObject {
     private var userId: String?
     private var accountToken: String?
     private var lastRegistration = ""
-    private var loading = false
+    private var lastRegistrationAt: Date?
+    private var sessionGeneration = UUID()
+    private var loadingID: UUID?
+    private var refreshAgain = false
+    private var locallyReadIDs = Set<String>()
+    private var reminderGeneration = UUID()
+    private var reminderTask: Task<Void, Never>?
     private var registering = false
     private var registerAgain = false
     private let center = UNUserNotificationCenter.current()
@@ -111,27 +117,44 @@ final class TempoNotifications: ObservableObject {
 
     func bind(account: TempoAccountStore) async {
         let next = account.profile?.id
+        let nextToken = account.authorizationToken
+        if userId != next || accountToken != nextToken {
+            sessionGeneration = UUID()
+            loadingID = nil
+            refreshAgain = false
+            busy = false
+            message = ""
+            lastRegistration = ""
+            lastRegistrationAt = nil
+            pushAvailable = false
+        }
         if userId != next {
             // Cancel the previous account's reminders before loading the next.
-            center.removePendingNotificationRequests(withIdentifiers: ["tempo.daily", "tempo.weekly"])
+            reminderGeneration = UUID()
+            center.removeAllPendingNotificationRequests()
             center.removeAllDeliveredNotifications()
             userId = next
             notices = []
             preferences = (UserDefaults.standard.data(forKey: preferenceKey).flatMap { try? JSONDecoder().decode(TempoNotificationPreferences.self, from: $0) }) ?? TempoNotificationPreferences()
             if let data = UserDefaults.standard.data(forKey: inboxKey), let cache = try? JSONDecoder().decode([TempoNotice].self, from: data) { notices = cache }
+            locallyReadIDs = Set(notices.filter(\.read).map(\.id))
             lastRegistration = ""
+            lastRegistrationAt = nil
             pushAvailable = false
         }
-        accountToken = account.authorizationToken
+        accountToken = nextToken
+        let generation = sessionGeneration
         await refreshPermission()
-        guard userId != nil, accountToken != nil else { return }
+        guard !Task.isCancelled, sessionGeneration == generation, userId == next, accountToken == nextToken, next != nil, nextToken != nil else { return }
         if allowed {
 #if !targetEnvironment(simulator)
             UIApplication.shared.registerForRemoteNotifications()
 #endif
             await registerDevice()
         }
+        guard !Task.isCancelled, sessionGeneration == generation else { return }
         await scheduleReminders()
+        guard !Task.isCancelled, sessionGeneration == generation else { return }
         await refresh()
     }
 
@@ -139,54 +162,89 @@ final class TempoNotifications: ObservableObject {
         authorization = await center.notificationSettings().authorizationStatus
     }
     func enable() async {
-        guard !busy else { return }
+        guard !busy, userId != nil, accountToken != nil else { return }
+        let generation = sessionGeneration
         busy = true
-        defer { busy = false }
+        defer { if sessionGeneration == generation { busy = false } }
         do {
             _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
             await refreshPermission()
+            guard !Task.isCancelled, sessionGeneration == generation else { return }
             if allowed {
 #if !targetEnvironment(simulator)
                 UIApplication.shared.registerForRemoteNotifications()
 #endif
                 await registerDevice(force: true)
+                guard !Task.isCancelled, sessionGeneration == generation else { return }
                 await scheduleReminders()
+                guard !Task.isCancelled, sessionGeneration == generation else { return }
                 message = "Bildirim tercihlerin kaydedildi.".tempoLocalized
             } else { message = "Bildirim iznini iPhone Ayarları’ndan açabilirsin.".tempoLocalized }
-        } catch { message = "Bildirim izni şu anda alınamadı. Tekrar deneyebilirsin.".tempoLocalized }
+        } catch {
+            guard !Task.isCancelled, sessionGeneration == generation else { return }
+            message = "Bildirim izni şu anda alınamadı. Tekrar deneyebilirsin.".tempoLocalized
+        }
     }
     func receivedDeviceToken(_ token: String) async {
         deviceToken = token
         await registerDevice()
     }
     func registrationFailed() {
+        guard userId != nil, accountToken != nil else { return }
         message = "Anlık bildirim bağlantısı kurulamadı. Uygulamayı yeniden açtığında tekrar denenecek.".tempoLocalized
     }
     func savePreferences() async {
         guard userId != nil else { return }
+        let generation = sessionGeneration
         if let data = try? JSONEncoder().encode(preferences) { UserDefaults.standard.set(data, forKey: preferenceKey) }
         await registerDevice(force: true)
+        guard !Task.isCancelled, sessionGeneration == generation else { return }
         await scheduleReminders()
     }
     func refresh() async {
-        guard !loading, let token = accountToken, let owner = userId else { return }
-        loading = true
-        defer { loading = false }
+        guard let token = accountToken, let owner = userId else { return }
+        if loadingID != nil { refreshAgain = true; return }
+        let generation = sessionGeneration
+        let operation = UUID()
+        loadingID = operation
+        defer {
+            if sessionGeneration == generation, loadingID == operation {
+                loadingID = nil
+                if refreshAgain {
+                    refreshAgain = false
+                    Task {
+                        guard sessionGeneration == generation else { return }
+                        await refresh()
+                    }
+                }
+            }
+        }
         do {
             let data = try await api(path: "/api/account/notifications", method: "GET", token: token)
             let result = try JSONDecoder().decode(Inbox.self, from: data)
-            guard userId == owner, accountToken == token else { return }
+            guard !Task.isCancelled, sessionGeneration == generation, userId == owner, accountToken == token else { return }
             let local = notices.filter { $0.type == "achievement" }
-            notices = Array((result.notifications + local).sorted { $0.createdAt > $1.createdAt }.prefix(70))
+            let readIDs = locallyReadIDs.union(notices.filter(\.read).map(\.id))
+            let remote = result.notifications.map { item in
+                var updated = item
+                if readIDs.contains(item.id) { updated.read = true }
+                return updated
+            }
+            notices = Array((remote + local).sorted { $0.createdAt > $1.createdAt }.prefix(70))
+            locallyReadIDs.formIntersection(Set(notices.map(\.id)))
+            message = ""
             pushAvailable = result.pushAvailable
             saveInbox()
         } catch {
-            guard userId == owner else { return }
+            guard !Task.isCancelled, sessionGeneration == generation, userId == owner, accountToken == token else { return }
             message = "Bildirimler yüklenemedi. Yenilemek için aşağı çek.".tempoLocalized
         }
     }
     func markRead(_ notice: TempoNotice) async {
-        if let i = notices.firstIndex(where: { $0.id == notice.id }) { notices[i].read = true; saveInbox() }
+        guard let i = notices.firstIndex(where: { $0.id == notice.id }) else { return }
+        locallyReadIDs.insert(notice.id)
+        notices[i].read = true
+        saveInbox()
         if notice.type != "achievement", let token = accountToken {
             _ = try? await api(path: "/api/account/notifications/read", method: "POST", token: token, body: ["id": notice.id])
         }
@@ -195,25 +253,35 @@ final class TempoNotifications: ObservableObject {
         route = ["social", "sports", "achievements", "summary", "notifications"].contains(destination) ? destination : "notifications"
     }
     func detach(eraseAccountData: Bool = false) {
+        sessionGeneration = UUID()
+        reminderGeneration = UUID()
+        loadingID = nil
+        refreshAgain = false
+        registerAgain = false
+        busy = false
+        pushAvailable = false
+        message = ""
+        locallyReadIDs.removeAll()
         if eraseAccountData, let userId {
             UserDefaults.standard.removeObject(forKey: preferenceKey)
             UserDefaults.standard.removeObject(forKey: inboxKey)
             UserDefaults.standard.removeObject(forKey: "tempo.notification.earned." + userId)
         }
-        center.removePendingNotificationRequests(withIdentifiers: ["tempo.daily", "tempo.weekly"])
+        center.removeAllPendingNotificationRequests()
         center.removeAllDeliveredNotifications()
         accountToken = nil
         userId = nil
-        deviceToken = nil
         lastRegistration = ""
+        lastRegistrationAt = nil
         notices = []
         route = nil
     }
-    func recordAchievement(ids: [String]) async {
-        guard let userId else { return }
+    func recordAchievement(ids: [String], for accountId: String) async {
+        guard let userId, userId == accountId, accountToken != nil else { return }
+        let generation = sessionGeneration
         let key = "tempo.notification.earned." + userId
         let previous = UserDefaults.standard.stringArray(forKey: key)
-        UserDefaults.standard.set(ids, forKey: key)
+        UserDefaults.standard.set(Array(Set(previous ?? []).union(ids)).sorted(), forKey: key)
         // Establish a baseline first; do not announce historical achievements.
         guard let previous, ids.contains(where: { !previous.contains($0) }), preferences.achievements else { return }
         let notice = TempoNotice(id: UUID().uuidString, type: "achievement", createdAt: ISO8601DateFormatter().string(from: Date()), read: false, destination: "achievements")
@@ -223,11 +291,14 @@ final class TempoNotifications: ObservableObject {
             let content = UNMutableNotificationContent()
             content.title = notice.title; content.body = notice.message; content.sound = .default
             content.userInfo = ["tempo": ["destination": "achievements"]]
-            try? await center.add(UNNotificationRequest(identifier: "tempo.achievement." + notice.id, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)))
+            let identifier = "tempo.achievement." + notice.id
+            try? await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)))
+            if sessionGeneration != generation { center.removePendingNotificationRequests(withIdentifiers: [identifier]) }
         }
     }
     private func registerDevice(force: Bool = false) async {
-        guard allowed, let token = deviceToken, let auth = accountToken, let owner = userId else { return }
+        guard !Task.isCancelled, allowed, let token = deviceToken, let auth = accountToken, let owner = userId else { return }
+        let generation = sessionGeneration
         if registering { registerAgain = true; return }
         registering = true
         defer {
@@ -242,23 +313,45 @@ final class TempoNotifications: ObservableObject {
         }
         let language = Locale.preferredLanguages.first?.hasPrefix("tr") == true ? "tr" : "en"
         let fingerprint = owner + auth + token + language + String(preferences.friends) + String(preferences.challenges)
-        guard force || fingerprint != lastRegistration else { return }
+        guard force || fingerprint != lastRegistration || Date().timeIntervalSince(lastRegistrationAt ?? .distantPast) >= 24 * 60 * 60 else { return }
         do {
             let data = try await api(path: "/api/account/push/devices", method: "POST", token: auth, body: ["token": token, "environment": apnsEnvironment, "language": language, "friends": preferences.friends, "challenges": preferences.challenges])
-            guard accountToken == auth else { return }
+            guard !Task.isCancelled, sessionGeneration == generation, userId == owner, accountToken == auth else { return }
             lastRegistration = fingerprint
+            lastRegistrationAt = Date()
             pushAvailable = (try? JSONDecoder().decode(PushResult.self, from: data).pushAvailable) ?? false
-        } catch { message = "Anlık bildirim bağlantısı kurulamadı. Uygulamayı yeniden açtığında tekrar denenecek.".tempoLocalized }
+        } catch {
+            guard !Task.isCancelled, sessionGeneration == generation, userId == owner, accountToken == auth else { return }
+            message = "Anlık bildirim bağlantısı kurulamadı. Uygulamayı yeniden açtığında tekrar denenecek.".tempoLocalized
+        }
     }
     private func scheduleReminders() async {
-        center.removePendingNotificationRequests(withIdentifiers: ["tempo.daily", "tempo.weekly"])
-        guard userId != nil, allowed else { return }
-        if preferences.dailyReminder {
-            await schedule(id: "tempo.daily", title: "Kendine biraz hareket ayır".tempoLocalized, body: "Zamanına ve enerjine uygun bir antrenman seçebilirsin.".tempoLocalized, date: DateComponents(hour: preferences.hour, minute: preferences.minute), destination: "sports")
+        let generation = sessionGeneration
+        let revision = UUID()
+        reminderGeneration = revision
+        let previous = reminderTask
+        let selected = preferences
+        let task = Task {
+            await previous?.value
+            guard sessionGeneration == generation, reminderGeneration == revision else { return }
+            center.removePendingNotificationRequests(withIdentifiers: ["tempo.daily", "tempo.weekly"])
+            guard userId != nil, allowed else { return }
+            if selected.dailyReminder {
+                await schedule(id: "tempo.daily", title: "Kendine biraz hareket ayır".tempoLocalized, body: "Zamanına ve enerjine uygun bir antrenman seçebilirsin.".tempoLocalized, date: DateComponents(hour: min(max(selected.hour, 0), 23), minute: min(max(selected.minute, 0), 59)), destination: "sports")
+            }
+            guard sessionGeneration == generation, reminderGeneration == revision else {
+                center.removePendingNotificationRequests(withIdentifiers: ["tempo.daily", "tempo.weekly"])
+                return
+            }
+            if selected.weeklyReview {
+                await schedule(id: "tempo.weekly", title: "Haftana bir göz at".tempoLocalized, body: "Hareket düzenini ve gelişimini Tempo’da inceleyebilirsin.".tempoLocalized, date: DateComponents(hour: 18, minute: 0, weekday: 1), destination: "summary")
+            }
+            if sessionGeneration != generation || reminderGeneration != revision {
+                center.removePendingNotificationRequests(withIdentifiers: ["tempo.daily", "tempo.weekly"])
+            }
         }
-        if preferences.weeklyReview {
-            await schedule(id: "tempo.weekly", title: "Haftana bir göz at".tempoLocalized, body: "Hareket düzenini ve gelişimini Tempo’da inceleyebilirsin.".tempoLocalized, date: DateComponents(hour: 18, minute: 0, weekday: 1), destination: "summary")
-        }
+        reminderTask = task
+        await task.value
     }
     private func schedule(id: String, title: String, body: String, date: DateComponents, destination: String) async {
         let content = UNMutableNotificationContent()
