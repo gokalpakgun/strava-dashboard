@@ -674,6 +674,9 @@ private struct AppleHealthHomeCard: View {
                         Text(balance.state.tempoLocalized + " · " + balance.confidence.tempoLocalized)
                             .font(.caption)
                             .foregroundStyle(TempoTheme.secondary)
+                        if let note = balance.dataNote {
+                            Text(note).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                        }
                     } else if !connected {
                         Text("Strava gerekmez".tempoLocalized)
                             .font(.caption)
@@ -2820,6 +2823,7 @@ private struct HealthScreen: View {
                                     Text("Tempo Dengesi").font(.title2.weight(.semibold))
                                     Text(balance.state.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.green)
                                     Text(balance.confidence.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                                    if let note = balance.dataNote { Text(note).font(.caption2).foregroundStyle(TempoTheme.secondary) }
                                 }.frame(maxWidth: .infinity, alignment: .leading)
                                 TempoReadinessRing(value: balance.value, size: 78)
                             }
@@ -3427,6 +3431,7 @@ private struct TempoBalanceHomeCard: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(TempoTheme.green)
                 Text(balance.state.tempoLocalized).font(.headline)
+                if let note = balance.dataNote { Text(note).font(.caption2).foregroundStyle(TempoTheme.secondary) }
                 Text(balance.recommendation.tempoLocalized)
                     .font(.caption)
                     .foregroundStyle(TempoTheme.secondary)
@@ -3492,6 +3497,7 @@ private struct TempoBalanceDetailCard: View {
                     }
                 }
 
+                if let note = balance.dataNote { Text(note).font(.caption).foregroundStyle(TempoTheme.secondary) }
                 Text(balance.recommendation.tempoLocalized)
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.76))

@@ -679,17 +679,17 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     var tempoBalance: TempoBalanceScore? {
         let now = Date()
         let today = Self.localDay(now)
-        let recentCutoff = Self.localDay(Calendar.current.date(byAdding: .day, value: -1, to: now) ?? now)
-        let baselineCutoff = Self.localDay(Calendar.current.date(byAdding: .day, value: -28, to: now) ?? now)
-        let records = healthDays.filter { $0.key >= baselineCutoff && $0.key <= today }.sorted { $0.key > $1.key }
+        let records = healthDays.filter { $0.key <= today }.sorted { $0.key > $1.key }
+        var measurementDays: [String: String] = [:]
         var weightedFactors: [(factor: TempoBalanceFactor, weight: Double)] = []
 
-        func values(_ keyPath: KeyPath<TempoHealthMetrics, Double?>, todayOnly: Bool = false) -> [Double] {
+        func values(_ keyPath: KeyPath<TempoHealthMetrics, Double?>, factorID: String) -> [Double] {
             let available = records.filter { record in
                 guard let value = record.value[keyPath: keyPath] else { return false }
                 return value.isFinite && value > 0
             }
-            guard let latest = available.first, latest.key >= (todayOnly ? today : recentCutoff) else { return [] }
+            guard let latest = available.first else { return [] }
+            measurementDays[factorID] = latest.key
             return available.compactMap { $0.value[keyPath: keyPath] }
         }
 
@@ -710,16 +710,17 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             )
         }
 
-        if let sleepRecord = records.first(where: { $0.key >= recentCutoff && ($0.value.sleepMinutes ?? 0) > 0 }),
+        if let sleepRecord = records.first(where: { ($0.value.sleepMinutes ?? 0) > 0 }),
            let sleep = sleepRecord.value.sleepMinutes,
            let assessment = TempoSleepAssessment.evaluate(sleepRecord.value) {
+            measurementDays["sleep"] = sleepRecord.key
             weightedFactors.append((
                 TempoBalanceFactor(id: "sleep", title: "Uyku", value: TempoFormat.duration(sleep * 60), score: assessment.value, symbol: "moon.zzz.fill", tint: "blue"),
                 0.32
             ))
         }
 
-        let hrvValues = values(\.hrvMs)
+        let hrvValues = values(\.hrvMs, factorID: "hrv")
         if let current = hrvValues.first {
             let baseline = average(hrvValues.dropFirst().prefix(21))
             let score = baseline.map { bounded(90 + ((current / max($0, 1)) - 1) * 100) } ?? 82
@@ -730,7 +731,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             ))
         }
 
-        let restingValues = values(\.restingHeartRateBpm)
+        let restingValues = values(\.restingHeartRateBpm, factorID: "resting-heart")
         if let current = restingValues.first {
             let baseline = average(restingValues.dropFirst().prefix(21))
             let score = baseline.map { reference in
@@ -744,7 +745,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             ))
         }
 
-        let energyValues = values(\.activeEnergyKcal)
+        let energyValues = values(\.activeEnergyKcal, factorID: "load")
         if let current = energyValues.first {
             let baseline = average(energyValues.dropFirst().prefix(14))
             let score = baseline.map { reference in
@@ -760,7 +761,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             ))
         }
 
-        let respiratoryValues = values(\.respiratoryRate)
+        let respiratoryValues = values(\.respiratoryRate, factorID: "respiratory")
         if let current = respiratoryValues.first {
             let baseline = average(respiratoryValues.dropFirst().prefix(21))
             let score = baseline.map { reference in
@@ -772,7 +773,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             ))
         }
 
-        let temperatureValues = values(\.wristTemperatureC)
+        let temperatureValues = values(\.wristTemperatureC, factorID: "temperature")
         if let current = temperatureValues.first {
             let baseline = average(temperatureValues.dropFirst().prefix(21))
             let score = baseline.map { reference in
@@ -784,7 +785,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             ))
         }
 
-        let oxygenValues = values(\.oxygenSaturationPct)
+        let oxygenValues = values(\.oxygenSaturationPct, factorID: "oxygen")
         if let current = oxygenValues.first {
             let score = bounded(70 + (current - 92) * 6)
             weightedFactors.append((
@@ -793,7 +794,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             ))
         }
 
-        let waterValues = values(\.waterMl, todayOnly: true)
+        let waterValues = values(\.waterMl, factorID: "water")
         if let current = waterValues.first {
             let score = bounded((current / Double(dailyGoalMl)) * 100)
             weightedFactors.append((
@@ -822,7 +823,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             recommendation = "Hafif hareket, mobilite ve dinlenmeye ağırlık vermek daha uygun görünüyor."
         }
         let confidence = weightedFactors.count >= 4 ? "Güçlü veri" : (weightedFactors.count >= 3 ? "Orta veri" : "Sınırlı veri")
-        return TempoBalanceScore(value: value, state: state, recommendation: recommendation, confidence: confidence, factors: weightedFactors.map { $0.factor })
+        return TempoBalanceScore(value: value, state: state, recommendation: recommendation, confidence: confidence, factors: weightedFactors.map { $0.factor }, measurementDays: measurementDays)
     }
 
     func connectAppleHealth() {

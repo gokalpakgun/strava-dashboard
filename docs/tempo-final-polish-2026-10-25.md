@@ -78,3 +78,7 @@ The preceding user-triggered TestFlight run 40238498065 completed successfully. 
 - Workout read failures are now visible in Health, Activities and Sports. Previously the error was stored in the model but had no UI consumer.
 - Internal Health day keys and their parser explicitly use the Gregorian calendar, matching HealthKit exports even when the phone uses another display calendar.
 - Static source/diff review only. No full test suite, simulator, build or TestFlight upload was started.
+
+## Balance visibility correction requested by the user
+
+The previous freshness cutoff hid Tempo Balance for users whose latest available measurements were older than yesterday. This changed feature availability without being requested. The cutoff is removed: the original factor formulas, weights and available-history baseline are preserved, and the latest available measurements can produce the score again. Home, Health and balance details display a localized measurement date/range when inputs are from different dates or an earlier day. Missing measurements are still not fabricated. The independent Health read, sync and water-source bug fixes remain in place. No build or TestFlight upload was started.

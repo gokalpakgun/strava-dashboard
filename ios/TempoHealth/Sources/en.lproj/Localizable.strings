@@ -1413,3 +1413,6 @@
 "Su takibi" = "Hydration";
 
 "Günlük görünüm" = "Daily overview";
+
+"Ölçüm dönemi: %@" = "Measurement period: %@";
+"Ölçüm dönemi: %@ – %@" = "Measurement period: %@ – %@";

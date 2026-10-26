@@ -855,6 +855,18 @@ struct TempoBalanceScore: Equatable {
     let recommendation: String
     let confidence: String
     let factors: [TempoBalanceFactor]
+    var measurementDays: [String: String] = [:]
+
+    var dataNote: String? {
+        let days = measurementDays.values.sorted()
+        guard let first = days.first, let last = days.last,
+              let start = TempoFormat.dayFormatter.date(from: first),
+              let end = TempoFormat.dayFormatter.date(from: last),
+              first != last || !Calendar.autoupdatingCurrent.isDateInToday(start) else { return nil }
+        let startText = start.formatted(date: .abbreviated, time: .omitted)
+        if first == last { return "Ölçüm dönemi: %@".tempoFormatted(startText) }
+        return "Ölçüm dönemi: %@ – %@".tempoFormatted(startText, end.formatted(date: .abbreviated, time: .omitted))
+    }
 }
 
 struct TempoHealthSyncPayload: Encodable {
