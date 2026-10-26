@@ -1421,6 +1421,8 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     private let manager = CLLocationManager()
     private var location: CLLocation?
     private var pendingSport: TempoSportChoice?
+    private var lastSport: TempoSportChoice?
+    private var lastRadiusKm = 25
     private var pendingRadiusKm = 25
     private var searchGeneration = 0
     private var resultCache: [String: CachedFacilitySearch] = [:]
@@ -1440,8 +1442,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             needsPermission = false
             manager.requestLocation()
         case .denied, .restricted:
-            needsPermission = true
-            message = "Konum izni kapalı. iPhone Ayarlar’dan Tempo için konuma izin verebilirsin."
+            invalidateLocationAccess()
             if openSettingsIfDenied, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
         @unknown default:
             needsPermission = true
@@ -1449,7 +1450,18 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     }
 
     func search(for sport: TempoSportChoice, radiusKm: Int) async {
-        guard let location else {
+        lastSport = sport
+        lastRadiusKm = radiusKm
+        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else {
+            pendingSport = sport
+            pendingRadiusKm = radiusKm
+            requestLocation()
+            return
+        }
+        guard let location, abs(location.timestamp.timeIntervalSinceNow) <= 120 else {
+            searchGeneration += 1
+            isSearching = true
+            searchFailed = false
             pendingSport = sport
             pendingRadiusKm = radiusKm
             requestLocation()
@@ -1469,12 +1481,16 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         )
 
         let cacheKey = Self.cacheKey(for: sport, radiusKm: radiusKm, location: location)
-        if let cached = resultCache[cacheKey], Date().timeIntervalSince(cached.createdAt) < 10 * 60 {
-            places = cached.places
+        if let cached = resultCache[cacheKey],
+           (0.0..<600.0).contains(Date().timeIntervalSince(cached.createdAt)),
+           cached.origin.distance(from: location) <= 100 {
+            places = cached.places.map { $0.measured(from: location) }
+                .filter { $0.distanceMeters <= Double(radiusMeters) }
+                .sorted { $0.distanceMeters < $1.distanceMeters }
             isSearching = false
-            message = cached.places.isEmpty
+            message = places.isEmpty
                 ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
-                : "%d alan bulundu · kayıtlı sonuçlar anında gösterildi.".tempoFormatted(cached.places.count)
+                : "%d alan bulundu · kayıtlı sonuçlar anında gösterildi.".tempoFormatted(places.count)
             return
         }
 
@@ -1504,7 +1520,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
                 : "Bazı harita kaynakları yüklenemedi. Bulunan yerleri gösteriyoruz."
             return
         }
-        resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), places: places)
+        resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), origin: location, places: places)
         message = places.isEmpty
             ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
             : "%d alan bulundu · yakından uzağa sıralandı.".tempoFormatted(places.count)
@@ -1602,18 +1618,40 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         return "\(sport.rawValue):\(radiusKm):\(latitude):\(longitude)"
     }
 
+    private func invalidateLocationAccess() {
+        searchGeneration += 1
+        isSearching = false
+        searchFailed = false
+        location = nil
+        region = nil
+        places = []
+        resultCache.removeAll()
+        pendingSport = lastSport
+        pendingRadiusKm = lastRadiusKm
+        needsPermission = true
+        message = "Konum izni kapalı. iPhone Ayarlar’dan Tempo için konuma izin verebilirsin."
+    }
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
             needsPermission = false
             manager.requestLocation()
         } else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
-            needsPermission = true
-            message = "Konum izni kapalı. iPhone Ayarlar’dan Tempo için konuma izin verebilirsin."
+            invalidateLocationAccess()
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let value = locations.last else { return }
+        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
+        guard let value = locations.last(where: {
+            CLLocationCoordinate2DIsValid($0.coordinate) && $0.horizontalAccuracy >= 0 && abs($0.timestamp.timeIntervalSinceNow) <= 120
+        }) else {
+            location = nil
+            isSearching = false
+            searchFailed = true
+            message = "Konum alınamadı. Konum servislerini kontrol edip yeniden deneyebilirsin."
+            return
+        }
         location = value
         region = MKCoordinateRegion(center: value.coordinate, latitudinalMeters: 16_000, longitudinalMeters: 16_000)
         if let pendingSport {
@@ -1624,6 +1662,10 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else {
+            invalidateLocationAccess()
+            return
+        }
         isSearching = false
         searchFailed = true
         message = "Konum alınamadı. Konum servislerini kontrol edip yeniden deneyebilirsin."
@@ -1637,6 +1679,7 @@ private struct FacilitySearchBatch: Sendable {
 
 private struct CachedFacilitySearch {
     let createdAt: Date
+    let origin: CLLocation
     let places: [NearbyPlace]
 }
 
@@ -1669,7 +1712,7 @@ struct NearbyPlace: Identifiable, @unchecked Sendable {
     let address: String
     let coordinate: CLLocationCoordinate2D
     let source: Source
-    let distanceMeters: CLLocationDistance
+    private(set) var distanceMeters: CLLocationDistance
 
     var sourceTitle: String {
         source == .openStreetMap ? "OpenStreetMap" : "Apple Haritalar".tempoLocalized
@@ -1696,7 +1739,9 @@ struct NearbyPlace: Identifiable, @unchecked Sendable {
 
     init?(openStreetMapElement element: OpenStreetMapElement, sportTitle: String, origin: CLLocation) {
         guard let latitude = element.lat ?? element.center?.lat,
-              let longitude = element.lon ?? element.center?.lon else { return nil }
+              let longitude = element.lon ?? element.center?.lon,
+              latitude.isFinite, longitude.isFinite,
+              (-90...90).contains(latitude), (-180...180).contains(longitude) else { return nil }
 
         let tags = element.tags ?? [:]
         coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -1714,6 +1759,12 @@ struct NearbyPlace: Identifiable, @unchecked Sendable {
         source = .openStreetMap
         distanceMeters = origin.distance(from: CLLocation(latitude: latitude, longitude: longitude))
         id = "osm:\(element.type):\(element.id)"
+    }
+
+    func measured(from origin: CLLocation) -> NearbyPlace {
+        var updated = self
+        updated.distanceMeters = origin.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+        return updated
     }
 
     func openDirections() {

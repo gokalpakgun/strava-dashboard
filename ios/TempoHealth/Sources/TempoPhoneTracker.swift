@@ -15,6 +15,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
     private let manager = CLLocationManager()
     private var startedAt: Date?
     private var segmentStartedAt: Date?
+    private var segmentStartedUptime: TimeInterval?
     private var accumulatedSeconds: TimeInterval = 0
     @Published private(set) var distanceMeters: Double = 0
     private var segmentLastLocation: CLLocation?
@@ -68,6 +69,10 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if tracksLocation, isRecording, manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
+            pause()
+            errorMessage = "Rota kaydı için iPhone ayarlarından Tempo konum iznini aç."
+        }
         guard shouldStartAfterPermission else { return }
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
@@ -81,12 +86,15 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         }
     }
 
+    func cancelPendingStart() { shouldStartAfterPermission = false }
+
     func pause() {
         guard isRecording else { return }
         timer?.invalidate()
         timer = nil
-        if let segmentStartedAt { accumulatedSeconds += max(0, Date().timeIntervalSince(segmentStartedAt)) }
+        if let segmentStartedUptime { accumulatedSeconds += max(0, ProcessInfo.processInfo.systemUptime - segmentStartedUptime) }
         segmentStartedAt = nil
+        segmentStartedUptime = nil
         elapsedSeconds = Int(accumulatedSeconds)
         manager.stopUpdatingLocation()
         isRecording = false
@@ -108,6 +116,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         distanceMeters = 0
         startedAt = nil
         segmentStartedAt = nil
+        segmentStartedUptime = nil
         accumulatedSeconds = 0
         elapsedSeconds = 0
         isRecording = false
@@ -115,7 +124,8 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard isRecording, tracksLocation else { return }
+        guard isRecording, tracksLocation,
+              manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
         for location in locations {
             guard CLLocationCoordinate2DIsValid(location.coordinate),
                   location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 35,
@@ -149,6 +159,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         guard !isRecording else { return }
         if startedAt == nil { startedAt = Date() }
         segmentStartedAt = Date()
+        segmentStartedUptime = ProcessInfo.processInfo.systemUptime
         segmentLastLocation = nil
         isRecording = true
         isReadyToSave = false
@@ -157,8 +168,8 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, let segmentStartedAt = self.segmentStartedAt else { return }
-                self.elapsedSeconds = Int(self.accumulatedSeconds + max(0, Date().timeIntervalSince(segmentStartedAt)))
+                guard let self, let segmentStartedUptime = self.segmentStartedUptime else { return }
+                self.elapsedSeconds = Int(self.accumulatedSeconds + max(0, ProcessInfo.processInfo.systemUptime - segmentStartedUptime))
             }
         }
     }
@@ -244,6 +255,7 @@ struct TempoPhoneTrackerScreen: View {
             .onDisappear { recorder.cancel() }
             .onChange(of: recorder.route.count) { _, _ in updateRegion() }
             .onChange(of: scenePhase) { _, phase in
+                if phase == .background { recorder.cancelPendingStart() }
                 if phase != .active && recorder.isRecording { recorder.pause() }
             }
         }

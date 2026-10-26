@@ -960,10 +960,15 @@ enum PolylineDecoder {
         var latitude = 0
         var longitude = 0
         while index < bytes.count {
-            guard let latChange = readValue(bytes, index: &index), let lonChange = readValue(bytes, index: &index) else { break }
-            latitude += latChange
-            longitude += lonChange
-            coordinates.append(CLLocationCoordinate2D(latitude: Double(latitude) / 100_000, longitude: Double(longitude) / 100_000))
+            guard let latChange = readValue(bytes, index: &index), let lonChange = readValue(bytes, index: &index) else { return [] }
+            let nextLatitude = latitude.addingReportingOverflow(latChange)
+            let nextLongitude = longitude.addingReportingOverflow(lonChange)
+            guard !nextLatitude.overflow, !nextLongitude.overflow else { return [] }
+            latitude = nextLatitude.partialValue
+            longitude = nextLongitude.partialValue
+            let coordinate = CLLocationCoordinate2D(latitude: Double(latitude) / 100_000, longitude: Double(longitude) / 100_000)
+            guard CLLocationCoordinate2DIsValid(coordinate) else { return [] }
+            coordinates.append(coordinate)
         }
         return coordinates
     }
@@ -973,7 +978,7 @@ enum PolylineDecoder {
         var shift = 0
         var byte: Int
         repeat {
-            guard index < bytes.count else { return nil }
+            guard index < bytes.count, shift <= 25, (63...126).contains(bytes[index]) else { return nil }
             byte = Int(bytes[index]) - 63
             index += 1
             result |= (byte & 0x1f) << shift

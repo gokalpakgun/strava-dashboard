@@ -130,3 +130,11 @@ The native follow-up consumes the challenge object returned by accept/decline/sh
 Strava restore attempts now have request ownership. Concurrent callers do not unlock an active restore, cancellation clears its attempt flag for a later foreground retry, renewed Tempo tokens permit a fresh restore, and choosing to skip Strava invalidates an outstanding restore response. Existing OAuth and disconnect generation checks remain intact.
 
 The user-triggered build 40414108075 succeeded on c5f7885. The newer native changes above received static source/diff review only; no new build, full test suite, simulator run or TestFlight upload was started. No feature or destination was removed.
+
+## 27 October: location permissions, route decoding and recording time
+
+- Revoking facility-location permission invalidates in-flight searches, clears their location/cache/results and retains the selected sport/radius for a later authorized lookup. Delayed location failures cannot replace the permission explanation. Stale/invalid location callbacks are rejected; approximate location remains supported.
+- Facility cache reuse now checks both age and origin proximity. Distances are recalculated and sorted against the current location, with the selected radius reapplied. Invalid OpenStreetMap coordinates are rejected before map display.
+- Malformed Strava polylines fail safely instead of permitting unchecked bytes, shifts, coordinate overflow or incomplete routes. Valid encoded routes remain supported.
+- Phone workout duration uses monotonic uptime, preserving fractional pause/resume time without jumping when wall-clock settings change. Backgrounding cancels a pending permission-triggered start; revoking GPS permission pauses an active route recording and ignores delayed GPS callbacks. Timer-only recording remains available.
+- Static source inventory and diff integrity checks only. No full test suite, simulator, native build or TestFlight upload was started. No feature, score or destination was removed.
