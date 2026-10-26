@@ -544,20 +544,23 @@ struct AccountOnboardingView: View {
             }
         }
         .task { loadProfileOnce() }
-        .onChange(of: photoItem) { _, item in
-            guard let item else { return }
-            Task {
-                isPreparingPhoto = true
-                photoError = ""
-                defer {
+        .task(id: photoItem) {
+            guard let item = photoItem else { isPreparingPhoto = false; return }
+            isPreparingPhoto = true
+            photoError = ""
+            defer {
+                if photoItem == item {
                     isPreparingPhoto = false
                     photoItem = nil
                 }
-                do {
-                    avatarData = try await item.tempoProfileJPEGData()
-                } catch {
-                    photoError = "Fotoğraf hazırlanamadı. Başka bir fotoğraf seçip tekrar dene."
-                }
+            }
+            do {
+                let data = try await item.tempoProfileJPEGData()
+                guard !Task.isCancelled, photoItem == item else { return }
+                avatarData = data
+            } catch {
+                guard !Task.isCancelled, photoItem == item else { return }
+                photoError = "Fotoğraf hazırlanamadı. Başka bir fotoğraf seçip tekrar dene."
             }
         }
     }
@@ -619,7 +622,7 @@ struct AccountOnboardingView: View {
             }
             .buttonStyle(AccountPrimaryButtonStyle())
             .accessibilityIdentifier("onboarding.profile.continue")
-            .disabled(account.isBusy || isPreparingPhoto || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(account.isBusy || isPreparingPhoto || photoItem != nil || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 
@@ -1507,7 +1510,7 @@ struct AccountSettingsScreen: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(AccountPrimaryButtonStyle())
-                        .disabled(account.isBusy || isPreparingPhoto || displayName.isEmpty || username.isEmpty || selectedSports.isEmpty)
+                        .disabled(account.isBusy || isPreparingPhoto || photoItem != nil || displayName.isEmpty || username.isEmpty || selectedSports.isEmpty)
                     }
 
                     DisclosureGroup(isExpanded: $showAccountActions) {
@@ -1545,20 +1548,23 @@ struct AccountSettingsScreen: View {
         .navigationTitle("Hesap")
         .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .task { loadProfileOnce() }
-        .onChange(of: photoItem) { _, item in
-            guard let item else { return }
-            Task {
-                isPreparingPhoto = true
-                photoError = ""
-                defer {
+        .task(id: photoItem) {
+            guard let item = photoItem else { isPreparingPhoto = false; return }
+            isPreparingPhoto = true
+            photoError = ""
+            defer {
+                if photoItem == item {
                     isPreparingPhoto = false
                     photoItem = nil
                 }
-                do {
-                    avatarData = try await item.tempoProfileJPEGData()
-                } catch {
-                    photoError = "Fotoğraf hazırlanamadı. Başka bir fotoğraf seçip tekrar dene."
-                }
+            }
+            do {
+                let data = try await item.tempoProfileJPEGData()
+                guard !Task.isCancelled, photoItem == item else { return }
+                avatarData = data
+            } catch {
+                guard !Task.isCancelled, photoItem == item else { return }
+                photoError = "Fotoğraf hazırlanamadı. Başka bir fotoğraf seçip tekrar dene."
             }
         }
         .confirmationDialog("Tempo hesabın kalıcı olarak silinsin mi?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -1788,8 +1794,11 @@ private enum ProfilePhotoError: Error {
 
 private extension PhotosPickerItem {
     func tempoProfileJPEGData() async throws -> Data {
-        guard let data = try await loadTransferable(type: Data.self),
-              let image = UIImage(data: data),
+        guard let data = try await loadTransferable(type: Data.self) else {
+            throw ProfilePhotoError.unreadable
+        }
+        try Task.checkCancellation()
+        guard let image = UIImage(data: data),
               let jpeg = image.tempoProfileJPEG() else {
             throw ProfilePhotoError.unreadable
         }

@@ -1118,6 +1118,7 @@ private struct ManualWorkoutForm: View {
     @State private var photoImage: UIImage?
     @State private var checkHealthSignals = false
     @State private var isSaving = false
+    @State private var isPreparingPhoto = false
     @State private var errorMessage: String?
     @State private var errorTitle = "Antrenman kaydedilemedi"
     @State private var showingError = false
@@ -1154,10 +1155,10 @@ private struct ManualWorkoutForm: View {
             .navigationTitle("Antrenman ekle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ManualWorkoutToolbar(isSaving: isSaving, onCancel: { dismiss() }, onSave: saveTapped)
+                ManualWorkoutToolbar(isSaving: isSaving, isPreparingPhoto: isPreparingPhoto || photoItem != nil, onCancel: { dismiss() }, onSave: saveTapped)
             }
-            .onChange(of: photoItem) { _, item in
-                Task { await loadPhoto(item) }
+            .task(id: photoItem) {
+                await loadPhoto(photoItem)
             }
             .alert(errorTitle.tempoLocalized, isPresented: $showingError) {
                 Button("Tamam") { }
@@ -1170,14 +1171,34 @@ private struct ManualWorkoutForm: View {
     }
 
     private func loadPhoto(_ item: PhotosPickerItem?) async {
-        guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
-        let bounded = image.preparingThumbnail(of: CGSize(width: 1400, height: 1400)) ?? image
-        photoData = bounded.jpegData(compressionQuality: 0.78)
-        photoImage = photoData.flatMap { UIImage(data: $0) }
+        guard let item else { isPreparingPhoto = false; return }
+        isPreparingPhoto = true
+        defer {
+            if photoItem == item {
+                isPreparingPhoto = false
+                photoItem = nil
+            }
+        }
+        do {
+            let data = try await item.loadTransferable(type: Data.self)
+            guard !Task.isCancelled, photoItem == item else { return }
+            guard let data, let image = UIImage(data: data) else { throw ProfilePhotoLoadError.unreadable }
+            let bounded = image.preparingThumbnail(of: CGSize(width: 1400, height: 1400)) ?? image
+            guard let jpeg = bounded.jpegData(compressionQuality: 0.78) else { throw ProfilePhotoLoadError.unreadable }
+            photoData = jpeg
+            photoImage = UIImage(data: jpeg)
+        } catch {
+            guard !Task.isCancelled, photoItem == item else { return }
+            errorTitle = "Antrenman kaydedilemedi"
+            errorMessage = "Fotoğraf hazırlanamadı. Başka bir fotoğraf seçip tekrar dene.".tempoLocalized
+            showingError = true
+        }
     }
 
+    private enum ProfilePhotoLoadError: Error { case unreadable }
+
     private func saveTapped() {
-        guard !isSaving else { return }
+        guard !isSaving, !isPreparingPhoto, photoItem == nil else { return }
         isSaving = true
         Task { await saveWorkout() }
     }
@@ -1256,6 +1277,7 @@ private struct ManualWorkoutFeedbackSection: View {
 
 private struct ManualWorkoutToolbar: ToolbarContent {
     let isSaving: Bool
+    let isPreparingPhoto: Bool
     let onCancel: () -> Void
     let onSave: () -> Void
 
@@ -1266,8 +1288,8 @@ private struct ManualWorkoutToolbar: ToolbarContent {
                 .accessibilityIdentifier("activity.manual.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
-            Button(isSaving ? "Kaydediliyor…" : "Kaydet", action: onSave)
-                .disabled(isSaving)
+            Button((isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (isSaving ? "Kaydediliyor…" : "Kaydet")).tempoLocalized, action: onSave)
+                .disabled(isSaving || isPreparingPhoto)
         }
     }
 }

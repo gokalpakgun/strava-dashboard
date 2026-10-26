@@ -149,6 +149,7 @@ final class TempoAccountStore: ObservableObject {
 
     private let baseURL = URL(string: "https://apitempo.com")!
     private var sessionToken: String?
+    private var operationGeneration = UUID()
 #if DEBUG
     private static let networkLog = Logger(subsystem: "com.apitempo.tempohealth.account-network", category: "requests")
 #endif
@@ -232,9 +233,9 @@ final class TempoAccountStore: ObservableObject {
     @discardableResult
     func requestPasswordReset(email: String) async -> Bool {
         guard !isBusy else { return false }
-        isBusy = true
+        let operation = beginOperation()
         errorMessage = ""
-        defer { isBusy = false }
+        defer { finishOperation(operation) }
         do {
             _ = try await request(
                 path: "/api/account/password/forgot",
@@ -242,8 +243,11 @@ final class TempoAccountStore: ObservableObject {
                 body: PasswordResetRequest(email: email),
                 authenticated: false
             )
+            guard operationGeneration == operation, !Task.isCancelled else { return false }
             return true
         } catch {
+            guard operationGeneration == operation else { return false }
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return false }
             errorMessage = error.localizedDescription
             return false
         }
@@ -258,9 +262,9 @@ final class TempoAccountStore: ObservableObject {
         onboardingComplete: Bool? = nil
     ) async -> Bool {
         guard sessionToken != nil, !isBusy else { return false }
-        isBusy = true
+        let operation = beginOperation()
         errorMessage = ""
-        defer { isBusy = false }
+        defer { finishOperation(operation) }
         let avatar = avatarData.map { "data:image/jpeg;base64," + $0.base64EncodedString() }
         let payload = ProfileUpdate(
             displayName: displayName,
@@ -271,21 +275,26 @@ final class TempoAccountStore: ObservableObject {
         )
         do {
             let envelope = try await request(path: "/api/account/profile", method: "PATCH", body: payload, authenticated: true)
+            guard operationGeneration == operation, !Task.isCancelled else { return false }
             guard let user = envelope.user else { throw AccountError.server("Profil kaydedilemedi.") }
             profile = user
             AccountProfileCache.save(user)
             return true
         } catch {
+            guard operationGeneration == operation else { return false }
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return false }
             errorMessage = error.localizedDescription
             return false
         }
     }
 
     func signOut() async {
+        let signingOutToken = sessionToken
         TempoNotifications.shared.detach()
         if sessionToken != nil {
             _ = try? await request(path: "/api/account/logout", method: "POST", body: EmptyPayload(), authenticated: true)
         }
+        guard sessionToken == signingOutToken else { return }
         clearLocalSession()
     }
 
@@ -337,17 +346,20 @@ final class TempoAccountStore: ObservableObject {
     @discardableResult
     func deleteAccount() async -> Bool {
         guard sessionToken != nil, !isBusy else { return false }
-        isBusy = true
+        let operation = beginOperation()
         errorMessage = ""
         stravaRevocationFailed = false
-        defer { isBusy = false }
+        defer { finishOperation(operation) }
         do {
             let envelope = try await request(path: "/api/account", method: "DELETE", body: EmptyPayload(), authenticated: true)
+            guard operationGeneration == operation, !Task.isCancelled else { return false }
             stravaRevocationFailed = envelope.stravaRevoked == false
             TempoNotifications.shared.detach(eraseAccountData: true)
             clearLocalSession()
             return true
         } catch {
+            guard operationGeneration == operation else { return false }
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return false }
             errorMessage = error.localizedDescription
             return false
         }
@@ -355,7 +367,7 @@ final class TempoAccountStore: ObservableObject {
 
     private func restoreSession() async {
         let restoringToken = sessionToken
-        defer { isRestoring = false }
+        defer { if sessionToken == restoringToken { isRestoring = false } }
         do {
             let envelope = try await request(path: "/api/account/me", method: "GET", body: Optional<EmptyPayload>.none, authenticated: true)
             // A slower response from the old session must not replace the
@@ -365,6 +377,7 @@ final class TempoAccountStore: ObservableObject {
             profile = user
             AccountProfileCache.save(user)
         } catch {
+            guard sessionToken == restoringToken, !(error is CancellationError) else { return }
             // A temporary connection problem must not sign the user out. The
             // request method clears the session only when the server returns 401.
             if profile == nil, sessionToken != nil {
@@ -386,6 +399,8 @@ final class TempoAccountStore: ObservableObject {
             request.httpBody = try JSONEncoder().encode(body)
         }
         let (data, response) = try await Self.socialSession.data(for: request)
+        try Task.checkCancellation()
+        guard self.sessionToken == sessionToken else { throw CancellationError() }
         guard let http = response as? HTTPURLResponse else { throw AccountError.server("Sosyal bölümden yanıt alınamadı.") }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401, self.sessionToken == sessionToken { clearLocalSession() }
@@ -397,11 +412,12 @@ final class TempoAccountStore: ObservableObject {
 
     private func authenticate<Payload: Encodable>(path: String, payload: Payload) async -> Bool {
         guard !isBusy else { return false }
-        isBusy = true
+        let operation = beginOperation()
         errorMessage = ""
-        defer { isBusy = false }
+        defer { finishOperation(operation) }
         do {
             let envelope = try await request(path: path, method: "POST", body: payload, authenticated: false)
+            guard operationGeneration == operation, !Task.isCancelled else { return false }
             guard let token = envelope.token, let user = envelope.user else {
                 throw AccountError.server("Hesap oturumu başlatılamadı.")
             }
@@ -413,6 +429,8 @@ final class TempoAccountStore: ObservableObject {
             AccountProfileCache.save(user)
             return true
         } catch {
+            guard operationGeneration == operation else { return false }
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return false }
             errorMessage = error.localizedDescription
             return false
         }
@@ -449,14 +467,18 @@ final class TempoAccountStore: ObservableObject {
 
         for attempt in retryDelays.indices {
             try Task.checkCancellation()
+            if authenticated && sessionToken != requestSessionToken { throw CancellationError() }
             if retryDelays[attempt] > 0 {
                 try await Task.sleep(nanoseconds: retryDelays[attempt])
             }
+            if authenticated && sessionToken != requestSessionToken { throw CancellationError() }
             do {
 #if DEBUG
                 Self.networkLog.info("begin \(method, privacy: .public) \(path, privacy: .public) attempt=\(attempt + 1)")
 #endif
                 let (data, response) = try await Self.apiSession.data(for: request)
+                try Task.checkCancellation()
+                if authenticated && sessionToken != requestSessionToken { throw CancellationError() }
                 guard let http = response as? HTTPURLResponse else {
                     throw AccountError.server("Sunucudan yanıt alınamadı.")
                 }
@@ -502,7 +524,20 @@ final class TempoAccountStore: ObservableObject {
         throw lastError
     }
 
+    private func beginOperation() -> UUID {
+        let id = UUID()
+        operationGeneration = id
+        isBusy = true
+        return id
+    }
+
+    private func finishOperation(_ id: UUID) {
+        if operationGeneration == id { isBusy = false }
+    }
+
     private func clearLocalSession() {
+        operationGeneration = UUID()
+        isBusy = false
         AccountTokenStore.delete()
         AccountProfileCache.delete()
         sessionToken = nil

@@ -51,3 +51,11 @@ The launch now contains only the centered transparent T mark, enlarged from 140 
 Manual and phone workout saves keep their save lock through successful dismissal so a second tap cannot create a duplicate during the closing transition. A started phone session retains its sport and real start time through pauses. A repeated Health connect action during an active sync returns without incorrectly reporting Health as unavailable.
 
 The preceding user-triggered TestFlight run 40238498065 completed successfully. These follow-up changes receive static source/diff review only; no new build, full test suite or TestFlight upload is started.
+
+## 26 October: account, connection and photo lifecycle follow-up
+
+- Profile updates, authentication, password reset and deletion now own their busy state. A response from an invalidated operation cannot replace a later account profile or unlock its request. Logout and social/account responses check the session they started with.
+- Strava authorization callbacks and ticket exchange cleanup belong to a specific authorization attempt. Signing out cancels the web authentication session and invalidates pending callbacks. A late restore cannot undo a newer connection/disconnection. Terminal ticket errors stop immediately; canceled work does not retry.
+- Water-write completion and loading state cannot spill into a later account session.
+- Onboarding, account settings and manual-workout photo tasks cancel with selection changes or screen exit. Late photos cannot overwrite the latest selection. Manual saving waits for photo preparation, and an unreadable attachment displays the existing localized error instead of silently disappearing.
+- Only static source and diff review was performed for this batch, as requested. No full tests, simulator run, build or TestFlight upload were started.

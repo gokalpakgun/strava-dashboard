@@ -29,6 +29,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     let dailyGoalMl = 2_000
     private let baseURL = URL(string: "https://apitempo.com")!
     private let healthStore = TempoHealthStore()
+    private var connectionGeneration = UUID()
+    private var authorizationID: UUID?
     private var webAuthSession: ASWebAuthenticationSession?
     private var pendingVerifier: String?
     private var pendingOAuthAccountId: String?
@@ -105,6 +107,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
 
         hasAttemptedAccountRestore = true
+        let generation = connectionGeneration
         let hadLocalToken = accessToken != nil
         isRestoringConnection = !hadLocalToken
 
@@ -118,13 +121,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             }
 
             let (data, response) = try await Self.apiSession.data(for: request)
-            guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+            guard !Task.isCancelled, connectionGeneration == generation,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             guard let http = response as? HTTPURLResponse else {
                 throw APIError.server("Sunucudan yanıt alınamadı.")
             }
             let result = try? JSONDecoder().decode(TicketResponse.self, from: data)
 
-            if http.statusCode == 200, let restoredToken = result?.token {
+            if http.statusCode == 200, let restoredToken = result?.token, !restoredToken.isEmpty {
                 guard SecureTokenStore.save(restoredToken) else {
                     throw APIError.server("Bağlantı iPhone’da saklanamadı.")
                 }
@@ -170,7 +174,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
             throw APIError.server(result?.error ?? "Strava bağlantısı geri yüklenemedi.")
         } catch {
-            guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+            guard !Task.isCancelled, connectionGeneration == generation,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             isRestoringConnection = false
             hasAttemptedAccountRestore = false
             if hadLocalToken {
@@ -183,12 +188,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     func setTempoAccount(_ accountId: String?) {
         guard activeTempoAccountId != accountId else { return }
-        webAuthSession?.cancel()
-        webAuthSession = nil
-        pendingVerifier = nil
-        pendingOAuthAccountId = nil
-        isCompletingAuthorization = false
-        OAuthVerifierStore.delete()
+        invalidateConnectionOperations()
         healthStore.disableBackgroundDelivery()
         healthGeneration = UUID()
         isHealthSyncing = false
@@ -397,6 +397,18 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
     }
 
+    private func invalidateConnectionOperations() {
+        connectionGeneration = UUID()
+        authorizationID = nil
+        webAuthSession?.cancel()
+        webAuthSession = nil
+        pendingVerifier = nil
+        pendingOAuthAccountId = nil
+        isCompletingAuthorization = false
+        OAuthVerifierStore.delete()
+        isBusy = false
+    }
+
     func connectStrava() {
         guard !isBusy, !isCompletingAuthorization else { return }
         guard let accountId = activeTempoAccountId,
@@ -405,6 +417,10 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             status = "Strava’yı bağlamak için önce Tempo hesabına giriş yap."
             return
         }
+        let authID = UUID()
+        authorizationID = authID
+        connectionGeneration = UUID()
+        let generation = connectionGeneration
         webAuthSession?.cancel()
 
         let verifier = Self.randomVerifier()
@@ -417,10 +433,12 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         guard let url = components.url else { return }
 
         isBusy = true
+        isRestoringConnection = false
         status = "Strava bağlantısı açılıyor…"
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "tempohealth") { [weak self] callbackURL, error in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.connectionGeneration == generation,
+                      self.authorizationID == authID, self.activeTempoAccountId == accountId else { return }
                 self.webAuthSession = nil
 
                 if let callbackURL {
@@ -429,6 +447,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 }
                 if self.isCompletingAuthorization { return }
 
+                self.authorizationID = nil
                 self.pendingVerifier = nil
                 self.pendingOAuthAccountId = nil
                 OAuthVerifierStore.delete()
@@ -442,6 +461,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         session.prefersEphemeralWebBrowserSession = false
         webAuthSession = session
         if !session.start() {
+            authorizationID = nil
             webAuthSession = nil
             pendingVerifier = nil
             pendingOAuthAccountId = nil
@@ -465,30 +485,38 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     private func processAuthorizationCallback(_ url: URL) {
-        guard !isCompletingAuthorization else { return }
+        guard !isCompletingAuthorization, pendingVerifier != nil || OAuthVerifierStore.read() != nil else { return }
         guard let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "ticket" })?.value,
+              !ticket.isEmpty,
               let verifier = pendingVerifier ?? OAuthVerifierStore.read(),
               let oauthAccountId = pendingOAuthAccountId ?? OAuthVerifierStore.readAccountId(),
               activeTempoAccountId == oauthAccountId,
               accountAccessToken != nil else {
-            if accessToken == nil {
-                isBusy = false
-                status = "Strava bağlantı bilgisi veya Tempo oturumu doğrulanamadı. Yeniden dene."
-            }
+            isBusy = false
+            status = "Strava bağlantı bilgisi veya Tempo oturumu doğrulanamadı. Yeniden dene."
+            authorizationID = nil
+            webAuthSession?.cancel()
+            webAuthSession = nil
+            pendingVerifier = nil
             pendingOAuthAccountId = nil
             OAuthVerifierStore.delete()
             return
         }
 
+        let authID = authorizationID ?? UUID()
+        authorizationID = authID
+        let generation = connectionGeneration
         isCompletingAuthorization = true
         pendingVerifier = nil
         isBusy = true
         webAuthSession = nil
 
         Task {
-            await exchangeTicket(ticket, verifier: verifier, accountId: oauthAccountId)
+            await exchangeTicket(ticket, verifier: verifier, accountId: oauthAccountId, authorizationID: authID)
+            guard connectionGeneration == generation, authorizationID == authID else { return }
             OAuthVerifierStore.delete()
+            authorizationID = nil
             pendingOAuthAccountId = nil
             isCompletingAuthorization = false
         }
@@ -589,10 +617,12 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
         guard let accessToken, !isBusy else { return }
         guard let accountId = activeTempoAccountId else { return }
+        let generation = connectionGeneration
         isBusy = true
-                status = "%d ml ekleniyor…".tempoFormatted(amountMl)
+        status = "%d ml ekleniyor…".tempoFormatted(amountMl)
         Task {
-            defer { isBusy = false }
+            guard connectionGeneration == generation, activeTempoAccountId == accountId else { return }
+            defer { if connectionGeneration == generation { isBusy = false } }
             do {
                 var request = URLRequest(url: URL(string: "/api/mobile/water/add", relativeTo: baseURL)!)
                 request.httpMethod = "POST"
@@ -601,7 +631,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONEncoder().encode(ManualWaterRequest(date: Self.localDay(), amountMl: amountMl))
                 let (data, response) = try await Self.apiSession.data(for: request)
-                guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
+                guard connectionGeneration == generation, activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
                 guard let http = response as? HTTPURLResponse else { throw APIError.server("Sunucudan yanıt alınamadı.") }
                 if http.statusCode == 401 { expireSession(); return }
                 let result = try JSONDecoder().decode(ManualWaterResponse.self, from: data)
@@ -611,7 +641,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 todayWaterMl = total
                 status = "%d ml eklendi. Bugünkü toplam: %d ml.".tempoFormatted(amountMl, total)
             } catch {
-                guard activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
+                guard connectionGeneration == generation, activeTempoAccountId == accountId, self.accessToken == accessToken else { return }
                 status = "Su eklenemedi: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
             }
         }
@@ -970,19 +1000,22 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     func disconnect() {
         guard !isBusy, let accountId = activeTempoAccountId else { return }
+        connectionGeneration = UUID()
+        let generation = connectionGeneration
         let token = accessToken
         isBusy = true
         Task {
+            guard connectionGeneration == generation, activeTempoAccountId == accountId else { return }
             var stravaRevoked = true
             do {
                 if let token { stravaRevoked = try await revokeServerConnection(using: token) }
             } catch {
-                guard activeTempoAccountId == accountId else { return }
+                guard connectionGeneration == generation, activeTempoAccountId == accountId else { return }
                 isBusy = false
                 status = "Strava bağlantısı sunucudan kaldırılamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
                 return
             }
-            guard activeTempoAccountId == accountId, self.accessToken == token else { return }
+            guard connectionGeneration == generation, activeTempoAccountId == accountId, self.accessToken == token else { return }
             SecureTokenStore.delete()
             accessToken = nil
             dashboard = nil
@@ -1017,6 +1050,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     private func clearLocalAccountData(deleteManualWorkouts: Bool = false) {
+        invalidateConnectionOperations()
         let accountId = activeTempoAccountId ?? lastManualWorkoutAccountId
         if deleteManualWorkouts, let accountId = activeTempoAccountId ?? lastManualWorkoutAccountId {
             try? FileManager.default.removeItem(at: Self.manualWorkoutDirectory(accountId: accountId))
@@ -1093,21 +1127,28 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             .first(where: \.isKeyWindow) ?? ASPresentationAnchor()
     }
 
-    private func exchangeTicket(_ ticket: String, verifier: String, accountId: String) async {
-        guard activeTempoAccountId == accountId,
+    private func exchangeTicket(_ ticket: String, verifier: String, accountId: String, authorizationID authID: UUID) async {
+        let generation = connectionGeneration
+        guard authorizationID == authID, activeTempoAccountId == accountId,
               let accountToken = accountAccessToken,
               !accountToken.isEmpty else { return }
         isBusy = true
         status = "Strava hesabı doğrulanıyor…"
-        defer { isBusy = false }
+        defer {
+            if connectionGeneration == generation, authorizationID == authID { isBusy = false }
+        }
 
         let retryDelays: [UInt64] = [0, 180_000_000, 500_000_000]
         for attempt in retryDelays.indices {
+            guard !Task.isCancelled, connectionGeneration == generation, authorizationID == authID,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             if retryDelays[attempt] > 0 {
                 status = "Strava bağlantısı tamamlanıyor…"
-                try? await Task.sleep(nanoseconds: retryDelays[attempt])
+                do { try await Task.sleep(nanoseconds: retryDelays[attempt]) }
+                catch { return }
             }
-            guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+            guard !Task.isCancelled, connectionGeneration == generation, authorizationID == authID,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
             do {
                 var request = URLRequest(url: URL(string: "/api/mobile/auth/exchange", relativeTo: baseURL)!)
                 request.httpMethod = "POST"
@@ -1116,13 +1157,14 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 request.setValue("Bearer \(accountToken)", forHTTPHeaderField: "Authorization")
                 request.httpBody = try JSONEncoder().encode(TicketRequest(ticket: ticket, verifier: verifier))
                 let (data, response) = try await Self.apiSession.data(for: request)
-                guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+                guard !Task.isCancelled, connectionGeneration == generation, authorizationID == authID,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
                 guard let http = response as? HTTPURLResponse else {
                     throw APIError.server("Sunucudan yanıt alınamadı.")
                 }
                 let result = try? JSONDecoder().decode(TicketResponse.self, from: data)
 
-                if http.statusCode == 200, let token = result?.token {
+                if http.statusCode == 200, let token = result?.token, !token.isEmpty {
                     guard SecureTokenStore.save(token) else {
                         throw APIError.server("Giriş bilgisi iPhone’da güvenle saklanamadı.")
                     }
@@ -1140,9 +1182,12 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                 if retryable, attempt < retryDelays.count - 1 { continue }
                 throw APIError.server(message)
             } catch {
-                guard activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
-                if attempt < retryDelays.count - 1 { continue }
+                guard !Task.isCancelled, connectionGeneration == generation, authorizationID == authID,
+                  activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+                if !(error is APIError), attempt < retryDelays.count - 1 { continue }
                 status = "Strava bağlantısı tamamlanamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
+                return
             }
         }
     }
@@ -1184,18 +1229,20 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private func addWaterToAppleHealth(_ amountMl: Int) {
         guard !isBusy, let accountId = activeTempoAccountId,
               let accountToken = accountAccessToken else { return }
+        let generation = connectionGeneration
         isBusy = true
         status = "%d ml Apple Sağlık’a ekleniyor…".tempoFormatted(amountMl)
         Task {
-            defer { isBusy = false }
+            guard connectionGeneration == generation, activeTempoAccountId == accountId else { return }
+            defer { if connectionGeneration == generation { isBusy = false } }
             do {
                 try await healthStore.saveWater(amountMl: Double(amountMl))
-                guard activeTempoAccountId == accountId, self.accountAccessToken == accountToken else { return }
+                guard connectionGeneration == generation, activeTempoAccountId == accountId, self.accountAccessToken == accountToken else { return }
                 await syncAppleHealth()
-                guard activeTempoAccountId == accountId, self.accountAccessToken == accountToken else { return }
+                guard connectionGeneration == generation, activeTempoAccountId == accountId, self.accountAccessToken == accountToken else { return }
                 status = "%d ml Apple Sağlık’a eklendi.".tempoFormatted(amountMl)
             } catch {
-                guard activeTempoAccountId == accountId, self.accountAccessToken == accountToken else { return }
+                guard connectionGeneration == generation, activeTempoAccountId == accountId, self.accountAccessToken == accountToken else { return }
                 healthError = error.localizedDescription.tempoLocalized
                 status = "Su Apple Sağlık’a eklenemedi: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
             }
