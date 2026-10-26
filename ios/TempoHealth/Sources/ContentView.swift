@@ -854,6 +854,10 @@ private struct ActivitiesScreen: View {
                     }
                     Text("Toplamlar Tempo ve Apple Sağlık kayıtlarını içerir. Aynı antrenmanın farklı kaynaklardaki kopyaları birleştirilir.").font(.caption2).foregroundStyle(TempoTheme.secondary)
                 }
+                if let error = model.healthWorkoutError {
+                    Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 SearchField(text: $search, placeholder: "Aktivite ara")
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -2846,6 +2850,11 @@ private struct HealthScreen: View {
             if let error = model.healthError {
                 Text(error.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
             }
+            if let error = model.healthWorkoutError {
+                Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
             if model.healthSyncEnabled {
                 HStack(spacing: 10) {

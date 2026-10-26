@@ -68,3 +68,13 @@ The preceding user-triggered TestFlight run 40238498065 completed successfully. 
 - If storing a manual workout fails after its photo was written, the unattached new photo is removed. Optional sensor lookup also checks the original account session before persisting the record.
 - Nearby facility matching preserves distinct same-provider courts instead of merging every pair within 70 metres or names within 700 metres. Cross-provider duplicate matching uses a much tighter distance.
 - Static source/diff review only; no full tests, simulator, build or TestFlight upload started, per the user's preference.
+
+## 26 October: independent Health reads and fresh daily scoring
+
+- Daily measurements and workout imports now settle independently. A failed daily query preserves the last daily cache, exposes its error and does not prevent a successful workout result from updating Activities, Sports and summaries. Failed reads are never uploaded as empty replacements; a genuinely successful empty read still replaces the previous snapshot.
+- Concurrent Health changes are coalesced into one follow-up read after the current sync rather than silently discarded. Account/opt-in changes invalidate the queued work. Resume no longer starts two identical Health syncs for Strava-connected accounts.
+- Repeated Health disconnect requests are serialized, so a delayed old DELETE cannot run after reconnect and remove a new server snapshot. Water refresh/write completions respect the selected Health source and opt-in generation.
+- Daily Tempo Balance uses measurements from today/yesterday and up to 28 days of baseline history; water uses today only. Older historical measurements remain visible in history but no longer masquerade as current factors. This is a data-freshness correction, not clinical validation of the existing score.
+- Workout read failures are now visible in Health, Activities and Sports. Previously the error was stored in the model but had no UI consumer.
+- Internal Health day keys and their parser explicitly use the Gregorian calendar, matching HealthKit exports even when the phone uses another display calendar.
+- Static source/diff review only. No full test suite, simulator, build or TestFlight upload was started.

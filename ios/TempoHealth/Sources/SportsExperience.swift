@@ -23,6 +23,11 @@ struct SportsHubScreen: View {
                     VStack(alignment: .leading, spacing: 16) {
                         sportsHeader
 
+                        if let error = model.healthWorkoutError {
+                            Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
                         if selectedSports.isEmpty {
                             Text("Profilinden ilgilendiğin sporları seçerek bu alanı kişiselleştirebilirsin.")
                                 .padding(20).frame(maxWidth: .infinity)
