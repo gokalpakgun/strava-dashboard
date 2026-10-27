@@ -23,6 +23,10 @@
 	<string>3.0</string>
 	<key>CFBundleVersion</key>
 	<string>41</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>strava</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>

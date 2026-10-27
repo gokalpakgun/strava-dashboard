@@ -87,6 +87,30 @@ test("Strava OAuth state survives KV edge propagation and rejects tampering", as
     const mobileState = new URL(mobileStart.headers.get("Location")).searchParams.get("state");
     assert.equal(await env.TOKEN_STORE.get(`mobile-oauth-state:${mobileState}`), null);
 
+    const prepared = await worker.fetch(new Request(
+      `https://apitempo.com/api/mobile/auth/prepare?code_challenge=${"B".repeat(43)}`,
+    ), env, {});
+    assert.equal(prepared.status, 200);
+    assert.equal(prepared.headers.get("Cache-Control"), "no-store");
+    const appAuthorization = new URL((await prepared.json()).authorizationUrl);
+    assert.equal(appAuthorization.protocol, "strava:");
+    assert.equal(appAuthorization.hostname, "oauth");
+    assert.equal(appAuthorization.pathname, "/mobile/authorize");
+    assert.equal(appAuthorization.searchParams.get("redirect_uri"), "https://apitempo.com/mobile/auth/callback");
+    assert.equal(appAuthorization.searchParams.get("scope"), "activity:read_all,profile:read_all");
+    const denied = await worker.fetch(new Request(
+      `https://apitempo.com/mobile/auth/callback?state=${encodeURIComponent(appAuthorization.searchParams.get("state"))}&error=access_denied`,
+    ), env, {});
+    assert.equal(denied.status, 302);
+    const deniedCallback = new URL(denied.headers.get("Location"));
+    assert.equal(deniedCallback.searchParams.get("error"), "access_denied");
+    assert.equal(deniedCallback.searchParams.get("code_challenge"), "B".repeat(43));
+    assert.equal(tokenExchanges, 1);
+    const invalidPreparation = await worker.fetch(new Request(
+      "https://apitempo.com/api/mobile/auth/prepare?code_challenge=invalid",
+    ), env, {});
+    assert.equal(invalidPreparation.status, 400);
+
     const tamperedState = `${mobileState.startsWith("A") ? "B" : "A"}${mobileState.slice(1)}`;
     const rejected = await worker.fetch(new Request(
       `https://apitempo.com/mobile/auth/callback?state=${tamperedState}&code=attacker-code`,

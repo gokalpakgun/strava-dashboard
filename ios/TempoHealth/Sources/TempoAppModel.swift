@@ -34,6 +34,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var connectionGeneration = UUID()
     private var authorizationID: UUID?
     private var webAuthSession: ASWebAuthenticationSession?
+    private var externalStravaAuthorizationID: UUID?
     private var pendingVerifier: String?
     private var pendingOAuthAccountId: String?
     private var isCompletingAuthorization = false
@@ -467,6 +468,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         authorizationID = nil
         webAuthSession?.cancel()
         webAuthSession = nil
+        externalStravaAuthorizationID = nil
         pendingVerifier = nil
         pendingOAuthAccountId = nil
         isCompletingAuthorization = false
@@ -484,6 +486,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
         let authID = UUID()
         authorizationID = authID
+        externalStravaAuthorizationID = nil
         connectionGeneration = UUID()
         connectionRestoreID = nil
         let generation = connectionGeneration
@@ -501,6 +504,53 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         isBusy = true
         isRestoringConnection = false
         status = "Strava bağlantısı açılıyor…"
+        if let probe = URL(string: "strava://oauth/mobile/authorize"), UIApplication.shared.canOpenURL(probe) {
+            Task { await openStravaApp(challenge: challenge, fallbackURL: url, accountId: accountId, authorizationID: authID, generation: generation) }
+        } else {
+            openStravaBrowser(url, accountId: accountId, authorizationID: authID, generation: generation)
+        }
+    }
+
+    private func openStravaApp(challenge: String, fallbackURL: URL, accountId: String, authorizationID authID: UUID, generation: UUID) async {
+        do {
+            var components = URLComponents(url: URL(string: "/api/mobile/auth/prepare", relativeTo: baseURL)!, resolvingAgainstBaseURL: true)!
+            components.queryItems = [URLQueryItem(name: "code_challenge", value: challenge)]
+            var request = URLRequest(url: components.url!)
+            request.timeoutInterval = 12
+            let (data, response) = try await Self.apiSession.data(for: request)
+            guard !Task.isCancelled, connectionGeneration == generation, authorizationID == authID,
+                  activeTempoAccountId == accountId else { return }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  data.count <= 8_192,
+                  let prepared = try? JSONDecoder().decode(StravaAppAuthorizationResponse.self, from: data),
+                  let appURL = URL(string: prepared.authorizationUrl),
+                  appURL.scheme == "strava", appURL.host == "oauth", appURL.path == "/mobile/authorize" else {
+                openStravaBrowser(fallbackURL, accountId: accountId, authorizationID: authID, generation: generation)
+                return
+            }
+            externalStravaAuthorizationID = authID
+            UIApplication.shared.open(appURL, options: [:]) { [weak self] opened in
+                Task { @MainActor in
+                    guard let self, self.connectionGeneration == generation, self.authorizationID == authID,
+                          self.activeTempoAccountId == accountId, !self.isCompletingAuthorization else { return }
+                    if !opened {
+                        self.externalStravaAuthorizationID = nil
+                        self.openStravaBrowser(fallbackURL, accountId: accountId, authorizationID: authID, generation: generation)
+                    }
+                }
+            }
+        } catch {
+            guard !Task.isCancelled, connectionGeneration == generation, authorizationID == authID,
+                  activeTempoAccountId == accountId else { return }
+            // Older API deployments and failed app launches retain the existing web flow.
+            openStravaBrowser(fallbackURL, accountId: accountId, authorizationID: authID, generation: generation)
+        }
+    }
+
+    private func openStravaBrowser(_ url: URL, accountId: String, authorizationID authID: UUID, generation: UUID) {
+        guard connectionGeneration == generation, authorizationID == authID, activeTempoAccountId == accountId else { return }
+        externalStravaAuthorizationID = nil
+        isBusy = true
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "tempohealth") { [weak self] callbackURL, error in
             Task { @MainActor in
                 guard let self, self.connectionGeneration == generation,
@@ -539,7 +589,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     func skipStravaForNow() {
         guard accessToken == nil else { return }
-        connectionRestoreID = nil
+        invalidateConnectionOperations()
         UserDefaults.standard.set(true, forKey: Self.stravaSkippedKey)
         isRestoringConnection = false
         hasAttemptedAccountRestore = true
@@ -553,6 +603,18 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     private func processAuthorizationCallback(_ url: URL) {
         guard !isCompletingAuthorization, pendingVerifier != nil || OAuthVerifierStore.read() != nil else { return }
+        let callbackItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        if let callbackChallenge = callbackItems.first(where: { $0.name == "code_challenge" })?.value {
+            guard let verifier = pendingVerifier ?? OAuthVerifierStore.read(),
+                  callbackChallenge == Self.codeChallenge(for: verifier) else { return }
+        }
+        if callbackItems.first(where: { $0.name == "error" })?.value == "access_denied" {
+            // Only a callback bound to this PKCE attempt can cancel its pending state.
+            guard callbackItems.contains(where: { $0.name == "code_challenge" }) else { return }
+            invalidateConnectionOperations()
+            status = "Strava izni verilmedi. İstediğin zaman yeniden bağlanabilirsin."
+            return
+        }
         guard let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "ticket" })?.value,
               !ticket.isEmpty,
@@ -575,6 +637,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         authorizationID = authID
         let generation = connectionGeneration
         isCompletingAuthorization = true
+        externalStravaAuthorizationID = nil
         pendingVerifier = nil
         isBusy = true
         webAuthSession = nil
@@ -590,6 +653,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func syncWhenActive() {
+        if let externalID = externalStravaAuthorizationID, authorizationID == externalID {
+            externalStravaAuthorizationID = nil
+            if !isCompletingAuthorization {
+                // Native app cancellation has no ASWebAuthenticationSession callback.
+                // Release the button while keeping PKCE for a delayed valid return.
+                isBusy = false
+                status = "Strava bağlantısı bekleniyor. Tamamlamadıysan yeniden deneyebilirsin."
+            }
+        }
         if healthSyncEnabled {
             Task { await syncAppleHealth() }
         }
@@ -1122,8 +1194,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 
     func disconnect() {
         guard !isBusy, let accountId = activeTempoAccountId else { return }
-        connectionGeneration = UUID()
-        connectionRestoreID = nil
+        invalidateConnectionOperations()
         let generation = connectionGeneration
         let token = accessToken
         isBusy = true
@@ -1533,6 +1604,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
 }
 
 private struct TicketRequest: Encodable { let ticket: String; let verifier: String }
+private struct StravaAppAuthorizationResponse: Decodable { let authorizationUrl: String }
 private struct TicketResponse: Decodable { let token: String?; let error: String? }
 private struct ManualWaterRequest: Encodable { let date: String; let amountMl: Int }
 private struct ManualWaterResponse: Decodable { let totalMl: Int?; let error: String? }

@@ -914,3 +914,6 @@
 "Strava bağlantısı Tempo hesabından yenileniyor…" = "Strava bağlantısı Tempo hesabından yenileniyor…";
 
 "Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi." = "Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi.";
+
+"Strava izni verilmedi. İstediğin zaman yeniden bağlanabilirsin." = "Strava izni verilmedi. İstediğin zaman yeniden bağlanabilirsin.";
+"Strava bağlantısı bekleniyor. Tamamlamadıysan yeniden deneyebilirsin." = "Strava bağlantısı bekleniyor. Tamamlamadıysan yeniden deneyebilirsin.";

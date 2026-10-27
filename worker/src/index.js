@@ -47,6 +47,9 @@ export default {
       if (url.pathname === "/auth/callback" && request.method === "GET") {
         return completeAuthorization(request, url, env);
       }
+      if (url.pathname === "/api/mobile/auth/prepare" && request.method === "GET") {
+        return startMobileAuthorization(url, env, true);
+      }
       if (url.pathname === "/mobile/auth/start" && request.method === "GET") {
         return startMobileAuthorization(url, env);
       }
@@ -442,7 +445,7 @@ async function buildDashboardUncached(env, { sessionKey, cacheKey, saved, sessio
 }
 
 
-async function startMobileAuthorization(url, env) {
+async function startMobileAuthorization(url, env, nativeApp = false) {
   requireBindings(env);
   const codeChallenge = url.searchParams.get("code_challenge") || "";
   if (!/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
@@ -452,7 +455,7 @@ async function startMobileAuthorization(url, env) {
     });
   }
   const state = await sealOAuthState(env, { flow: "mobile", codeChallenge });
-  const authorize = new URL("https://www.strava.com/oauth/authorize");
+  const authorize = new URL(nativeApp ? "strava://oauth/mobile/authorize" : "https://www.strava.com/oauth/authorize");
   authorize.search = new URLSearchParams({
     client_id: env.STRAVA_CLIENT_ID,
     response_type: "code",
@@ -461,6 +464,7 @@ async function startMobileAuthorization(url, env) {
     scope: "activity:read_all,profile:read_all",
     state,
   }).toString();
+  if (nativeApp) return json({ authorizationUrl: authorize.toString() }, 200, { "Referrer-Policy": "no-referrer" });
   return new Response(null, {
     status: 302,
     headers: { Location: authorize.toString(), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
@@ -471,7 +475,8 @@ async function completeMobileAuthorization(url, env) {
   requireBindings(env);
   const state = url.searchParams.get("state") || "";
   const code = url.searchParams.get("code") || "";
-  if (!/^[A-Za-z0-9_-]{40,512}$/.test(state) || !code) {
+  const denied = url.searchParams.get("error") === "access_denied";
+  if (!/^[A-Za-z0-9_-]{40,512}$/.test(state) || (!code && !denied)) {
     return new Response("Bağlantı isteği geçersiz veya süresi dolmuş. Tempo uygulamasından yeniden dene.", {
       status: 400,
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
@@ -482,6 +487,16 @@ async function completeMobileAuthorization(url, env) {
     return new Response("Bağlantı isteği geçersiz veya süresi dolmuş. Tempo uygulamasından yeniden dene.", {
       status: 400,
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
+  if (denied) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: `${MOBILE_CALLBACK_SCHEME}://auth?error=access_denied&code_challenge=${encodeURIComponent(oauthState.codeChallenge)}`,
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+      },
     });
   }
   const tokens = await stravaToken({
@@ -503,7 +518,7 @@ async function completeMobileAuthorization(url, env) {
   return new Response(null, {
     status: 302,
     headers: {
-      Location: `${MOBILE_CALLBACK_SCHEME}://auth?ticket=${encodeURIComponent(ticket)}`,
+      Location: `${MOBILE_CALLBACK_SCHEME}://auth?ticket=${encodeURIComponent(ticket)}&code_challenge=${encodeURIComponent(oauthState.codeChallenge)}`,
       "Cache-Control": "no-store",
       "Referrer-Policy": "no-referrer",
     },

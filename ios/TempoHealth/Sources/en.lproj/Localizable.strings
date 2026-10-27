@@ -1439,3 +1439,6 @@
 "Strava bağlantısı Tempo hesabından yenileniyor…" = "Restoring your Strava connection from your Tempo account…";
 
 "Tempo hesabı değişti. Antrenman bu hesapta kaydedilmedi." = "Your Tempo account changed. The workout was not saved to this account.";
+
+"Strava izni verilmedi. İstediğin zaman yeniden bağlanabilirsin." = "Strava access was not granted. You can connect again whenever you like.";
+"Strava bağlantısı bekleniyor. Tamamlamadıysan yeniden deneyebilirsin." = "Waiting for Strava. If you did not finish connecting, you can try again.";
