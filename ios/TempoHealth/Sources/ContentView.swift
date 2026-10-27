@@ -511,11 +511,10 @@ private struct ImportPill: View {
 private struct HomeScreen: View {
     @EnvironmentObject private var model: TempoAppModel
 
-    private var weekManualWorkouts: [TempoManualWorkout] {
-        model.weekActivityWorkouts
-    }
+    private var weekManualWorkouts: [TempoManualWorkout] { model.weekActivityWorkouts }
     private var weekDistance: Double {
-        weekManualWorkouts.reduce(0) { $0 + ($1.distanceKm ?? 0) }
+        weekManualWorkouts.filter { TempoSport(rawValue: $0.sportId).supportsDistance }
+            .reduce(0) { $0 + ($1.distanceKm ?? 0) }
     }
     private var weekSeconds: Double {
         weekManualWorkouts.reduce(0) { $0 + Double($1.durationSeconds ?? $1.durationMinutes * 60) }
@@ -526,23 +525,43 @@ private struct HomeScreen: View {
             TempoPage {
                 HomeHeader()
                 AppleHealthHomeCard(balance: model.tempoBalance, connected: model.healthSyncEnabled)
-                SectionHeading(title: "Bu hafta", caption: "TEMPO + APPLE SAĞLIK", padding: false)
-                weeklyMetrics
-                if let error = model.manualWorkoutError { Text(error).font(.footnote).foregroundStyle(TempoTheme.orange) }
-                HomeMovementMenuCard()
-                NavigationLink(destination: MonthlyStatsScreen()) {
-                    Label("Aylık ilerlemeni gör", systemImage: "chart.bar.xaxis").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(TempoSecondaryButtonStyle()).accessibilityIdentifier("home.monthly")
-                if !model.activityWorkouts.isEmpty {
-                    SectionHeading(title: "Son antrenmanların", caption: "TEMPO + APPLE SAĞLIK", padding: false)
-                    ForEach(Array(model.activityWorkouts.prefix(3))) { workout in ManualWorkoutRow(workout: workout) }
-                    NavigationLink(destination: TempoWorkoutHistoryScreen()) { Label("Antrenman geçmişi", systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity) }.buttonStyle(TempoSecondaryButtonStyle())
-                }
-                HomeSocialCard()
-                if let dashboard = model.dashboard {
-                    TempoDisclosureSection(title: "Strava aktiviteleri", icon: "link") { RecentActivitiesPanel(activities: dashboard.activities) }
+                weeklyOverview
+                if let error = model.manualWorkoutError {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(.footnote).foregroundStyle(TempoTheme.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 quickActions
+                if let workout = model.activityWorkouts.first {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Son antrenman".tempoLocalized).font(.headline)
+                            Spacer(minLength: 12)
+                            NavigationLink(destination: TempoWorkoutHistoryScreen()) {
+                                HStack(spacing: 5) {
+                                    Text("Tümünü gör".tempoLocalized).font(.caption.weight(.medium))
+                                    Image(systemName: "arrow.up.right").font(.caption2.weight(.semibold))
+                                }
+                                .frame(minHeight: 44).padding(.horizontal, 4)
+                            }
+                            .buttonStyle(.plain).foregroundStyle(TempoTheme.secondary)
+                            .accessibilityLabel("Antrenman geçmişi".tempoLocalized)
+                        }
+                        ManualWorkoutRow(workout: workout)
+                    }
+                }
+                TempoDisclosureSection(title: "Strava araçları", icon: "link") {
+                    NavigationLink(destination: RoutesScreen()) {
+                        TempoMenuRow(title: "Rotalar", subtitle: "Strava’daki kayıtların", icon: "map")
+                    }.buttonStyle(.plain)
+                    if let dashboard = model.dashboard {
+                        RecentActivitiesPanel(activities: dashboard.activities)
+                    } else if model.isConnected {
+                        LoadingDashboardCard()
+                    } else {
+                        StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Bağladığında Strava kayıtlarını burada ayrı kaynak etiketiyle görebilirsin.")
+                    }
+                }
                 dailyMotivation
             }
             .refreshable { await model.reloadAll() }
@@ -550,34 +569,84 @@ private struct HomeScreen: View {
         }
     }
 
+    private var weeklyOverview: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Bu hafta".tempoLocalized).font(.headline)
+            weeklyMetrics
+            NavigationLink(destination: MonthlyStatsScreen()) {
+                HStack(spacing: 10) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(TempoTheme.blue)
+                        .frame(width: 28, height: 28)
+                        .accessibilityHidden(true)
+                    Text("Aylık ilerlemeni gör".tempoLocalized)
+                        .font(.subheadline.weight(.medium))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
+                        .accessibilityHidden(true)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 12)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .background(TempoTheme.raised.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain).accessibilityIdentifier("home.monthly")
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
     private var weeklyMetrics: some View {
         TempoMetricGrid {
-            MetricCard(value: "\(weekManualWorkouts.count)", label: "Antrenman", icon: "figure.run", color: TempoTheme.green)
+            HomeWeekMetric(value: "\(weekManualWorkouts.count)", title: "Antrenman", color: TempoTheme.green)
                 .accessibilityElement(children: .ignore).accessibilityLabel("Antrenman".tempoLocalized).accessibilityValue("\(weekManualWorkouts.count)").accessibilityIdentifier("home.week.workouts")
-            MetricCard(value: TempoFormat.duration(weekSeconds), label: "Süre", icon: "clock.fill", color: TempoTheme.blue)
+            HomeWeekMetric(value: TempoFormat.duration(weekSeconds), title: "Süre", color: TempoTheme.blue)
                 .accessibilityElement(children: .ignore).accessibilityLabel("Süre".tempoLocalized).accessibilityValue(TempoFormat.duration(weekSeconds)).accessibilityIdentifier("home.week.duration")
-            if weekDistance > 0 && weekManualWorkouts.contains(where: { TempoSport(rawValue: $0.sportId).supportsDistance }) {
-            MetricCard(value: TempoFormat.distance(weekDistance), label: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath", color: TempoTheme.purple)
-                .accessibilityElement(children: .ignore).accessibilityLabel("Mesafe".tempoLocalized).accessibilityValue(TempoFormat.distance(weekDistance)).accessibilityIdentifier("home.week.distance")
+            if weekDistance > 0 {
+                HomeWeekMetric(value: TempoFormat.distance(weekDistance), title: "Mesafe", color: TempoTheme.purple)
+                    .accessibilityElement(children: .ignore).accessibilityLabel("Mesafe".tempoLocalized).accessibilityValue(TempoFormat.distance(weekDistance)).accessibilityIdentifier("home.week.distance")
             } else {
-                MetricCard(value: "\(Set(weekManualWorkouts.map { Calendar.current.startOfDay(for: $0.startedAt) }).count)", label: "Hareketli gün", icon: "calendar", color: TempoTheme.purple)
+                HomeWeekMetric(value: "\(Set(weekManualWorkouts.map { Calendar.current.startOfDay(for: $0.startedAt) }).count)", title: "Hareketli gün", color: TempoTheme.purple)
             }
         }
     }
 
     private var quickActions: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeading(title: "Hızlı erişim", caption: "KEŞFET", padding: false)
-            HStack(spacing: 10) {
-                HomeQuickAction(title: "Rotalar", icon: "map.fill", color: TempoTheme.green, destination: AnyView(RoutesScreen()))
-                HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
+            Text("Hızlı erişim".tempoLocalized).font(.headline)
+            TempoMetricGrid(columns: 2) {
+                HomeQuickAction(title: "Bugün ne yapsam?", icon: "figure.mixed.cardio", color: TempoTheme.green, destination: AnyView(TempoMovementMenuScreen()))
                 HomeQuickAction(title: "Tempo Koç", icon: "sparkles", color: TempoTheme.purple, destination: AnyView(CoachScreen()))
+                HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
+                HomeQuickAction(title: "Sosyal", icon: "person.2", color: TempoTheme.green, destination: AnyView(SocialScreen()))
             }
+            .padding(4)
+            .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
     }
 
-    private var dailyMotivation: some View {
-        DailyMotivationCard()
+    private var dailyMotivation: some View { DailyMotivationCard(compact: true) }
+}
+
+private struct HomeWeekMetric: View {
+    let value: String
+    let title: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(value).font(.title3.weight(.semibold).monospacedDigit())
+                .foregroundStyle(color).fixedSize(horizontal: false, vertical: true)
+            Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
     }
 }
 
@@ -749,30 +818,27 @@ private struct HomeQuickAction: View {
 
     var body: some View {
         NavigationLink(destination: destination) {
-            VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 34, height: 34)
-                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .font(.system(size: 16, weight: .medium)).foregroundStyle(color)
+                    .frame(width: 32, height: 32)
+                    .background(color.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityHidden(true)
                 Text(title.tempoLocalized)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .lineLimit(2)
+                    .font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .topLeading)
             .padding(12)
-            .multilineTextAlignment(.leading)
-            .background(TempoTheme.card.opacity(0.82), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(.white.opacity(0.065)))
-            .contentShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 }
 
 private struct DailyMotivationCard: View {
+    var compact = false
     private let messages = [
         "Bugünün küçük adımı, yarının gücü.",
         "Ritmini koru; sonuçlar peşinden gelir.",
@@ -793,39 +859,49 @@ private struct DailyMotivationCard: View {
         return messages[day % messages.count]
     }
 
-    var body: some View {
-        HStack(spacing: 11) {
-            Image(systemName: "quote.opening")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(TempoTheme.green)
-                .frame(width: 30, height: 30)
-                .background(TempoTheme.green.opacity(0.10), in: Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("GÜNÜN RİTMİ".tempoSentenceCased)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(TempoTheme.green)
-                Text(message.tempoLocalized)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .lineLimit(2)
+    @ViewBuilder var body: some View {
+        if compact {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "quote.opening").font(.caption2).foregroundStyle(TempoTheme.green)
+                    .accessibilityHidden(true)
+                Text(message.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 4)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4).padding(.vertical, 6)
+        } else {
+            HStack(spacing: 11) {
+                Image(systemName: "quote.opening")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(TempoTheme.green)
+                    .frame(width: 30, height: 30)
+                    .background(TempoTheme.green.opacity(0.10), in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("GÜNÜN RİTMİ".tempoSentenceCased)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(TempoTheme.green)
+                    Text(message.tempoLocalized)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 4)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                LinearGradient(
+                    colors: [.white.opacity(0.035), TempoTheme.green.opacity(0.035)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                in: RoundedRectangle(cornerRadius: 17, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .stroke(.white.opacity(0.055))
+            )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            LinearGradient(
-                colors: [.white.opacity(0.035), TempoTheme.green.opacity(0.035)],
-                startPoint: .leading,
-                endPoint: .trailing
-            ),
-            in: RoundedRectangle(cornerRadius: 17, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(.white.opacity(0.055))
-        )
     }
 }
 

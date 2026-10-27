@@ -1442,3 +1442,5 @@
 
 "Strava izni verilmedi. İstediğin zaman yeniden bağlanabilirsin." = "Strava access was not granted. You can connect again whenever you like.";
 "Strava bağlantısı bekleniyor. Tamamlamadıysan yeniden deneyebilirsin." = "Waiting for Strava. If you did not finish connecting, you can try again.";
+
+"Son antrenman" = "Latest workout";
