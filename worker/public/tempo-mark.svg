@@ -1,8 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" fill="none">
   <defs>
-    <linearGradient id="blue" x1="401" y1="1039" x2="1025" y2="330" gradientUnits="userSpaceOnUse"><stop stop-color="#378DDA"/><stop offset="0.55" stop-color="#8EDDF5"/><stop offset="1" stop-color="#50ADEB"/></linearGradient>
-    <linearGradient id="mint" x1="280" y1="594" x2="1041" y2="310" gradientUnits="userSpaceOnUse"><stop stop-color="#37C996"/><stop offset="0.54" stop-color="#69DBC8"/><stop offset="1" stop-color="#93F4D4"/></linearGradient>
+    <linearGradient id="blue" x1="450" y1="1010" x2="900" y2="410" gradientUnits="userSpaceOnUse"><stop stop-color="#248FEA"/><stop offset="0.6" stop-color="#69CEF1"/><stop offset="1" stop-color="#44ADEB"/></linearGradient>
+    <linearGradient id="green" x1="330" y1="900" x2="1010" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#66C58F"/><stop offset="0.55" stop-color="#6EC491"/><stop offset="1" stop-color="#8ADCA5"/></linearGradient>
+    <path id="silhouette" d="M240 516Q232 516 233 507C243 403 322 325 441 325H846C926 325 977 298 1000 250Q1008 239 1016 248C1050 376 1008 488 863 518H850C729 518 649 590 602 711C647 640 698 592 757 576L706 850C685 953 610 1010 505 1010H335C420 984 469 933 499 847C515 799 539 635 557 516Z"/>
+    <clipPath id="markClip"><use href="#silhouette"/></clipPath>
+    <filter id="seamShadow" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feDropShadow dx="3" dy="5" stdDeviation="7" flood-color="#12394F" flood-opacity="0.22"/></filter>
   </defs>
-  <path fill="url(#blue)" d="M218 507C221 398 310 306 423 306H858C937 306 995 270 1022 213C1050 337 1028 506 844 506H827C704 506 632 589 589 711C637 627 686 573 753 558L698 852C681 966 596 1039 481 1039H300C377 1015 422 958 451 870L543 507Z"/>
-  <path fill="url(#mint)" d="M218 507C221 398 310 306 423 306H858C937 306 995 270 1022 213C1045 322 1036 374 1000 414C975 453 924 470 851 478C708 489 625 573 589 711L577 756C536 919 433 1008 300 1039C377 1015 422 958 451 870L543 507Z"/>
+  <use href="#silhouette" fill="url(#blue)"/>
+  <g clip-path="url(#markClip)">
+    <path fill="url(#green)" filter="url(#seamShadow)" d="M240 516Q232 516 233 507C243 403 322 325 441 325H846C926 325 977 298 1000 250Q1008 239 1016 248C1041 333 1019 413 967 456C932 486 887 490 851 493C733 499 653 555 617 662L599 712C552 886 478 971 335 1005Q327 1006 327 1010H335C421 978 471 928 501 839C515 797 538 635 557 516Z"/>
+  </g>
 </svg>

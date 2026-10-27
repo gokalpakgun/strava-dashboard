@@ -10,19 +10,17 @@ struct TempoLaunchView: View {
     var body: some View {
         ZStack {
             TempoTheme.background
-            Image("TempoLaunchMark")
-                .resizable().scaledToFit().frame(width: 154, height: 154)
-                .mask { Rectangle().scaleEffect(x: 1, y: hasAppeared || reduceMotion ? 1 : 0, anchor: .bottom) }
-                .offset(y: hasAppeared || reduceMotion ? 0 : 12)
-                .scaleEffect(hasAppeared || reduceMotion ? 1 : 0.9)
-                .opacity(hasAppeared ? 1 : 0)
-                .animation(reduceMotion ? nil : .spring(response: 0.72, dampingFraction: 0.86), value: hasAppeared)
+            TempoBrandMark(size: 154)
+                .scaleEffect(reduceMotion || hasAppeared ? 1 : 0.94)
+                .blur(radius: reduceMotion || hasAppeared ? 0 : 3)
+                .opacity(reduceMotion || hasAppeared ? 1 : 0)
+                .animation(reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.82), value: hasAppeared)
                 .accessibilityIdentifier("launch.brand")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onAppear { hasAppeared = true }
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Tempo")
     }
 }
@@ -34,6 +32,7 @@ struct TempoBrandMark: View {
         Image("TempoLaunchMark")
             .resizable()
             .scaledToFit()
+            .scaleEffect(1.3)
             .frame(width: size, height: size)
     }
 }

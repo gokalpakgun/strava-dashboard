@@ -80,6 +80,7 @@ struct ContentView: View {
         Group {
             if !minimumLaunchFinished || account.isRestoring {
                 TempoLaunchView()
+                    .transition(.opacity)
             } else if !account.isAuthenticated {
                 AccountWelcomeView()
             } else if account.profile?.onboardingComplete != true {
@@ -91,8 +92,10 @@ struct ContentView: View {
         .background(TempoTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .task {
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+            do { try await Task.sleep(nanoseconds: reduceMotion ? 200_000_000 : 1_150_000_000) }
+            catch { return }
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) {
                 minimumLaunchFinished = true
             }
         }
