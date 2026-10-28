@@ -955,3 +955,23 @@
 "Seçtiklerinle yarış oluştur" = "Seçtiklerinle yarış oluştur";
 
 "Arkadaşının Tempo kullanıcı adını yaz." = "Arkadaşının Tempo kullanıcı adını yaz.";
+
+"social.health.title" = "Mücadele için Sağlık paylaşımı";
+"social.health.detail" = "Başlamadan önce paylaşımını seç. Apple Sağlık bağlantısı Tempo ile eşitlemeyi açar. Bu mücadelede katılımcılar yalnız %@ toplamını görebilir; nabız, uyku ve günlük kayıtların paylaşılmaz. Tercihini daha sonra değiştirebilirsin.";
+"social.health.connect" = "Apple Sağlık’a bağlan ve izinleri seç";
+"social.health.connecting" = "Sağlık bağlantısı hazırlanıyor…";
+"social.health.share" = "Bu mücadelede toplamımı paylaş";
+"social.health.private" = "Toplamımı paylaşmadan devam et";
+"social.health.noData" = "Paylaşım olmadan da katılabilirsin; skorun görünmez. İzin vermek veri bulunduğu anlamına gelmez. Ölçüm yoksa puan üretilmez.";
+"social.health.manage" = "Sağlık paylaşımını yönet";
+"social.friend.removeTitle" = "Arkadaşlıktan çıkarılsın mı?";
+"social.friend.remove" = "Arkadaşlıktan çıkar";
+"social.friend.removeDetail" = "İkinizin arkadaş listesinden de kaldırılır. Engellenmez ve mevcut mücadeleler devam eder; mücadele paylaşımını ayrıca kapatabilirsin.";
+"social.friend.removed" = "Arkadaşlıktan çıkarıldı.";
+"social.challenge.cancelTitle" = "Mücadele iptal edilsin mi?";
+"social.challenge.cancel" = "Mücadeleyi iptal et";
+"social.challenge.cancelDetail" = "Oluşturduğun mücadele ve davetleri tüm katılımcılar için kapatılır. Bu işlem geri alınamaz.";
+"social.challenge.cancelled" = "Mücadele iptal edildi.";
+"Invalid friend." = "Geçersiz arkadaş.";
+"Challenge not found." = "Mücadele bulunamadı veya iptal edildi.";
+"Only the creator can cancel this challenge." = "Bu mücadeleyi yalnızca oluşturan kişi iptal edebilir.";

@@ -621,8 +621,12 @@ private struct HomeScreen: View {
             Text("Hızlı erişim".tempoLocalized).font(.headline)
             TempoMetricGrid(columns: 2) {
                 HomeQuickAction(title: "Bugün ne yapsam?", icon: "figure.mixed.cardio", color: TempoTheme.green, destination: AnyView(TempoMovementMenuScreen()))
+                    .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
+                    .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Tempo Koç", icon: "sparkles", color: TempoTheme.purple, destination: AnyView(CoachScreen()))
+                    .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
+                    .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Sosyal", icon: "person.2", color: TempoTheme.green, destination: AnyView(SocialScreen()))
             }
             .padding(4)
@@ -2161,8 +2165,16 @@ struct SocialScreen: View {
     @State private var showBlockConfirmation = false
     @State private var createdChallenges: [TempoSocialChallenge] = []
     @State private var showChallengeFeedback = false
+    @State private var creationHealthSharing: Bool?
+    @State private var pendingHealthChallenge: TempoSocialChallenge?
+    @State private var pendingRemoveFriend: TempoSocialProfile?
+    @State private var showRemoveFriendConfirmation = false
+    @State private var pendingCancelChallenge: TempoSocialChallenge?
+    @State private var showCancelChallengeConfirmation = false
+    @State private var removedFriendIds: Set<String> = []
+    @State private var cancelledChallengeIds: Set<String> = []
 
-    private var friends: [TempoSocialProfile] { snapshot?.friends ?? [] }
+    private var friends: [TempoSocialProfile] { (snapshot?.friends ?? []).filter { !removedFriendIds.contains($0.id) } }
     private var filteredFriends: [TempoSocialProfile] {
         let query = friendQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         return query.isEmpty ? friends : friends.filter { $0.displayName.localizedStandardContains(query) || $0.username.localizedStandardContains(query) }
@@ -2170,7 +2182,7 @@ struct SocialScreen: View {
     private var challenges: [TempoSocialChallenge] {
         var seen = Set<String>()
         return (createdChallenges + (snapshot?.challenges ?? [])).filter {
-            seen.insert($0.id).inserted && $0.myStatus != "declined" && (TempoFormat.date(from: $0.endsAt) ?? .distantPast) > Date()
+            seen.insert($0.id).inserted && !cancelledChallengeIds.contains($0.id) && $0.myStatus != "declined" && (TempoFormat.date(from: $0.endsAt) ?? .distantPast) > Date()
         }
     }
     private var featuredChallenges: [TempoSocialChallenge] {
@@ -2216,6 +2228,16 @@ struct SocialScreen: View {
         .refreshable { await refresh() }
         .sheet(isPresented: $showAddFriend) { friendComposer }
         .sheet(isPresented: $showChallengeComposer) { challengeSheet }
+        .sheet(item: $pendingHealthChallenge) { challenge in healthConsentSheet(for: challenge) }
+        .onChange(of: showChallengeComposer) { _, shown in if shown { creationHealthSharing = nil } }
+        .confirmationDialog("social.friend.removeTitle".tempoLocalized, isPresented: $showRemoveFriendConfirmation, titleVisibility: .visible) {
+            Button("social.friend.remove".tempoLocalized, role: .destructive) { if let profile = pendingRemoveFriend { Task { await removeFriend(profile) } } }
+            Button("Vazgeç", role: .cancel) { pendingRemoveFriend = nil }
+        } message: { Text("social.friend.removeDetail".tempoLocalized) }
+        .confirmationDialog("social.challenge.cancelTitle".tempoLocalized, isPresented: $showCancelChallengeConfirmation, titleVisibility: .visible) {
+            Button("social.challenge.cancel".tempoLocalized, role: .destructive) { if let challenge = pendingCancelChallenge { Task { await cancelChallenge(challenge) } } }
+            Button("Vazgeç", role: .cancel) { pendingCancelChallenge = nil }
+        } message: { Text("social.challenge.cancelDetail".tempoLocalized) }
         .navigationTitle("Sosyal").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .task {
 #if DEBUG
@@ -2232,6 +2254,22 @@ struct SocialScreen: View {
         } message: {
             Text("Engellenen hesap arkadaş listesinden ve ortak yarışmalarından kaldırılır.")
         }
+    }
+
+    private func healthConsentSheet(for challenge: TempoSocialChallenge) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(challenge.title).font(.title2.bold())
+                    SocialHealthConsent(metric: TempoSocialMetric(rawValue: challenge.metric) ?? .steps, isWorking: working, selected: challenge.myStatus == "accepted" ? challenge.myShareHealth : nil) { enabled in
+                        Task { await confirmChallengeHealth(challenge, enabled: enabled) }
+                    }
+                    if !notice.isEmpty { Text(notice).font(.footnote).foregroundStyle(TempoTheme.secondary) }
+                }.padding(20).padding(.bottom, 32)
+            }.background(TempoTheme.background.ignoresSafeArea())
+                .navigationTitle("social.health.title".tempoLocalized).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Kapat") { pendingHealthChallenge = nil }.disabled(working) } }
+        }.presentationDetents([.large]).presentationDragIndicator(.visible).interactiveDismissDisabled(working)
     }
 
     private var sectionSelector: some View {
@@ -2535,6 +2573,7 @@ struct SocialScreen: View {
                                 }
                             }
                         }
+                        SocialHealthConsent(metric: metric, isWorking: working, selected: creationHealthSharing) { creationHealthSharing = $0 }
                         Button { Task { await createChallenge() } } label: {
                             HStack {
                                 if working { ProgressView().tint(.black) }
@@ -2542,7 +2581,7 @@ struct SocialScreen: View {
                             }.frame(maxWidth: .infinity)
                         }
                         .buttonStyle(TempoPrimaryButtonStyle())
-                        .disabled(working || selectedFriends.isEmpty)
+                        .disabled(working || selectedFriends.isEmpty || creationHealthSharing == nil || (creationHealthSharing == true && (!model.healthSyncEnabled || model.isHealthSyncing)))
                         .accessibilityIdentifier("social.challenge.send")
                     }
                 }
@@ -2569,12 +2608,15 @@ struct SocialScreen: View {
     }
 
     private func challengeCard(_ challenge: TempoSocialChallenge) -> some View {
-        SocialChallengeCard(challenge: challenge, isWorking: working, healthConnected: model.healthSyncEnabled) { action in
-            Task { await updateChallenge(challenge, action: action) }
+        SocialChallengeCard(challenge: challenge, isWorking: working) { action in
+            if action == "accept" { notice = ""; pendingHealthChallenge = challenge }
+            else { Task { await updateChallenge(challenge, action: action) } }
         } onShareChange: { enabled in
-            Task { await shareHealth(challenge, enabled: enabled) }
+            notice = ""; pendingHealthChallenge = challenge
         } onReport: { category in
             Task { await reportChallenge(challenge, category: category) }
+        } onCancel: {
+            pendingCancelChallenge = challenge; showCancelChallengeConfirmation = true
         }
     }
 
@@ -2587,6 +2629,7 @@ struct SocialScreen: View {
             let updated = try await account.loadSocial()
             guard !Task.isCancelled, refreshGeneration == generation else { return }
             snapshot = updated
+            removedFriendIds.formIntersection(Set(updated.friends.map(\.id)))
             selectedFriends.formIntersection(Set(snapshot?.friends.map(\.id) ?? []))
             let serverChallenges = snapshot?.challenges ?? []
             createdChallenges.removeAll { local in
@@ -2607,7 +2650,8 @@ struct SocialScreen: View {
         do {
             let submittedUsername = username
             let becameFriends = try await account.sendFriendRequest(username: submittedUsername.trimmingCharacters(in: .whitespacesAndNewlines))
-            if username == submittedUsername { username = ""; showAddFriend = false }
+            if username == submittedUsername { username = "" }
+            showAddFriend = false
             notice = (becameFriends ? "Karşılıklı istek eşleşti; artık arkadaşsınız." : "Arkadaşlık isteği gönderildi.").tempoLocalized
             await refresh(clearNotice: false)
         }
@@ -2622,17 +2666,19 @@ struct SocialScreen: View {
     }
 
     private func createChallenge() async {
-        guard !working else { return }
+        guard !working, let share = creationHealthSharing, !share || (model.healthSyncEnabled && !model.isHealthSyncing) else { return }
         working = true; defer { working = false }
         do {
             let submittedTitle = title
             let submittedFriends = selectedFriends
             let name = submittedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-            let created = try await account.createSocialChallenge(title: name.isEmpty ? "Haftalık hareket".tempoLocalized : name, metric: metric, friendIds: Array(submittedFriends))
+            let created = try await account.createSocialChallenge(title: name.isEmpty ? "Haftalık hareket".tempoLocalized : name, metric: metric, friendIds: Array(submittedFriends), shareHealth: share)
             retainChallengeResponse(created)
             if title == submittedTitle { title = "" }
             if selectedFriends == submittedFriends { selectedFriends.removeAll() }
             notice = "Mücadele daveti gönderildi. Arkadaşın kabul ettiğinde katılır.".tempoLocalized
+            showChallengeComposer = false
+            selectedSection = .challenges
             showChallengeFeedback = true
         } catch { notice = error.localizedDescription.tempoLocalized; showChallengeFeedback = true }
     }
@@ -2641,6 +2687,49 @@ struct SocialScreen: View {
         createdChallenges.removeAll { $0.id == challenge.id }
         createdChallenges.insert(challenge, at: 0)
         if createdChallenges.count > 40 { createdChallenges = Array(createdChallenges.prefix(40)) }
+    }
+
+    private func confirmChallengeHealth(_ challenge: TempoSocialChallenge, enabled: Bool) async {
+        guard !working, !enabled || (model.healthSyncEnabled && !model.isHealthSyncing) else { return }
+        working = true; defer { working = false }
+        do {
+            let updated: TempoSocialChallenge
+            if challenge.myStatus == "invited" {
+                updated = try await account.respondToSocialChallenge(id: challenge.id, action: "accept", share: enabled)
+            } else {
+                updated = try await account.setSocialChallengeHealthSharing(id: challenge.id, enabled: enabled)
+            }
+            retainChallengeResponse(updated)
+            pendingHealthChallenge = nil
+            notice = "Yarışma paylaşım tercihin kaydedildi.".tempoLocalized
+            await refresh(clearNotice: false)
+        } catch { notice = error.localizedDescription.tempoLocalized }
+    }
+
+    private func removeFriend(_ profile: TempoSocialProfile) async {
+        guard !working else { return }
+        working = true; defer { working = false }
+        do {
+            try await account.removeSocialFriend(userId: profile.id)
+            removedFriendIds.insert(profile.id)
+            selectedFriends.remove(profile.id)
+            pendingRemoveFriend = nil
+            notice = "social.friend.removed".tempoLocalized
+            await refresh(clearNotice: false)
+        } catch { notice = error.localizedDescription.tempoLocalized }
+    }
+
+    private func cancelChallenge(_ challenge: TempoSocialChallenge) async {
+        guard !working else { return }
+        working = true; defer { working = false }
+        do {
+            try await account.cancelSocialChallenge(id: challenge.id)
+            cancelledChallengeIds.insert(challenge.id)
+            createdChallenges.removeAll { $0.id == challenge.id }
+            pendingCancelChallenge = nil
+            notice = "social.challenge.cancelled".tempoLocalized
+            await refresh(clearNotice: false)
+        } catch { notice = error.localizedDescription.tempoLocalized }
     }
 
     private func updateChallenge(_ challenge: TempoSocialChallenge, action: String) async {
@@ -2667,6 +2756,11 @@ struct SocialScreen: View {
 
     @ViewBuilder
     private func safetyMenu(for profile: TempoSocialProfile) -> some View {
+        if friends.contains(where: { $0.id == profile.id }) {
+            Button("social.friend.remove".tempoLocalized, systemImage: "person.badge.minus", role: .destructive) {
+                pendingRemoveFriend = profile; showRemoveFriendConfirmation = true
+            }
+        }
         Menu("Kullanıcıyı bildir", systemImage: "flag") {
             Button("Taciz veya nefret", systemImage: "hand.raised") { Task { await reportUser(profile, category: "harassment") } }
             Button("Spam", systemImage: "envelope.badge") { Task { await reportUser(profile, category: "spam") } }
@@ -2707,6 +2801,46 @@ struct SocialScreen: View {
             try await account.reportSocialChallenge(id: challenge.id, category: category)
             notice = "Bildirim inceleme kuyruğuna gönderildi.".tempoLocalized
         } catch { notice = error.localizedDescription.tempoLocalized }
+    }
+}
+
+private struct SocialHealthConsent: View {
+    @EnvironmentObject private var model: TempoAppModel
+    let metric: TempoSocialMetric
+    let isWorking: Bool
+    var selected: Bool? = nil
+    let onChoose: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("social.health.title".tempoLocalized, systemImage: "heart.text.square.fill")
+                .font(.headline).foregroundStyle(.pink)
+            Text("social.health.detail".tempoFormatted(metric.title))
+                .font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+            if !model.healthSyncEnabled {
+                Button { model.connectAppleHealth() } label: {
+                    Label("social.health.connect".tempoLocalized, systemImage: "heart.fill")
+                }.buttonStyle(TempoPrimaryButtonStyle()).disabled(isWorking || model.isHealthSyncing)
+            }
+            if model.isHealthSyncing {
+                ProgressView("social.health.connecting".tempoLocalized).tint(TempoTheme.green)
+            }
+            if let error = model.healthError {
+                Text(error.tempoLocalized).font(.footnote).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            Button { onChoose(true) } label: {
+                Label("social.health.share".tempoLocalized, systemImage: selected == true ? "checkmark.circle.fill" : "heart.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(TempoSecondaryButtonStyle()).disabled(isWorking || !model.healthSyncEnabled || model.isHealthSyncing)
+                .accessibilityIdentifier("social.health.share")
+            Button { onChoose(false) } label: {
+                Label("social.health.private".tempoLocalized, systemImage: selected == false ? "checkmark.circle.fill" : "hand.raised")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(TempoSecondaryButtonStyle()).disabled(isWorking)
+                .accessibilityIdentifier("social.health.private")
+            Text("social.health.noData".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }.padding(16).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -2863,10 +2997,10 @@ private struct SocialParticipantRow: View {
 private struct SocialChallengeCard: View {
     let challenge: TempoSocialChallenge
     let isWorking: Bool
-    let healthConnected: Bool
     let onAction: (String) -> Void
     let onShareChange: (Bool) -> Void
     let onReport: (String) -> Void
+    let onCancel: () -> Void
     private var metric: TempoSocialMetric { TempoSocialMetric(rawValue: challenge.metric) ?? .steps }
     private var sortedParticipants: [TempoSocialParticipant] {
         challenge.participants.sorted {
@@ -2911,10 +3045,15 @@ private struct SocialChallengeCard: View {
                     }
                 } else if challenge.myStatus == "accepted" {
                     Button { onShareChange(!challenge.myShareHealth) } label: {
-                        Label(challenge.myShareHealth ? "Bu yarışmada Sağlık paylaşımı açık · Kapat" : "Sadece bu yarışmada günlük toplamlarımı paylaş", systemImage: challenge.myShareHealth ? "heart.fill" : "heart")
-                            .font(.caption.weight(.semibold)).foregroundStyle(challenge.myShareHealth ? TempoTheme.green : TempoTheme.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("social.health.manage".tempoLocalized, systemImage: challenge.myShareHealth ? "heart.fill" : "heart")
+                                .font(.subheadline.weight(.semibold))
+                            Text((challenge.myShareHealth ? "Paylaşım açık" : "Paylaşım kapalı").tempoLocalized)
+                                .font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }.foregroundStyle(challenge.myShareHealth ? TempoTheme.green : TempoTheme.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                    }.buttonStyle(.plain).disabled(isWorking || !healthConnected)
+                    }.buttonStyle(TempoSecondaryButtonStyle()).disabled(isWorking)
+                        .accessibilityValue((challenge.myShareHealth ? "Paylaşım açık" : "Paylaşım kapalı").tempoLocalized)
                     Text("Paylaşım yalnızca %@ toplamını kapsar. Günlük kayıtların ve diğer Sağlık verilerin görünmez.".tempoFormatted(metric.title.lowercased()))
                         .font(.caption2).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
                     ForEach(sortedParticipants.indices, id: \.self) { index in
@@ -2922,6 +3061,12 @@ private struct SocialChallengeCard: View {
                         SocialParticipantRow(participant: participant, rank: index + 1, myUserId: challenge.myUserId, metric: metric, maxScore: leaderScore)
                     }
                     Text("Skorlar yalnızca paylaşmayı açan katılımcılar için görünür.").font(.caption2).foregroundStyle(TempoTheme.secondary)
+                }
+                if challenge.creatorId == challenge.myUserId {
+                    Button(role: .destructive) { onCancel() } label: {
+                        Label("social.challenge.cancel".tempoLocalized, systemImage: "xmark.circle")
+                            .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                    }.buttonStyle(.plain).disabled(isWorking).accessibilityIdentifier("social.challenge.cancel.\(challenge.id)")
                 }
             }
         }

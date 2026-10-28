@@ -368,14 +368,22 @@ final class TempoAccountStore: ObservableObject {
         _ = try await socialRequest(path: "/api/account/social/requests", method: "POST", body: SocialFriendResponse(requestId: id, action: accept ? "accept" : "decline"))
     }
 
-    func createSocialChallenge(title: String, metric: TempoSocialMetric, friendIds: [String]) async throws -> TempoSocialChallenge {
-        let data = try await socialRequest(path: "/api/account/social/challenges", method: "POST", body: SocialChallengeCreate(title: title, metric: metric.rawValue, friendIds: friendIds))
+    func removeSocialFriend(userId: String) async throws {
+        _ = try await socialRequest(path: "/api/account/social/friends/remove", method: "POST", body: SocialFriendRemoval(userId: userId))
+    }
+
+    func cancelSocialChallenge(id: String) async throws {
+        _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "DELETE", body: Optional<EmptyPayload>.none)
+    }
+
+    func createSocialChallenge(title: String, metric: TempoSocialMetric, friendIds: [String], shareHealth: Bool = false) async throws -> TempoSocialChallenge {
+        let data = try await socialRequest(path: "/api/account/social/challenges", method: "POST", body: SocialChallengeCreate(title: title, metric: metric.rawValue, friendIds: friendIds, shareHealth: shareHealth))
         return try JSONDecoder().decode(SocialChallengeCreated.self, from: data).challenge
     }
 
     @discardableResult
-    func respondToSocialChallenge(id: String, action: String) async throws -> TempoSocialChallenge {
-        let data = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: action))
+    func respondToSocialChallenge(id: String, action: String, share: Bool? = nil) async throws -> TempoSocialChallenge {
+        let data = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "POST", body: SocialChallengeAction(action: action, share: share))
         return try JSONDecoder().decode(SocialChallengeCreated.self, from: data).challenge
     }
 
@@ -654,7 +662,8 @@ private struct SocialFriendResponse: Encodable { let requestId: String; let acti
 private struct SocialBlockAction: Encodable { let userId: String; let action: String }
 private struct SocialReportRequest: Encodable { let userId: String?; let challengeId: String?; let category: String }
 private struct SocialChallengeCreated: Decodable { let challenge: TempoSocialChallenge }
-private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String] }
+private struct SocialFriendRemoval: Encodable { let userId: String }
+private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String]; let shareHealth: Bool }
 private struct SocialChallengeAction: Encodable { let action: String; var share: Bool? = nil }
 private struct AccountEnvelope: Decodable {
     let token: String?

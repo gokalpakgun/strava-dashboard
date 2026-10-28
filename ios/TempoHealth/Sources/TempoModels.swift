@@ -564,6 +564,7 @@ struct TempoSocialParticipant: Decodable, Identifiable {
 
 struct TempoSocialChallenge: Decodable, Identifiable {
     let id: String
+    let creatorId: String?
     let myUserId: String
     let title: String
     let metric: String

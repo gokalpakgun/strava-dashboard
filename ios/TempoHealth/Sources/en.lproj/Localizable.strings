@@ -1480,3 +1480,23 @@
 "Seçtiklerinle yarış oluştur" = "Challenge selected friends";
 
 "Arkadaşının Tempo kullanıcı adını yaz." = "Enter your friend’s Tempo username.";
+
+"social.health.title" = "Health sharing for this challenge";
+"social.health.detail" = "Choose before you start. Connecting Apple Health enables syncing with Tempo. In this challenge, participants can only see your %@ total; heart rate, sleep and individual daily records are not shared. You can change this choice later.";
+"social.health.connect" = "Connect Apple Health and choose permissions";
+"social.health.connecting" = "Preparing your Health connection…";
+"social.health.share" = "Share my total in this challenge";
+"social.health.private" = "Continue without sharing my total";
+"social.health.noData" = "You can still join without sharing; your score stays hidden. Permission does not guarantee available data. Missing measurements do not produce a score.";
+"social.health.manage" = "Manage Health sharing";
+"social.friend.removeTitle" = "Remove this friend?";
+"social.friend.remove" = "Remove friend";
+"social.friend.removeDetail" = "You will be removed from each other’s friend lists. This does not block them or cancel existing challenges; you can turn off challenge sharing separately.";
+"social.friend.removed" = "Friend removed.";
+"social.challenge.cancelTitle" = "Cancel this challenge?";
+"social.challenge.cancel" = "Cancel challenge";
+"social.challenge.cancelDetail" = "Your challenge and its invitations will close for all participants. This cannot be undone.";
+"social.challenge.cancelled" = "Challenge cancelled.";
+"Invalid friend." = "Invalid friend.";
+"Challenge not found." = "Challenge not found or cancelled.";
+"Only the creator can cancel this challenge." = "Only the creator can cancel this challenge.";

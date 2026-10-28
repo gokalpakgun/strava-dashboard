@@ -239,6 +239,67 @@ async function challengeFixture() {
   return { ...data, challenge };
 }
 
+test("social UX: removing a friend is symmetric, idempotent and preserves challenges and other friends", async () => {
+  const { env, alice, bob, carol, challenge } = await challengeFixture();
+  assert.equal((await social(env, alice, "/friends/remove", { userId: alice.id })).status, 400);
+  assert.equal((await social(env, alice, "/friends/remove", { userId: bob.id })).status, 200);
+  assert.equal((await social(env, alice, "/friends/remove", { userId: bob.id })).status, 200);
+  const mine = await env.TOKEN_STORE.get("social-state:" + alice.id, "json");
+  const theirs = await env.TOKEN_STORE.get("social-state:" + bob.id, "json");
+  const other = await env.TOKEN_STORE.get("social-state:" + carol.id, "json");
+  assert.deepEqual(mine.friends, [carol.id]);
+  assert.deepEqual(theirs.friends, [carol.id]);
+  assert.deepEqual(other.friends, [alice.id, bob.id]);
+  assert.deepEqual(mine.challenges, [challenge.id]);
+  assert.deepEqual(mine.blocked, []);
+  // A retry also repairs the second side after a partial storage failure.
+  await env.TOKEN_STORE.put("social-state:" + bob.id, JSON.stringify(state({ friends: [alice.id, carol.id] })));
+  assert.equal((await social(env, alice, "/friends/remove", { userId: bob.id })).status, 200);
+  assert.deepEqual((await env.TOKEN_STORE.get("social-state:" + bob.id, "json")).friends, [carol.id]);
+  assert.equal((await social(env, null, "/friends/remove", { userId: bob.id })).status, 401);
+});
+
+test("social UX: only the creator can cancel and a stale challenge write cannot resurrect it", async () => {
+  const { env, alice, bob, challenge } = await challengeFixture();
+  assert.equal((await social(env, bob, "/challenges/" + challenge.id, undefined, "DELETE")).status, 403);
+  // Safety configuration must not prevent closing one's own challenge.
+  delete env.MODERATION_TOKEN;
+  assert.equal((await social(env, alice, "/challenges/" + challenge.id, undefined, "DELETE")).status, 200);
+  await env.TOKEN_STORE.put("social-challenge:" + challenge.id, JSON.stringify(challenge));
+  env.MODERATION_TOKEN = "test-only-moderation-token-with-32-characters";
+  assert.equal((await social(env, bob, "/challenges/" + challenge.id, { action: "accept", share: true })).status, 404);
+  for (const user of [alice, bob]) {
+    const result = await (await social(env, user, "", undefined, "GET")).json();
+    assert.deepEqual(result.challenges, []);
+  }
+});
+
+test("social UX: creation shares only the creator's explicit boolean consent", async () => {
+  for (const shareHealth of [undefined, false, "true", true]) {
+    const { env, alice, bob } = await fixture();
+    env.AI.run = async () => ({ response: "safe" });
+    await env.TOKEN_STORE.put("social-state:" + alice.id, JSON.stringify(state({ friends: [bob.id] })));
+    await env.TOKEN_STORE.put("social-state:" + bob.id, JSON.stringify(state({ friends: [alice.id] })));
+    const response = await social(env, alice, "/challenges", { title: "Moving week", metric: "steps", friendIds: [bob.id], shareHealth });
+    assert.equal(response.status, 201);
+    const { challenge } = await response.json();
+    assert.equal(challenge.creatorId, alice.id);
+    assert.equal(challenge.myShareHealth, shareHealth === true);
+    assert.equal(challenge.participants.find(item => item.userId === bob.id).shareHealth, false);
+  }
+});
+
+test("social UX: accepting records the explicit sharing choice in the same response", async () => {
+  for (const share of [undefined, false, "true", true]) {
+    const { env, bob, challenge } = await challengeFixture();
+    const response = await social(env, bob, "/challenges/" + challenge.id, { action: "accept", share });
+    assert.equal(response.status, 200);
+    const result = (await response.json()).challenge;
+    assert.equal(result.myStatus, "accepted");
+    assert.equal(result.myShareHealth, share === true);
+  }
+});
+
 test("invitees cannot read shared health scores until acceptance and declined invites disappear", async () => {
   const { env, bob, challenge } = await challengeFixture();
   const pending = await (await social(env, bob, "", undefined, "GET")).json();

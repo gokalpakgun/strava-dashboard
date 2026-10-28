@@ -15,18 +15,20 @@ export async function handleSocialRequest(request, env, url, ctx) {
   const userId = account.user.id;
   const root = "/api/account/social";
 
-  if (!hasModerationToken(env) && url.pathname.startsWith(root + "/challenges")) {
+  if (!hasModerationToken(env) && request.method !== "DELETE" && url.pathname.startsWith(root + "/challenges")) {
     return json({ error: "Sosyal güvenlik ayarı tamamlanana kadar bu özellik kullanılamıyor." }, 503);
   }
 
   if (url.pathname === root && request.method === "GET") return loadSnapshot(env, account.user);
   if (url.pathname === root + "/friends" && request.method === "POST") return sendFriendRequest(request, env, account.user, ctx);
+  if (url.pathname === root + "/friends/remove" && request.method === "POST") return removeFriend(request, env, account.user);
   if (url.pathname === root + "/requests" && request.method === "POST") return respondToFriendRequest(request, env, account.user, ctx);
   if (url.pathname === root + "/blocks" && request.method === "POST") return updateBlock(request, env, account.user);
   if (url.pathname === root + "/reports" && request.method === "POST") return createReport(request, env, account.user);
   if (url.pathname === root + "/challenges" && request.method === "POST") return createChallenge(request, env, account.user, ctx);
   const match = url.pathname.match(/^\/api\/account\/social\/challenges\/([a-f0-9-]{20,64})$/i);
   if (match && request.method === "POST") return updateChallenge(request, env, account.user, match[1]);
+  if (match && request.method === "DELETE") return cancelChallenge(env, account.user, match[1]);
   if (url.pathname === root && request.method !== "GET") return json({ error: "Bu sosyal işlem desteklenmiyor." }, 405);
   return null;
 }
@@ -314,6 +316,32 @@ async function createReport(request, env, user) {
   return json({ ok: true, message: "Bildirim alındı." }, 201);
 }
 
+async function removeFriend(request, env, user) {
+  const body = await readBody(request, 512);
+  if (body.error) return body.error;
+  const friendId = body.value.userId;
+  if (typeof friendId !== "string" || !/^[a-f0-9]{40}$/i.test(friendId) || friendId === user.id) return json({ error: "Invalid friend." }, 400);
+  const mine = await readState(env, user.id);
+  const theirs = await readState(env, friendId);
+  if (!mine.friends.includes(friendId) && !theirs.friends.includes(user.id)) return json({ ok: true });
+  mine.friends = mine.friends.filter(id => id !== friendId);
+  theirs.friends = theirs.friends.filter(id => id !== user.id);
+  // Removing a friend does not block them or silently cancel existing challenges.
+  await Promise.all([saveState(env, user.id, mine), saveState(env, friendId, theirs)]);
+  return json({ ok: true });
+}
+
+async function cancelChallenge(env, user, id) {
+  const challenge = await loadChallenge(env, id);
+  if (!challenge) return json({ error: "Challenge not found." }, 404);
+  if (challenge.creatorId !== user.id) return json({ error: "Only the creator can cancel this challenge." }, 403);
+  // Keep a separate tombstone so a concurrent acceptance/share write cannot resurrect it.
+  await env.TOKEN_STORE.put("social-challenge-cancelled:" + id, "1", {
+    expirationTtl: Math.max(60, Math.ceil((Date.parse(challenge.endsAt) - Date.now()) / 1000) + 60 * 60 * 24 * 14),
+  });
+  return json({ ok: true });
+}
+
 async function createChallenge(request, env, user, ctx) {
   const body = await readBody(request, 4096);
   if (body.error) return body.error;
@@ -339,7 +367,7 @@ async function createChallenge(request, env, user, ctx) {
   const startsAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
   const endsAt = new Date(startsAt.getTime() + CHALLENGE_SECONDS * 1000);
   const id = crypto.randomUUID();
-  const participants = [{ userId: user.id, status: "accepted", shareHealth: false, joinedAt: now.toISOString() }]
+  const participants = [{ userId: user.id, status: "accepted", shareHealth: body.value.shareHealth === true, joinedAt: now.toISOString() }]
     .concat(friendIds.map(userId => ({ userId, status: "invited", shareHealth: false, invitedAt: now.toISOString() })));
   const challenge = { id, creatorId: user.id, title, metric, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), participants };
   state.challenges.unshift(id);
@@ -369,7 +397,7 @@ async function updateChallenge(request, env, user, id) {
     if (participant.status !== "invited") return json({ error: "Bu davet daha önce yanıtlanmış." }, 409);
     participant.status = body.value.action === "accept" ? "accepted" : "declined";
     participant.respondedAt = new Date().toISOString();
-    participant.shareHealth = false;
+    participant.shareHealth = body.value.action === "accept" && body.value.share === true;
   } else if (body.value.action === "share") {
     if (participant.status !== "accepted" || typeof body.value.share !== "boolean") return json({ error: "Önce yarışma davetini kabul et." }, 400);
     participant.shareHealth = body.value.share;
@@ -398,6 +426,7 @@ async function presentChallenge(env, challenge, viewerId) {
   }));
   return {
     id: challenge.id,
+    creatorId: challenge.creatorId,
     myUserId: viewerId,
     title: challenge.title,
     metric: challenge.metric,
@@ -490,7 +519,13 @@ async function loadPublicUser(env, id) {
 }
 
 async function loadRequest(env, id) { return env.TOKEN_STORE.get("social-request:" + id, "json"); }
-async function loadChallenge(env, id) { return env.TOKEN_STORE.get("social-challenge:" + id, "json"); }
+async function loadChallenge(env, id) {
+  const [cancelled, challenge] = await Promise.all([
+    env.TOKEN_STORE.get("social-challenge-cancelled:" + id),
+    env.TOKEN_STORE.get("social-challenge:" + id, "json"),
+  ]);
+  return cancelled ? null : challenge;
+}
 
 function publicProfile(user) {
   return { id: user.id, username: user.username, displayName: user.displayName || user.username, avatarBase64: null };
