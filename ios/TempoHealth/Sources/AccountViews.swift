@@ -723,7 +723,7 @@ struct AccountProfileCard: View {
 
     var body: some View {
         if let profile = account.profile {
-            NavigationLink(destination: AchievementsScreen()) {
+            NavigationLink(destination: AccountSettingsScreen()) {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 16) {
                         ZStack(alignment: .bottomTrailing) {
@@ -786,6 +786,7 @@ struct AccountProfileCard: View {
                 .shadow(color: .black.opacity(0.16), radius: 18, y: 9)
             }
             .buttonStyle(.plain)
+            .accessibilityHint("Hesap ayarlarını aç".tempoLocalized)
         }
     }
 }

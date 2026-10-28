@@ -1214,6 +1214,7 @@ private struct ToolCard: View {
 
 struct NearbyFacilitiesScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var searchModel = FacilitySearchModel()
     @State private var selectedSport: TempoSportChoice?
     @State private var selectedPlaceID: String?
@@ -1221,189 +1222,168 @@ struct NearbyFacilitiesScreen: View {
     @State private var camera: MapCameraPosition = .automatic
 
     private var availableSports: [TempoSportChoice] {
-        let preferred = account.profile?.sports
-            .compactMap(TempoSportChoice.init(rawValue:))
-            .filter { $0.facilitySearchQuery != nil } ?? []
-        let remaining = TempoSportChoice.allCases.filter { sport in
-            sport.facilitySearchQuery != nil && !preferred.contains(sport)
-        }
-        return preferred + remaining
+        let preferred = account.profile?.sports.compactMap(TempoSportChoice.init(rawValue:)).filter { $0.facilitySearchQuery != nil } ?? []
+        return preferred + TempoSportChoice.allCases.filter { $0.facilitySearchQuery != nil && !preferred.contains($0) }
     }
-
-    private var selectedPlace: NearbyPlace? {
-        selectedPlaceID.flatMap { id in searchModel.places.first { $0.id == id } }
-    }
+    private var searchIdentity: String { "\(selectedSport?.rawValue ?? ""):\(searchRadiusKm)" }
 
     var body: some View {
-        ZStack {
-            TempoTheme.background.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .bottom) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("YAKININDA".tempoSentenceCased).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                            Text("Spor alanları").font(.system(size: 31, weight: .bold, design: .rounded))
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    header
+                    sportFilters
+                    mapPanel.frame(height: max(230, min(geometry.size.height * 0.46, 350)))
+                    searchStatus
+                    if !searchModel.places.isEmpty {
+                        HStack {
+                            Text("Yakındaki alanlar".tempoLocalized).font(.headline)
+                            Spacer(minLength: 12)
+                            Text("%d alan".tempoFormatted(searchModel.places.count)).font(.caption.monospacedDigit()).foregroundStyle(TempoTheme.secondary)
                         }
-                        Spacer()
-                        Menu {
-                            ForEach([10, 25, 50], id: \.self) { radius in
-                                Button {
-                                    searchRadiusKm = radius
-                                    selectedPlaceID = nil
-                                    if let selectedSport {
-                                        Task { await searchModel.search(for: selectedSport, radiusKm: radius) }
-                                    }
-                                } label: {
-                                    if searchRadiusKm == radius {
-                                        Label("\(radius) km", systemImage: "checkmark")
-                                    } else {
-                                        Text("\(radius) km")
-                                    }
+                        Text("Yalnızca seçtiğin sporla eşleşen kayıtlar gösterilir.".tempoLocalized)
+                            .font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+                        ForEach(searchModel.places) { place in
+                            PlaceCard(place: place, isSelected: selectedPlaceID == place.id) {
+                                selectedPlaceID = place.id
+                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                                    camera = .region(MKCoordinateRegion(center: place.coordinate, latitudinalMeters: 2_500, longitudinalMeters: 2_500))
                                 }
                             }
-                        } label: {
-                            Label("\(searchRadiusKm) km", systemImage: "scope")
-                                .font(.caption.bold())
-                                .foregroundStyle(TempoTheme.green)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 9)
-                                .background(TempoTheme.card, in: Capsule())
                         }
                     }
-                    .padding(.horizontal, 16)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(availableSports) { sport in
-                                Button {
-                                    selectedSport = sport
-                                    selectedPlaceID = nil
-                                    Task { await searchModel.search(for: sport, radiusKm: searchRadiusKm) }
-                                } label: {
-                                    Label(sport.title, systemImage: sport.symbol)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(selectedSport == sport ? .black : .white)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 10)
-                                        .background(selectedSport == sport ? TempoTheme.green : TempoTheme.card, in: Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
-
-                    ZStack {
-                        Map(position: $camera, selection: $selectedPlaceID) {
-                            UserAnnotation()
-                            ForEach(searchModel.places) { place in
-                                Marker(place.name, coordinate: place.coordinate)
-                                    .tint(place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange)
-                                    .tag(place.id)
-                            }
-                        }
-                        .mapStyle(.standard(elevation: .realistic))
-                        .mapControls {
-                            MapUserLocationButton()
-                            MapCompass()
-                            MapScaleView()
-                        }
-
-                        if searchModel.isSearching {
-                            ProgressView(searchModel.places.isEmpty ? "Spor alanları aranıyor…" : "Daha fazla yer taranıyor…")
-                                .padding(14)
-                                .background(.ultraThinMaterial, in: Capsule())
-                        }
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        if searchModel.hasOpenStreetMapPlaces {
-                            Link(destination: URL(string: "https://www.openstreetmap.org/copyright")!) {
-                                Text("© OpenStreetMap katkıda bulunanlar")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.78))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 5)
-                                    .background(.ultraThinMaterial, in: Capsule())
-                            }
-                            .padding(8)
-                        }
-                    }
-                    .frame(maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
-                    .padding(.horizontal, 12)
-
-                    if let place = selectedPlace {
-                        PlaceCard(place: place)
-                            .padding(.horizontal, 16)
-                    } else if let message = searchModel.message {
-                        HStack(spacing: 10) {
-                            Image(systemName: "location.circle.fill").foregroundStyle(TempoTheme.green)
-                            Text(message.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
-                            Spacer()
-                            if searchModel.needsPermission {
-                                Button("İzin ver") { searchModel.requestLocation(openSettingsIfDenied: true) }
-                                    .font(.caption.bold()).foregroundStyle(TempoTheme.green)
-                            } else if searchModel.searchFailed && !searchModel.isSearching, let selectedSport {
-                                Button("Tekrar dene") {
-                                    Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) }
-                                }.font(.caption.bold()).foregroundStyle(TempoTheme.green)
-                            }
-                        }
-                        .padding(.horizontal, 18)
-                    }
+                }
+                .padding(.horizontal, 16).padding(.top, 12)
+                .padding(.bottom, TempoTheme.scrollBottomClearance)
             }
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+            .scrollDismissesKeyboard(.interactively)
+            .background(TempoTheme.background.ignoresSafeArea())
         }
-        .navigationTitle("Spor alanları")
-        .navigationBarTitleDisplayMode(.inline)
-        .tempoGlassBackButton()
-        .onAppear {
-            if selectedSport == nil { selectedSport = availableSports.first }
-            if let selectedSport {
-                Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) }
-            } else {
-                searchModel.requestLocation()
-            }
+        .navigationTitle("Spor alanları").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .onAppear { if selectedSport == nil { selectedSport = availableSports.first } }
+        .task(id: searchIdentity) {
+            guard let selectedSport else { return }
+            selectedPlaceID = nil
+            await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm)
         }
-        .onChange(of: searchModel.region?.center.latitude) { _, _ in
-            if let region = searchModel.region { camera = .region(region) }
-        }
-        .onChange(of: searchModel.region?.center.longitude) { _, _ in
-            if let region = searchModel.region { camera = .region(region) }
-        }
-        .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in
-            if let region = searchModel.region { camera = .region(region) }
+        .onChange(of: searchModel.region?.center.latitude) { _, _ in updateCamera() }
+        .onChange(of: searchModel.region?.center.longitude) { _, _ in updateCamera() }
+        .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in updateCamera() }
+        .accessibilityIdentifier("screen.facilities")
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Yakınında".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text(selectedSport?.title ?? "Spor alanları".tempoLocalized).font(.title2.weight(.semibold))
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Menu {
+                ForEach([10, 25, 50], id: \.self) { radius in
+                    Button { searchRadiusKm = radius } label: {
+                        if searchRadiusKm == radius { Label("\(radius) km", systemImage: "checkmark") }
+                        else { Text("\(radius) km") }
+                    }
+                }
+            } label: {
+                Label("\(searchRadiusKm) km", systemImage: "scope").font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 12).frame(minHeight: 44)
+                    .background(TempoTheme.card, in: Capsule())
+            }.tint(TempoTheme.green).accessibilityLabel("Arama mesafesi".tempoLocalized)
         }
     }
+
+    private var sportFilters: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(availableSports) { sport in
+                    Button { selectedSport = sport } label: {
+                        Label(sport.title, systemImage: sport.symbol).font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 14).frame(minHeight: 44)
+                            .foregroundStyle(selectedSport == sport ? Color.black : Color.white)
+                            .background(selectedSport == sport ? TempoTheme.green : TempoTheme.card, in: Capsule())
+                    }.buttonStyle(.plain)
+                        .accessibilityAddTraits(selectedSport == sport ? .isSelected : [])
+                        .accessibilityIdentifier("facilities.sport.\(sport.rawValue)")
+                }
+            }.padding(.vertical, 2)
+        }
+    }
+
+    private var mapPanel: some View {
+        Map(position: $camera, selection: $selectedPlaceID) {
+            UserAnnotation()
+            ForEach(searchModel.places) { place in
+                Marker(place.name, coordinate: place.coordinate)
+                    .tint(selectedPlaceID == place.id ? TempoTheme.blue : TempoTheme.green).tag(place.id)
+            }
+        }
+        .mapStyle(.standard(elevation: .flat))
+        .mapControls { MapUserLocationButton(); MapCompass(); MapScaleView() }
+        .overlay(alignment: .top) {
+            if searchModel.isSearching {
+                ProgressView("Spor alanları aranıyor…".tempoLocalized)
+                    .font(.caption).padding(12).background(.regularMaterial, in: Capsule()).padding(10)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if searchModel.hasOpenStreetMapPlaces {
+                Link(destination: URL(string: "https://www.openstreetmap.org/copyright")!) {
+                    Text("© OpenStreetMap katkıda bulunanlar".tempoLocalized).font(.system(size: 9))
+                        .padding(.horizontal, 8).padding(.vertical, 5).background(.regularMaterial, in: Capsule())
+                }.tint(.primary).padding(8)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .accessibilityIdentifier("facilities.map")
+    }
+
+    @ViewBuilder private var searchStatus: some View {
+        if let message = searchModel.message {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(message.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if searchModel.needsPermission {
+                    Button("İzin ver") { searchModel.requestLocation(openSettingsIfDenied: true) }
+                        .buttonStyle(TempoSecondaryButtonStyle())
+                } else if searchModel.searchFailed && !searchModel.isSearching, let selectedSport {
+                    Button("Tekrar dene") { Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) } }
+                        .buttonStyle(TempoSecondaryButtonStyle())
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func updateCamera() { if let region = searchModel.region { camera = .region(region) } }
 }
 
 private struct PlaceCard: View {
     let place: NearbyPlace
+    var isSelected = false
+    var onSelect: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: place.source == .openStreetMap ? "map.fill" : "mappin.and.ellipse")
-                .font(.title2)
-                .foregroundStyle(place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange)
-                .frame(width: 48, height: 48)
-                .background((place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange).opacity(0.12), in: Circle())
-            VStack(alignment: .leading, spacing: 4) {
-                Text(place.name).font(.headline).lineLimit(1)
-                Text(place.address).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
-                Text("\(place.distanceText) · \(place.sourceTitle)")
-                    .font(.caption2.bold())
-                    .foregroundStyle(place.source == .openStreetMap ? TempoTheme.green : TempoTheme.orange)
-            }
-            Spacer()
+        HStack(alignment: .center, spacing: 12) {
+            Button(action: onSelect) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(place.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(place.address).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(place.distanceText) · \(place.sourceTitle)")
+                        .font(.caption2.weight(.medium)).foregroundStyle(TempoTheme.blue)
+                }.frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel("Haritada göster: %@".tempoFormatted(place.name))
             Button { place.openDirections() } label: {
-                Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                    .foregroundStyle(.black)
-                    .frame(width: 42, height: 42)
-                    .background(TempoTheme.green, in: Circle())
-            }
+                Image(systemName: "arrow.triangle.turn.up.right.diamond.fill").font(.title3)
+                    .foregroundStyle(TempoTheme.green).frame(width: 48, height: 48)
+                    .background(TempoTheme.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 15))
+            }.buttonStyle(.plain).accessibilityLabel("Yol tarifi: %@".tempoFormatted(place.name))
         }
-        .padding(15)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(isSelected ? TempoTheme.green.opacity(0.6) : .white.opacity(0.09), lineWidth: 1))
+        .accessibilityIdentifier("facilities.place.\(place.id)")
     }
 }
 
@@ -1540,7 +1520,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
                     request.region = searchRegion
                     request.resultTypes = .pointOfInterest
                     guard !Task.isCancelled, let response = try? await MKLocalSearch(request: request).start() else { return FacilitySearchBatch(places: [], succeeded: false) }
-                    return FacilitySearchBatch(places: response.mapItems.prefix(35).map { NearbyPlace($0, origin: location) }, succeeded: !Task.isCancelled)
+                    return FacilitySearchBatch(places: response.mapItems.filter { sport.matchesFacilityName($0.name ?? "") && CLLocationCoordinate2DIsValid($0.placemark.coordinate) }.prefix(35).map { NearbyPlace($0, origin: location) }, succeeded: !Task.isCancelled)
                 }
             }
             var results: [NearbyPlace] = []
@@ -1582,7 +1562,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { continue }
                 let decoded = try JSONDecoder().decode(OpenStreetMapResponse.self, from: data)
-                return FacilitySearchBatch(places: decoded.elements.prefix(160).compactMap {
+                return FacilitySearchBatch(places: decoded.elements.filter { sport.matchesFacilityTags($0.tags ?? [:]) }.prefix(160).compactMap {
                     NearbyPlace(openStreetMapElement: $0, sportTitle: sport.title, origin: location)
                 }, succeeded: !Task.isCancelled)
             } catch {

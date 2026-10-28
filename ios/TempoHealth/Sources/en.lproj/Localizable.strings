@@ -1444,3 +1444,39 @@
 "Strava bağlantısı bekleniyor. Tamamlamadıysan yeniden deneyebilirsin." = "Waiting for Strava. If you did not finish connecting, you can try again.";
 
 "Son antrenman" = "Latest workout";
+
+"Hesap ayarları" = "Account settings";
+
+"Profilini, sporlarını ve güvenliği düzenle" = "Edit your profile, sports and security";
+
+"Hesap ayarlarını aç" = "Open account settings";
+
+"Yakınında" = "Nearby";
+
+"Yakındaki alanlar" = "Nearby places";
+
+"%d alan" = "%d places";
+
+"Arama mesafesi" = "Search radius";
+
+"Yalnızca seçtiğin sporla eşleşen kayıtlar gösterilir." = "Only listings matching your selected sport are shown.";
+
+"Haritada göster: %@" = "Show on map: %@";
+
+"Yol tarifi: %@" = "Directions to %@";
+
+"Paylaşım ve güvenlik" = "Sharing and safety";
+
+"Yarış oluştur" = "Create a challenge";
+
+"Arkadaşlarında ara" = "Search your friends";
+
+"Birlikte yarışmak için arkadaşlarını seç." = "Select friends to start a challenge together.";
+
+"Bu aramaya uygun arkadaş bulunamadı." = "No friends match this search.";
+
+"Kullanıcı seçenekleri" = "User options";
+
+"Seçtiklerinle yarış oluştur" = "Challenge selected friends";
+
+"Arkadaşının Tempo kullanıcı adını yaz." = "Enter your friend’s Tempo username.";

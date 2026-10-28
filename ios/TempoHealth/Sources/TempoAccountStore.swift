@@ -79,10 +79,10 @@ enum TempoSportChoice: String, CaseIterable, Codable, Identifiable {
         case .swimming: return ["yüzme havuzu", "kapalı yüzme havuzu", "olimpik havuz", "swimming pool"]
         case .fitness: return ["spor salonu", "fitness merkezi", "gym", "crossfit salonu"]
         case .tennis: return ["tenis kortu", "tenis kulübü", "tennis court", "tennis club"]
-        case .basketball: return ["basketbol sahası", "basketbol salonu", "basketball court", "spor kompleksi"]
+        case .basketball: return ["basketbol sahası", "basketbol salonu", "basketball court"]
         case .football: return ["halı saha", "futbol sahası", "stadyum", "football field"]
-        case .volleyball: return ["voleybol sahası", "voleybol salonu", "beach volleyball court", "spor salonu"]
-        case .padel: return ["padel kortu", "padel kulübü", "padel court", "raket sporları"]
+        case .volleyball: return ["voleybol sahası", "voleybol salonu", "beach volleyball court"]
+        case .padel: return ["padel kortu", "padel kulübü", "padel court"]
         case .badminton: return ["badminton salonu", "badminton kortu", "badminton court", "badminton club"]
         case .yoga: return ["yoga stüdyosu", "yoga merkezi", "yoga studio"]
         }
@@ -116,6 +116,62 @@ enum TempoSportChoice: String, CaseIterable, Codable, Identifiable {
             return ["[\"sport\"~\"(^|;)badminton(;|$)\"]"]
         case .yoga:
             return ["[\"sport\"~\"(^|;)yoga(;|$)\"]"]
+        }
+    }
+
+    // Apple natural-language search can return adjacent or generic sports venues.
+    // Keep only explicit name matches; OSM sport tags can still identify unnamed courts.
+    func matchesFacilityName(_ name: String) -> Bool {
+        let text = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased().replacingOccurrences(of: "ı", with: "i")
+        let keywords: [String]
+        switch self {
+        case .run: keywords = ["kosu", "atletizm", "athletic", "running"]
+        case .cycling:
+            if ["motorcycling", "motorcycle", "motorbike", "motocross", "motokros", "motosiklet"].contains(where: { text.contains($0) }) && !["bisiklet", "bicycle", "bmx", "velodrom"].contains(where: { text.contains($0) }) { return false }
+            keywords = ["bisiklet", "cycling", "velodrom", "bmx", "bike park", "cycle track", "bicycle"]
+        case .walking: keywords = ["yuruyus", "walking", "walkway", "nature trail"]
+        case .hiking: keywords = ["doga yuruyus", "hiking", "trailhead", "trekking", "yuruyus parkur", "nature trail"]
+        case .swimming:
+            if ["bilardo", "billiard", "pool hall", "pool bar"].contains(where: { text.contains($0) }) { return false }
+            if text.split(whereSeparator: { !$0.isLetter }).contains("pool") { return true }
+            keywords = ["yuzme", "havuz", "swimming", "aquatic"]
+        case .fitness:
+            let explicitFitness = ["fitness", "crossfit", "strength", "pilates", "calisthenics"]
+            if explicitFitness.contains(where: { text.contains($0) }) { return true }
+            if ["basket", "voley", "volley", "futbol", "soccer", "tenis", "tennis", "badminton", "padel"].contains(where: { text.contains($0) }) { return false }
+            keywords = ["gym", "spor salonu", "antrenman salonu"]
+        case .tennis:
+            let courtName = ["masa tenisi", "table tennis", "paddle tennis", "padel tennis", "padel tenis"].reduce(text) { $0.replacingOccurrences(of: $1, with: "") }
+            return courtName.contains("tenis") || courtName.contains("tennis")
+        case .basketball: keywords = ["basketbol", "basketball", "basket sahas", "basket court"]
+        case .football: keywords = ["futbol", "football", "soccer", "hali saha", "halisaha"]
+        case .volleyball: keywords = ["voleybol", "volleyball", "beachvolley"]
+        case .padel: keywords = ["padel", "paddle tennis"]
+        case .badminton: keywords = ["badminton"]
+        case .yoga: keywords = ["yoga"]
+        }
+        return keywords.contains { text.contains($0) }
+    }
+
+    func matchesFacilityTags(_ tags: [String: String]) -> Bool {
+        let sports = Set((tags["sport"] ?? "").lowercased().split(separator: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+        switch self {
+        case .run: return !sports.isDisjoint(with: ["running", "athletics", "trail_running"])
+        case .cycling: return !sports.isDisjoint(with: ["cycling", "bmx", "bicycle"])
+        case .walking, .hiking:
+            guard tags["foot"] != "no", tags["hiking"] != "no" else { return false }
+            guard sports.isEmpty || !sports.isDisjoint(with: ["walking", "hiking", "running"]) else { return false }
+            return ["trailhead", "guidepost"].contains(tags["information"] ?? "")
+        case .swimming: return tags["leisure"] == "swimming_pool" || sports.contains("swimming")
+        case .fitness: return ["fitness_centre", "fitness_station"].contains(tags["leisure"] ?? "") || !sports.isDisjoint(with: ["fitness", "weightlifting", "crossfit", "calisthenics"])
+        case .tennis: return sports.contains("tennis")
+        case .basketball: return sports.contains("basketball")
+        case .football: return !sports.isDisjoint(with: ["soccer", "football"])
+        case .volleyball: return !sports.isDisjoint(with: ["volleyball", "beachvolleyball"])
+        case .padel: return !sports.isDisjoint(with: ["padel", "paddle_tennis"])
+        case .badminton: return sports.contains("badminton")
+        case .yoga: return sports.contains("yoga")
         }
     }
 
