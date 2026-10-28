@@ -22,6 +22,7 @@ struct ArchetypeWorkoutRecord: Identifiable, Sendable {
     let sourceLabel: String
     var payload: WorkoutPayload?
     var userEdited = false
+    var isMindBody = false
     var sourceTitle: String {
         sourceLabel
     }
@@ -40,7 +41,7 @@ enum WorkoutPayloadAdapter {
         }
         if archetype == .teamAndCourt { payload = .teamCourt(TeamCourtMetrics(activeEnergyKcal: workout.sourceEnergyKcal ?? workout.healthSignal?.activeEnergyKcal)) }
         // Mevcut 1–5 zorluk notu, farklı bir ölçek olan RPE 1–10'a dönüştürülmez.
-        return ArchetypeWorkoutRecord(id: "local-" + workout.id.uuidString, title: workout.title, date: workout.startedAt, durationSeconds: duration, source: workout.recordSource == "apple-health" ? .health : .tempo, sourceLabel: workout.sourceTitle, payload: payload)
+        return ArchetypeWorkoutRecord(id: "local-" + workout.id.uuidString, title: workout.title, date: workout.startedAt, durationSeconds: duration, source: workout.recordSource == "apple-health" ? .health : .tempo, sourceLabel: workout.sourceTitle, payload: payload, isMindBody: workout.sportId == "yoga" || SportMapper.isMindBody(healthKitRawValue: workout.originalHealthActivityType))
     }
     static func record(_ activity: TempoActivity) -> ArchetypeWorkoutRecord? {
         guard let date = activity.date else { return nil }
@@ -80,16 +81,21 @@ final class SportMetricsStore: ObservableObject {
     @Published private var entries: [String: WorkoutPayload] = [:]
     @Published private(set) var owner: String?
     @Published private(set) var error: String?
+    @Published private(set) var revision = 0
     private let repository: any WorkoutMetricsRepository
     init(repository: (any WorkoutMetricsRepository)? = nil) { self.repository = repository ?? UserDefaultsWorkoutMetricsRepository() }
     func bind(_ owner: String?) {
         guard self.owner != owner else { return }
         self.owner = owner; entries = [:]; error = nil
+        reload()
+    }
+    func reload() {
+        defer { revision += 1 }
         guard let owner else { return }
         do {
             let decoded = try repository.load(for: owner)
             guard decoded.values.allSatisfy(\.isValid) else { throw CocoaError(.coderReadCorrupt) }
-            entries = decoded
+            entries = decoded; error = nil
         } catch { self.error = "archetype.storageError".tempoLocalized }
     }
     static func removeData(for owner: String) { UserDefaultsWorkoutMetricsRepository().remove(for: owner) }
@@ -102,8 +108,11 @@ final class SportMetricsStore: ObservableObject {
         guard let owner, owner == expectedOwner, error == nil, record.source != .strava, record.durationSeconds.isFinite, record.durationSeconds > 0, payload.archetype == record.payload?.archetype, payload.isValid else {
             throw NSError(domain: "TempoMetrics", code: 1, userInfo: [NSLocalizedDescriptionKey: "archetype.invalid".tempoLocalized])
         }
-        if case .teamCourt(let value) = payload, let zones = value.zones, zones.totalSeconds > record.durationSeconds + 1 {
+        if let zones = payload.heartRateZones, zones.totalSeconds > record.durationSeconds + 1 {
             throw NSError(domain: "TempoMetrics", code: 2, userInfo: [NSLocalizedDescriptionKey: "archetype.zonesDuration".tempoLocalized])
+        }
+        if let seconds = payload.loadInputs.explosiveSeconds, seconds > record.durationSeconds {
+            throw NSError(domain: "TempoMetrics", code: 6, userInfo: [NSLocalizedDescriptionKey: "strain.explosiveDurationError".tempoLocalized])
         }
         if case .combatMindBody(let value) = payload, value.rounds.compactMap(\.seconds).reduce(0, +) > record.durationSeconds + 1 {
             throw NSError(domain: "TempoMetrics", code: 3, userInfo: [NSLocalizedDescriptionKey: "archetype.roundsDuration".tempoLocalized])
@@ -115,7 +124,7 @@ final class SportMetricsStore: ObservableObject {
             throw NSError(domain: "TempoMetrics", code: 5, userInfo: [NSLocalizedDescriptionKey: "archetype.lapsDuration".tempoLocalized])
         }
         var updated = entries; updated[record.id] = payload
-        try repository.save(updated, for: owner); entries = updated
+        try repository.save(updated, for: owner); entries = updated; revision += 1
     }
 }
 
@@ -258,7 +267,8 @@ struct SportArchetypeSection: View {
 }
 
 @MainActor
-private struct PolymorphicWorkoutDetailScreen: View {
+struct PolymorphicWorkoutDetailScreen: View {
+    @EnvironmentObject private var model: TempoAppModel
     let record: ArchetypeWorkoutRecord
     @ObservedObject var store: SportMetricsStore
     @State private var editing = false
@@ -266,6 +276,9 @@ private struct PolymorphicWorkoutDetailScreen: View {
     var body: some View {
         TempoPage {
             PolymorphicWorkoutCardView(record: current)
+            if record.source != .strava {
+                WorkoutStrainPreview(record: current, history: model.activityWorkouts.map { store.applying(to: WorkoutPayloadAdapter.record($0)) })
+            }
             if record.payload != nil, record.source != .strava {
                 Button { editing = true } label: { Label("archetype.edit".tempoLocalized, systemImage: "slider.horizontal.3").frame(maxWidth: .infinity) }
                     .buttonStyle(TempoPrimaryButtonStyle()).disabled(store.owner == nil || store.error != nil)
@@ -300,6 +313,7 @@ private struct WorkoutMetricsEditor: View {
         NavigationStack {
             Form {
                 Section { Text("archetype.editNote".tempoLocalized).font(.footnote) }
+                WorkoutLoadInputEditor(payload: $payload, invalid: $invalidFields)
                 fields
                 if !error.isEmpty { Section { Text(error).foregroundStyle(TempoTheme.orange) } }
             }.environmentObject(draft).scrollContentBackground(.hidden).background(TempoTheme.background)
@@ -326,6 +340,36 @@ private struct WorkoutMetricsEditor: View {
             TeamMetricsEditor(value: Binding(get: { if case .teamCourt(let v) = payload { return v }; return TeamCourtMetrics() }, set: { payload = .teamCourt($0) }), invalid: $invalidFields)
         case .combatMindBody:
             CombatMetricsEditor(value: Binding(get: { if case .combatMindBody(let v) = payload { return v }; return CombatMindBodyMetrics() }, set: { payload = .combatMindBody($0) }), invalid: $invalidFields)
+        }
+    }
+}
+
+@MainActor
+private struct WorkoutLoadInputEditor: View {
+    @Binding var payload: WorkoutPayload
+    @Binding var invalid: Set<String>
+    @EnvironmentObject private var draft: MetricTextDraft
+    private var rpe: Binding<Double?> { Binding(get: { payload.loadInputs.sessionRPE }, set: { var input = payload.loadInputs; input.sessionRPE = $0; payload.loadInputs = input }) }
+    private var explosive: Binding<Double?> { Binding(get: { payload.loadInputs.explosiveSeconds }, set: { var input = payload.loadInputs; input.explosiveSeconds = $0; payload.loadInputs = input }) }
+    var body: some View {
+        Section("strain.inputs".tempoLocalized) {
+            MetricNumberField(title: "strain.sessionRPE", id: "sessionRPE", value: rpe, invalid: $invalid)
+            Text("strain.rpeHelp".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+            MetricNumberField(title: "strain.explosiveSeconds", id: "explosiveSeconds", value: explosive, invalid: $invalid)
+            Group {
+                DisclosureGroup("archetype.zones".tempoLocalized) {
+                    if payload.heartRateZones != nil {
+                        ForEach(0..<5, id: \.self) { i in
+                            MetricNumberField(title: "archetype.zoneSeconds".tempoFormatted(i + 1), id: "loadzone\(i)", value: Binding(get: { guard let zones = payload.heartRateZones, zones.seconds.indices.contains(i) else { return nil }; return zones.seconds[i] }, set: { var zones = payload.heartRateZones; if zones?.seconds.count == 5 { zones?.seconds[i] = $0 }; payload.heartRateZones = zones }), invalid: $invalid, required: true)
+                        }
+                        Button("archetype.clearZones".tempoLocalized) {
+                            for i in 0..<5 { invalid.remove("loadzone\(i)"); draft.values.removeValue(forKey: "loadzone\(i)") }
+                            payload.heartRateZones = nil
+                        }
+                    } else { Button("archetype.addZones".tempoLocalized) { payload.heartRateZones = HeartRateZones(seconds: [nil, nil, nil, nil, nil]) } }
+                }
+            }
+            Text("strain.inputHelp".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
         }
     }
 }
@@ -446,14 +490,6 @@ private struct TeamMetricsEditor: View {
             MetricNumberField(title: "archetype.caloriesInput", id: "calories", value: $value.activeEnergyKcal, invalid: $invalid)
             MetricIntegerField(title: "archetype.sprints", id: "sprints", value: $value.sprintCount, invalid: $invalid, range: 0...10_000)
             if value.sprintCount != nil { Button("archetype.clearSprints".tempoLocalized) { draft.values.removeValue(forKey: "sprints"); invalid.remove("sprints"); value.sprintCount = nil } }
-        }
-        Section("archetype.zones".tempoLocalized) {
-            if value.zones != nil {
-                ForEach(0..<5, id: \.self) { i in
-                    MetricNumberField(title: "archetype.zoneSeconds".tempoFormatted(i + 1), id: "zone\(i)", value: Binding(get: { guard let zones = value.zones, zones.seconds.indices.contains(i) else { return nil }; return zones.seconds[i] }, set: { if value.zones?.seconds.count == 5 { value.zones?.seconds[i] = $0 } }), invalid: $invalid, required: true)
-                }
-                Button("archetype.clearZones".tempoLocalized) { invalid = invalid.filter { !$0.hasPrefix("zone") }; for i in 0..<5 { draft.values.removeValue(forKey: "zone\(i)") }; value.zones = nil }
-            } else { Button("archetype.addZones".tempoLocalized) { value.zones = HeartRateZones(seconds: [nil, nil, nil, nil, nil]) } }
         }
         Section("archetype.recovery".tempoLocalized) {
             RecoveryMetricsEditor(value: $value.recovery, id: "team", invalid: $invalid)

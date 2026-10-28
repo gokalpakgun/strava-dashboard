@@ -22,6 +22,9 @@ struct SportsHubScreen: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         sportsHeader
+                        NavigationLink(destination: StrainDashboardScreen()) {
+                            ToolCard(title: "strain.title", subtitle: "strain.subtitle", icon: "gauge.with.dots.needle.33percent", color: TempoTheme.purple)
+                        }.buttonStyle(.plain).accessibilityIdentifier("sports.strain")
                         NavigationLink(destination: PolymorphicWorkoutLibraryScreen()) {
                             ToolCard(title: "archetype.library", subtitle: "archetype.librarySubtitle", icon: "chart.bar.xaxis", color: TempoTheme.blue)
                         }.buttonStyle(.plain).accessibilityIdentifier("sports.archetypeLibrary")

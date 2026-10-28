@@ -1,17 +1,24 @@
 import Foundation
+#if canImport(HealthKit) && !STRAIN_CORE_TESTS
 import HealthKit
+#endif
 
 enum SportArchetype: String, Codable, CaseIterable, Sendable, Identifiable {
     case strengthAndHypertrophy, endurance, teamAndCourt, combatAndMindBody
     var id: String { rawValue }
 }
 
+#if canImport(HealthKit) && !STRAIN_CORE_TESTS
 protocol SportMappingProtocol: Sendable {
     func map(healthKit type: HKWorkoutActivityType) -> SportArchetype?
     func map(stravaType: String) -> SportArchetype?
 }
 
 struct SportMapper: SportMappingProtocol, Sendable {
+    static func isMindBody(healthKitRawValue value: UInt?) -> Bool {
+        guard let value else { return false }
+        return [HKWorkoutActivityType.yoga, .pilates, .barre, .taiChi, .mindAndBody, .flexibility, .preparationAndRecovery, .cooldown, .danceInspiredTraining].contains { $0.rawValue == value }
+    }
     func map(healthKit type: HKWorkoutActivityType) -> SportArchetype? {
         switch type {
         case .traditionalStrengthTraining, .functionalStrengthTraining, .crossTraining, .gymnastics, .coreTraining, .highIntensityIntervalTraining, .climbing:
@@ -39,6 +46,15 @@ struct SportMapper: SportMappingProtocol, Sendable {
     private static func normalized(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX")).lowercased().filter { $0.isLetter || $0.isNumber }
     }
+}
+#endif
+
+struct WorkoutLoadInputs: Codable, Sendable {
+    var sessionRPE: Double?
+    var zones: HeartRateZones?
+    var explosiveSeconds: Double?
+    var isValid: Bool { valid(sessionRPE, in: 1...10) && (zones?.isValid ?? true) && valid(explosiveSeconds, in: 0...604_800) }
+    var isEmpty: Bool { sessionRPE == nil && zones == nil && explosiveSeconds == nil }
 }
 
 protocol WorkoutMetricsProtocol: Codable, Sendable {
@@ -78,9 +94,10 @@ struct MuscleWorkload: Sendable, Identifiable {
 }
 
 struct StrengthMetrics: WorkoutMetricsProtocol {
+    var loadInputs: WorkoutLoadInputs?
     var sets: [StrengthSet] = []
     var archetype: SportArchetype { .strengthAndHypertrophy }
-    var isValid: Bool { sets.count <= 100 && sets.allSatisfy(\.isValid) }
+    var isValid: Bool { sets.count <= 100 && sets.allSatisfy(\.isValid) && (loadInputs?.isValid ?? true) }
     var tonnageKg: Double? {
         guard !sets.isEmpty, sets.allSatisfy({ $0.loadKg != nil && $0.repetitions != nil }) else { return nil }
         return sets.reduce(0) { $0 + Double($1.repetitions ?? 0) * ($1.loadKg ?? 0) }
@@ -128,6 +145,7 @@ enum EnduranceDiscipline: String, Codable, Sendable {
         if key.contains("walk") || key.contains("hik") { return .walking }
         return .other
     }
+    #if canImport(HealthKit) && !STRAIN_CORE_TESTS
     static func from(healthKitRawValue value: UInt) -> EnduranceDiscipline {
         if [HKWorkoutActivityType.running, .wheelchairRunPace].contains(where: { $0.rawValue == value }) { return .running }
         if [HKWorkoutActivityType.cycling, .handCycling].contains(where: { $0.rawValue == value }) { return .cycling }
@@ -136,9 +154,11 @@ enum EnduranceDiscipline: String, Codable, Sendable {
         if [HKWorkoutActivityType.walking, .hiking, .wheelchairWalkPace].contains(where: { $0.rawValue == value }) { return .walking }
         return .other
     }
+    #endif
 }
 
 struct EnduranceMetrics: WorkoutMetricsProtocol {
+    var loadInputs: WorkoutLoadInputs?
     var discipline: EnduranceDiscipline = .other
     var distanceMeters: Double?
     var movingSeconds: Double?
@@ -150,7 +170,7 @@ struct EnduranceMetrics: WorkoutMetricsProtocol {
     var aerobicThresholdBpm: Double?
     var archetype: SportArchetype { .endurance }
     var isValid: Bool {
-        valid(distanceMeters, in: 0...2_000_000) && valid(movingSeconds, in: 1...604_800) && valid(cadencePerMinute, in: 0...400) && valid(averagePowerWatts, in: 0...5_000) && laps.count <= 100 && laps.allSatisfy(\.isValid) && valid(gradeAdjustedPaceSecondsPerKm, in: 30...7_200) && valid(aerobicThresholdBpm, in: 20...300)
+        valid(distanceMeters, in: 0...2_000_000) && valid(movingSeconds, in: 1...604_800) && valid(cadencePerMinute, in: 0...400) && valid(averagePowerWatts, in: 0...5_000) && laps.count <= 100 && laps.allSatisfy(\.isValid) && valid(gradeAdjustedPaceSecondsPerKm, in: 30...7_200) && valid(aerobicThresholdBpm, in: 20...300) && (loadInputs?.isValid ?? true)
     }
     var paceSecondsPerKm: Double? {
         guard let distanceMeters, distanceMeters > 0, let movingSeconds, movingSeconds > 0 else { return nil }
@@ -170,12 +190,13 @@ struct OneMinuteRecovery: Codable, Sendable {
 }
 
 struct TeamCourtMetrics: WorkoutMetricsProtocol {
+    var loadInputs: WorkoutLoadInputs?
     var zones: HeartRateZones?
     var sprintCount: Int?
     var activeEnergyKcal: Double?
     var recovery: OneMinuteRecovery?
     var archetype: SportArchetype { .teamAndCourt }
-    var isValid: Bool { (zones?.isValid ?? true) && (sprintCount.map { (0...10_000).contains($0) } ?? true) && valid(activeEnergyKcal, in: 0...100_000) && (recovery?.isValid ?? true) }
+    var isValid: Bool { (zones?.isValid ?? true) && (sprintCount.map { (0...10_000).contains($0) } ?? true) && valid(activeEnergyKcal, in: 0...100_000) && (recovery?.isValid ?? true) && (loadInputs?.isValid ?? true) }
 }
 
 struct CombatRound: Codable, Sendable, Identifiable {
@@ -186,11 +207,12 @@ struct CombatRound: Codable, Sendable, Identifiable {
 }
 
 struct CombatMindBodyMetrics: WorkoutMetricsProtocol {
+    var loadInputs: WorkoutLoadInputs?
     var rounds: [CombatRound] = []
     var hrvBeforeMs: Double?
     var hrvAfterMs: Double?
     var archetype: SportArchetype { .combatAndMindBody }
-    var isValid: Bool { rounds.count <= 100 && rounds.allSatisfy(\.isValid) && valid(hrvBeforeMs, in: 1...1_000) && valid(hrvAfterMs, in: 1...1_000) }
+    var isValid: Bool { rounds.count <= 100 && rounds.allSatisfy(\.isValid) && valid(hrvBeforeMs, in: 1...1_000) && valid(hrvAfterMs, in: 1...1_000) && (loadInputs?.isValid ?? true) }
     var averageRecoveryBpm: Double? { let values = rounds.compactMap { $0.recovery?.dropBpm }; guard !values.isEmpty else { return nil }; return values.reduce(0, +) / Double(values.count) }
     var hrvChangeMs: Double? { guard let hrvBeforeMs, let hrvAfterMs else { return nil }; return hrvAfterMs - hrvBeforeMs }
 }
@@ -205,6 +227,22 @@ enum WorkoutPayload: Codable, Sendable {
     }
     static func empty(for archetype: SportArchetype) -> WorkoutPayload {
         switch archetype { case .strengthAndHypertrophy: return .strength(StrengthMetrics()); case .endurance: return .endurance(EnduranceMetrics()); case .teamAndCourt: return .teamCourt(TeamCourtMetrics()); case .combatAndMindBody: return .combatMindBody(CombatMindBodyMetrics()) }
+    }
+    var loadInputs: WorkoutLoadInputs {
+        get {
+            switch self { case .strength(let v): return v.loadInputs ?? WorkoutLoadInputs(); case .endurance(let v): return v.loadInputs ?? WorkoutLoadInputs(); case .teamCourt(let v): return v.loadInputs ?? WorkoutLoadInputs(); case .combatMindBody(let v): return v.loadInputs ?? WorkoutLoadInputs() }
+        }
+        set {
+            let input: WorkoutLoadInputs? = newValue.isEmpty ? nil : newValue
+            switch self { case .strength(var v): v.loadInputs = input; self = .strength(v); case .endurance(var v): v.loadInputs = input; self = .endurance(v); case .teamCourt(var v): v.loadInputs = input; self = .teamCourt(v); case .combatMindBody(var v): v.loadInputs = input; self = .combatMindBody(v) }
+        }
+    }
+    var heartRateZones: HeartRateZones? {
+        get { if case .teamCourt(let v) = self { return v.zones ?? v.loadInputs?.zones }; return loadInputs.zones }
+        set {
+            if case .teamCourt(var v) = self { v.zones = newValue; v.loadInputs?.zones = nil; self = .teamCourt(v) }
+            else { var input = loadInputs; input.zones = newValue; loadInputs = input }
+        }
     }
 }
 

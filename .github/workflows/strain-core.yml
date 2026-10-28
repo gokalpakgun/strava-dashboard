@@ -1,0 +1,23 @@
+name: Tempo Strain Core Checks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  math:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift 6 efor motoru kontrolü
+        run: |
+          set -euo pipefail
+          swiftc -swift-version 6 -D STRAIN_CORE_TESTS \
+            ios/TempoHealth/Sources/SportArchetypes.swift \
+            ios/TempoHealth/Sources/UniversalStrainEngine.swift \
+            ios/StrainRegressionTests/main.swift \
+            -o "$RUNNER_TEMP/tempo-strain-checks"
+          "$RUNNER_TEMP/tempo-strain-checks"
