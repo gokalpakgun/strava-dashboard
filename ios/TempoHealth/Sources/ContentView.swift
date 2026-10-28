@@ -168,7 +168,7 @@ private struct TempoMainShell: View {
         case 2:
             SportsHubScreen()
         case 3:
-            HealthScreen()
+            NavigationStack { HealthScreen() }
         default:
             MoreScreen()
         }
@@ -3176,6 +3176,8 @@ private struct MoreScreen: View {
 
 private struct HealthScreen: View {
     @EnvironmentObject private var model: TempoAppModel
+    @EnvironmentObject private var account: TempoAccountStore
+    @StateObject private var wellness = TempoWellnessStore()
     @State private var selectedHealthDay: Date?
     @Environment(\.dynamicTypeSize) private var textSize
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(minimum: 0), spacing: 12), count: textSize.isAccessibilitySize ? 1 : 2) }
@@ -3183,96 +3185,183 @@ private struct HealthScreen: View {
 
     var body: some View {
         TempoPage {
-            PageTitle(title: "Apple Sağlık", subtitle: "Günlük sağlık ve toparlanma görünümün")
+            PageTitle(title: "Sağlık", subtitle: "wellness.health.subtitle")
 #if DEBUG && targetEnvironment(simulator)
-            if ProcessInfo.processInfo.arguments.contains("--ui-testing-healthkit") {
-                SimulatorHealthIntegrationPanel()
-            }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing-healthkit") { SimulatorHealthIntegrationPanel() }
 #endif
+            wellnessHero
+            dailyRings
+            if model.healthSyncEnabled { sleepPreview }
+            TempoWellnessTools(store: wellness)
+            healthOverview
             if !model.healthAvailable {
-                TempoCard {
-                    Label("Apple Sağlık bu cihazda kullanılamıyor.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(TempoTheme.orange)
-                }
-            } else if !model.healthSyncEnabled {
-                connectCard
-            } else {
-                if let balance = model.tempoBalance {
-                    TempoCard {
-                        VStack(alignment: .leading, spacing: 18) {
-                            HStack {
-                                Label("Günlük görünüm", systemImage: "heart.text.square").font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
-                                Spacer(minLength: 8)
-                                if let sync = model.healthLastSync { Text(sync.formatted(date: .omitted, time: .shortened)).font(.caption.monospacedDigit()).foregroundStyle(TempoTheme.secondary) }
-                            }
-                            HStack(alignment: .center, spacing: 18) {
-                                VStack(alignment: .leading, spacing: 7) {
-                                    Text("Tempo Dengesi").font(.title2.weight(.semibold))
-                                    Text(balance.state.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.green)
-                                    Text(balance.confidence.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
-                                    if let note = balance.dataNote { Text(note).font(.caption2).foregroundStyle(TempoTheme.secondary) }
-                                }.frame(maxWidth: .infinity, alignment: .leading)
-                                TempoReadinessRing(value: balance.value, size: 78)
-                            }
-                        }
-                    }
-                } else {
-                    Text("Tempo Dengesi için henüz yeterli ölçüm yok. Apple Sağlık verileri geldikçe puanın oluşacak.").font(.subheadline).foregroundStyle(TempoTheme.secondary)
-                }
-                HealthDaySelector(points: healthPoints, selectedDay: $selectedHealthDay)
-                SectionHeading(title: selectedHealthDayTitle, caption: "APPLE SAĞLIK", padding: false)
-                LazyVGrid(columns: columns, spacing: 12) {
-                    HealthMetricTile(title: "Adım", value: whole(selectedMetrics.steps), unit: "adım", icon: "figure.walk", color: TempoTheme.green)
-                    HealthMetricTile(title: "Aktif enerji", value: whole(selectedMetrics.activeEnergyKcal), unit: "kcal", icon: "flame.fill", color: TempoTheme.orange)
-                    HealthMetricTile(title: "Egzersiz", value: whole(selectedMetrics.exerciseMinutes), unit: "dk", icon: "figure.run", color: TempoTheme.green)
-                    HealthMetricTile(title: "Dinlenik nabız", value: decimal(selectedMetrics.restingHeartRateBpm), unit: "atım/dk", icon: "heart.fill", color: .pink)
-                    HealthMetricTile(title: "HRV", value: decimal(selectedMetrics.hrvMs), unit: "ms", icon: "waveform.path.ecg", color: TempoTheme.purple)
-                    HealthMetricTile(title: "Uyku", value: selectedSleepText, unit: selectedMetrics.sleepMinutes == nil ? "veri yok" : "", icon: "moon.zzz.fill", color: TempoTheme.blue)
-                    HealthMetricTile(title: "Su", value: whole(selectedMetrics.waterMl), unit: "ml", icon: "drop.fill", color: TempoTheme.blue)
-                    HealthMetricTile(title: "Kilo", value: decimal(selectedMetrics.bodyMassKg), unit: "kg", icon: "scalemass.fill", color: TempoTheme.green)
-                }
-                TempoDisclosureSection(title: "Uyku ayrıntıları", icon: "moon") { SleepDetailCard(points: healthPoints, selectedDay: $selectedHealthDay) }
-                TempoDisclosureSection(title: "Kalp ve kondisyon", icon: "heart") { CardioFitnessCard(points: healthPoints) }
-                if let balance = model.tempoBalance {
-                    TempoDisclosureSection(title: "Tempo Dengesi ayrıntıları", icon: "gauge.with.dots.needle.33percent") { TempoBalanceDetailCard(balance: balance) }
-                }
-                TempoDisclosureSection(title: "Su takibi", icon: "drop") { healthOverview }
-            }
+                TempoCard { Label("Apple Sağlık bu cihazda kullanılamıyor.", systemImage: "exclamationmark.triangle.fill").foregroundStyle(TempoTheme.orange) }
+            } else if !model.healthSyncEnabled { connectCard }
             if let error = model.healthError {
-                Text(error.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
+                Label(error.tempoLocalized, systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(TempoTheme.orange)
             }
             if let error = model.healthWorkoutError {
-                Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
             if model.healthSyncEnabled {
-                HStack(spacing: 10) {
-                    Button { Task { await model.syncAppleHealth() } } label: {
-                        Label(model.isHealthSyncing ? "Eşitleniyor…" : "Şimdi eşitle", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                TempoDisclosureSection(title: "wellness.measurements", icon: "chart.xyaxis.line") {
+                    VStack(spacing: 16) {
+                        HealthDaySelector(points: healthPoints, selectedDay: $selectedHealthDay)
+                        SectionHeading(title: selectedHealthDayTitle, caption: "APPLE SAĞLIK", padding: false)
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            HealthMetricTile(title: "Adım", value: whole(selectedMetrics.steps), unit: "adım", icon: "figure.walk", color: TempoTheme.green)
+                            HealthMetricTile(title: "Aktif enerji", value: whole(selectedMetrics.activeEnergyKcal), unit: "kcal", icon: "flame.fill", color: TempoTheme.orange)
+                            HealthMetricTile(title: "Egzersiz", value: whole(selectedMetrics.exerciseMinutes), unit: "dk", icon: "figure.run", color: TempoTheme.green)
+                            HealthMetricTile(title: "Dinlenik nabız", value: decimal(selectedMetrics.restingHeartRateBpm), unit: "atım/dk", icon: "heart.fill", color: .pink)
+                            HealthMetricTile(title: "HRV", value: decimal(selectedMetrics.hrvMs), unit: "ms", icon: "waveform.path.ecg", color: TempoTheme.purple)
+                            HealthMetricTile(title: "Uyku", value: selectedSleepText, unit: selectedMetrics.sleepMinutes == nil ? "veri yok" : "", icon: "moon.zzz.fill", color: TempoTheme.blue)
+                            HealthMetricTile(title: "Su", value: whole(selectedMetrics.waterMl), unit: "ml", icon: "drop.fill", color: TempoTheme.blue)
+                            HealthMetricTile(title: "Kilo", value: decimal(selectedMetrics.bodyMassKg), unit: "kg", icon: "scalemass.fill", color: TempoTheme.green)
+                        }
+                        TempoDisclosureSection(title: "Uyku ayrıntıları", icon: "moon") { SleepDetailCard(points: healthPoints, selectedDay: $selectedHealthDay) }
+                        TempoDisclosureSection(title: "Kalp ve kondisyon", icon: "heart") { CardioFitnessCard(points: healthPoints) }
+                        if let balance = model.tempoBalance {
+                            TempoDisclosureSection(title: "Tempo Dengesi ayrıntıları", icon: "gauge.with.dots.needle.33percent") { TempoBalanceDetailCard(balance: balance) }
+                        }
+
                     }
-                    .buttonStyle(TempoSecondaryButtonStyle())
-                    .disabled(model.isHealthSyncing)
-                    Button(role: .destructive, action: model.disconnectAppleHealth) {
-                        Image(systemName: "link.badge.minus").frame(width: 26)
+                }
+            }
+            TempoDisclosureSection(title: "wellness.connection", icon: "heart.text.square") {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let sync = model.healthLastSync {
+                        Text("wellness.lastSync".tempoFormatted(sync.formatted(date: .abbreviated, time: .shortened))).font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
-                    .buttonStyle(TempoSecondaryButtonStyle())
+                    if let error = model.healthError {
+                        Text(error.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let error = model.healthWorkoutError {
+                        Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                    if model.healthSyncEnabled {
+                        HStack(spacing: 10) {
+                            Button { Task { await model.syncAppleHealth() } } label: {
+                                Label(model.isHealthSyncing ? "Eşitleniyor…" : "Şimdi eşitle", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(TempoSecondaryButtonStyle())
+                            .disabled(model.isHealthSyncing)
+                            Button(role: .destructive, action: model.disconnectAppleHealth) {
+                                Image(systemName: "link.badge.minus").frame(width: 26)
+                            }
+                            .buttonStyle(TempoSecondaryButtonStyle())
+                        }
+                        Button(action: model.connectAppleHealth) {
+                            Label("Sağlık izinlerini yeniden iste", systemImage: "hand.raised.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(TempoPrimaryButtonStyle())
+                        .disabled(model.isHealthSyncing)
+                        Text("Tempo yalnızca verdiğin Apple Sağlık izinlerindeki ölçüleri okur. Apple, reddedilen okuma izinlerini uygulamaya açıklamaz; eksik ölçüler boş görünür.")
+                            .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
+                    }
+
                 }
-                Button(action: model.connectAppleHealth) {
-                    Label("Sağlık izinlerini yeniden iste", systemImage: "hand.raised.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(TempoPrimaryButtonStyle())
-                .disabled(model.isHealthSyncing)
-                Text("Tempo yalnızca verdiğin Apple Sağlık izinlerindeki ölçüleri okur. Apple, reddedilen okuma izinlerini uygulamaya açıklamaz; eksik ölçüler boş görünür.")
-                    .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
             }
         }
-        .navigationTitle("Sağlık")
-        .navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .navigationTitle("Sağlık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .onAppear { selectLatestHealthDayIfNeeded() }
         .onChange(of: model.healthDays) { _, _ in selectLatestHealthDayIfNeeded() }
+        .task(id: account.profile?.id) { wellness.bind(account.profile?.id) }
+    }
+
+    private var wellnessHero: some View {
+        TempoCard {
+            VStack(spacing: 16) {
+                HStack {
+                    Label("wellness.daily".tempoLocalized, systemImage: "heart.text.square").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Spacer()
+                    Text(Date.now.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
+                ZStack {
+                    Circle().stroke(TempoTheme.primary.opacity(0.06), lineWidth: 12)
+                    if let balance = model.tempoBalance {
+                        Circle().trim(from: 0, to: CGFloat(min(100, max(0, balance.value))) / 100)
+                            .stroke(AngularGradient(colors: [TempoTheme.blue, TempoTheme.green], center: .center), style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    VStack(spacing: 8) {
+                        Text("Tempo Dengesi".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        if let balance = model.tempoBalance {
+                            Text("\(balance.value)").font(.system(size: 48, weight: .medium, design: .rounded).monospacedDigit())
+                            Text("/ 100").font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        } else {
+                            Text("—").font(.system(size: 48, weight: .light))
+                            Text("wellness.waitingData".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+                        }
+                    }.padding(20)
+                }.frame(width: 224, height: 224).padding(.vertical, 8)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Tempo Dengesi".tempoLocalized)
+                    .accessibilityValue(model.tempoBalance.map { "\($0.value) / 100" } ?? "wellness.waitingData".tempoLocalized)
+                if let balance = model.tempoBalance {
+                    Text(balance.state.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.green)
+                    Text(balance.confidence.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    if let note = balance.dataNote { Text(note).font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center) }
+                    NavigationLink(destination: TempoPage { TempoBalanceDetailCard(balance: balance) }.navigationTitle("Tempo Dengesi").tempoGlassBackButton()) {
+                        Label("wellness.scoreDetails".tempoLocalized, systemImage: "arrow.up.right").font(.subheadline.weight(.medium)).frame(minHeight: 44)
+                    }.buttonStyle(.plain).foregroundStyle(TempoTheme.green)
+                } else {
+                    Text("Tempo Dengesi için henüz yeterli ölçüm yok. Apple Sağlık verileri geldikçe puanın oluşacak.").font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+                }
+            }.frame(maxWidth: .infinity)
+        }
+    }
+
+    private var dailyRings: some View {
+        let steps = model.todayHealth.steps
+        let minutes = model.todayHealth.exerciseMinutes
+        let water = (model.healthSyncEnabled ? model.todayWaterMl : 0) + wellness.localWaterTotal
+        return TempoMetricGrid(columns: 3) {
+            HealthSummaryRing(title: "Adım", value: whole(steps), caption: "wellness.today", symbol: "figure.walk", color: TempoTheme.blue, progress: nil)
+            HealthSummaryRing(title: "Egzersiz", value: whole(minutes), caption: "dk", symbol: "figure.run", color: TempoTheme.green, progress: nil)
+            HealthSummaryRing(title: "Su", value: water.formatted(), caption: "ml", symbol: "drop.fill", color: TempoTheme.orange, progress: Double(water) / Double(max(1, wellness.waterGoal)))
+        }
+    }
+
+    private var sleepPreview: some View {
+        let point = healthPoints.last { ($0.metrics.sleepMinutes ?? 0) > 0 }
+        return NavigationLink(destination: TempoPage {
+            PageTitle(title: "Uyku ayrıntıları", subtitle: "wellness.sleep.history")
+            SleepDetailCard(points: healthPoints, selectedDay: $selectedHealthDay)
+        }.navigationTitle("Uyku ayrıntıları").tempoGlassBackButton().onAppear {
+            if selectedPoint?.metrics.sleepMinutes == nil, let point { selectedHealthDay = point.day }
+        }) {
+            TempoCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Label("wellness.sleep".tempoLocalized, systemImage: "moon.zzz.fill").font(.headline)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+                    if let point {
+                        Text(TempoFormat.duration((point.metrics.sleepMinutes ?? 0) * 60)).font(.title2.weight(.semibold)).foregroundStyle(TempoTheme.blue)
+                        Text(point.day.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        HStack(alignment: .top, spacing: 12) {
+                            sleepStage("wellness.sleep.core", minutes: point.metrics.sleepCoreMinutes, color: TempoTheme.blue)
+                            sleepStage("wellness.sleep.deep", minutes: point.metrics.sleepDeepMinutes, color: TempoTheme.purple)
+                            sleepStage("REM", minutes: point.metrics.sleepREMMinutes, color: TempoTheme.green)
+                        }
+                    } else { Text("wellness.sleep.empty".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }.buttonStyle(.plain).foregroundStyle(TempoTheme.primary)
+            .simultaneousGesture(TapGesture().onEnded { if let point { selectedHealthDay = point.day } })
+    }
+
+    private func sleepStage(_ title: String, minutes: Double?, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Capsule().fill(color.opacity(0.6)).frame(height: 4)
+            Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+            Text(minutes.map { TempoFormat.duration($0 * 60) } ?? "—").font(.caption.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var connectCard: some View {
@@ -3291,41 +3380,7 @@ private struct HealthScreen: View {
         }
     }
 
-    private var healthOverview: some View {
-        TempoCard {
-            VStack(spacing: 24) {
-                HStack {
-                    Label("Apple Sağlık bağlı", systemImage: "checkmark.circle.fill").font(.subheadline.bold()).foregroundStyle(TempoTheme.green)
-                    Spacer()
-                    if let date = model.healthLastSync {
-                        Text(date.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(TempoTheme.secondary)
-                    }
-                }
-                ZStack {
-                    Circle().stroke(TempoTheme.primary.opacity(0.08), lineWidth: 15)
-                    Circle().trim(from: 0, to: CGFloat(progress)).stroke(TempoTheme.blue, style: StrokeStyle(lineWidth: 15, lineCap: .round)).rotationEffect(.degrees(-90))
-                    VStack(spacing: 2) {
-                        Image(systemName: "drop.fill").foregroundStyle(TempoTheme.blue)
-                        Text("\(model.todayWaterMl)").font(.system(size: 38, weight: .bold, design: .rounded))
-                        Text("Hedef: %d ml".tempoFormatted(model.dailyGoalMl)).font(.caption).foregroundStyle(TempoTheme.secondary)
-                    }
-                }.frame(width: 190, height: 190)
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Hızlı su ekle").font(.headline).frame(maxWidth: .infinity, alignment: .leading)
-                    HStack(spacing: 10) {
-                        ForEach([200, 250, 500], id: \.self) { amount in
-                            Button { model.addWater(amount) } label: {
-                                VStack(spacing: 7) {
-                                    Image(systemName: amount == 500 ? "waterbottle.fill" : "cup.and.saucer.fill").font(.title3)
-                                    Text("+\(amount) ml").font(.subheadline.bold())
-                                }.frame(maxWidth: .infinity).padding(.vertical, 14).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                            }.buttonStyle(.plain).foregroundStyle(TempoTheme.blue).disabled(model.isBusy)
-                        }
-                    }
-                }
-            }.frame(maxWidth: .infinity)
-        }
-    }
+    private var healthOverview: some View { TempoWellnessWaterCard(store: wellness) }
 
     private var selectedSleepText: String {
         guard let minutes = selectedMetrics.sleepMinutes else { return "—" }
@@ -3372,6 +3427,31 @@ private struct HealthScreen: View {
     private func decimal(_ value: Double?) -> String {
         guard let value else { return "—" }
         return value.formatted(.number.locale(Locale.autoupdatingCurrent).precision(.fractionLength(1)))
+    }
+}
+
+private struct HealthSummaryRing: View {
+    let title: String
+    let value: String
+    let caption: String
+    let symbol: String
+    let color: Color
+    let progress: Double?
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(title.tempoLocalized).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
+            ZStack {
+                Circle().stroke(color.opacity(0.13), lineWidth: 5)
+                Circle().trim(from: 0, to: CGFloat(min(1, max(0, progress ?? (value == "—" ? 0 : 1)))))
+                    .stroke(color.opacity(progress == nil ? 0.55 : 1), style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
+                VStack(spacing: 3) {
+                    Image(systemName: symbol).font(.caption).foregroundStyle(color)
+                    Text(value).font(.subheadline.weight(.semibold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
+                    Text(caption.tempoLocalized).font(.system(size: 9)).foregroundStyle(TempoTheme.secondary)
+                }.padding(9)
+            }.frame(maxWidth: 110).aspectRatio(1, contentMode: .fit)
+        }.padding(10).frame(maxWidth: .infinity).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
+            .accessibilityElement(children: .ignore).accessibilityLabel(title.tempoLocalized).accessibilityValue(value + " " + caption.tempoLocalized)
     }
 }
 

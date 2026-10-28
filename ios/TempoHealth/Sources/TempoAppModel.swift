@@ -787,6 +787,34 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
     }
 
+    func saveWellnessWater(_ amount: Int, for owner: String) async throws -> UUID {
+        guard activeTempoAccountId == owner, healthSyncEnabled, amount > 0, amount <= 2_000 else {
+            throw APIError.server("wellness.water.healthRequired".tempoLocalized)
+        }
+        let session = activitySessionID
+        let id = try await healthStore.saveWater(amountMl: Double(amount))
+        guard activeTempoAccountId == owner, activitySessionID == session else {
+            try? await healthStore.removeWater(id: id)
+            throw CancellationError()
+        }
+        Task {
+            guard activeTempoAccountId == owner, activitySessionID == session, healthSyncEnabled else { return }
+            await syncAppleHealth()
+        }
+        return id
+    }
+
+    func undoWellnessWater(_ id: UUID, for owner: String) async throws {
+        guard activeTempoAccountId == owner, healthSyncEnabled else { throw APIError.server("wellness.water.healthRequired".tempoLocalized) }
+        let session = activitySessionID
+        try await healthStore.removeWater(id: id)
+        guard activeTempoAccountId == owner, activitySessionID == session else { throw CancellationError() }
+        Task {
+            guard activeTempoAccountId == owner, activitySessionID == session, healthSyncEnabled else { return }
+            await syncAppleHealth()
+        }
+    }
+
     var healthAvailable: Bool { healthStore.isAvailable }
 
     var todayHealth: TempoHealthMetrics {
@@ -1253,6 +1281,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             Self.clearCachedDashboard(accountId: accountId)
             Self.clearCachedHealthDays(accountId: accountId)
             if deleteManualWorkouts {
+                TempoWellnessStore.removeData(for: accountId)
                 UserDefaults.standard.removeObject(forKey: Self.healthSyncKey(accountId: accountId))
                 UserDefaults.standard.removeObject(forKey: Self.healthLastSyncKey(accountId: accountId))
             }

@@ -137,13 +137,35 @@ final class TempoHealthStore {
         )
     }
 
-    func saveWater(amountMl: Double) async throws {
+    @discardableResult
+    func saveWater(amountMl: Double) async throws -> UUID {
         guard isAvailable else { throw HealthStoreError.unavailable }
         guard amountMl.isFinite, amountMl > 0 else { throw HealthStoreError.invalidWaterAmount }
         let now = Date()
         let quantity = HKQuantity(unit: .literUnit(with: .milli), doubleValue: amountMl)
-        let sample = HKQuantitySample(type: waterType, quantity: quantity, start: now, end: now)
+        let sample = HKQuantitySample(type: waterType, quantity: quantity, start: now, end: now, metadata: ["TempoWaterEntry": true])
         try await store.save(sample)
+        return sample.uuid
+    }
+
+    func removeWater(id: UUID) async throws {
+        guard isAvailable else { throw HealthStoreError.unavailable }
+        guard store.authorizationStatus(for: waterType) == .sharingAuthorized else {
+            throw NSError(domain: "TempoWater", code: 2, userInfo: [NSLocalizedDescriptionKey: "wellness.water.healthRequired".tempoLocalized])
+        }
+        let sample: HKQuantitySample? = try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: waterType, predicate: HKQuery.predicateForObject(with: id), limit: 1, sortDescriptors: nil) { _, samples, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: samples?.first as? HKQuantitySample) }
+            }
+            store.execute(query)
+        }
+        guard let sample else { return }
+        guard sample.sourceRevision.source.bundleIdentifier == Bundle.main.bundleIdentifier,
+              (sample.metadata?["TempoWaterEntry"] as? Bool) == true else {
+            throw NSError(domain: "TempoWater", code: 1, userInfo: [NSLocalizedDescriptionKey: "wellness.water.notOwned".tempoLocalized])
+        }
+        try await store.delete(sample)
     }
 
     func readRecentDays(dayCount: Int = 90) async throws -> [String: TempoHealthMetrics] {
