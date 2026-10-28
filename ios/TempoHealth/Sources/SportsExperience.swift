@@ -22,6 +22,9 @@ struct SportsHubScreen: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         sportsHeader
+                        NavigationLink(destination: PolymorphicWorkoutLibraryScreen()) {
+                            ToolCard(title: "archetype.library", subtitle: "archetype.librarySubtitle", icon: "chart.bar.xaxis", color: TempoTheme.blue)
+                        }.buttonStyle(.plain).accessibilityIdentifier("sports.archetypeLibrary")
 
                         if let error = model.manualWorkoutError {
                             Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
@@ -557,6 +560,9 @@ private struct SportDetailScreen: View {
                     Group {
                         switch section {
                         case .overview:
+                            if let latest = matchingManual.max(by: { $0.startedAt < $1.startedAt }) {
+                                TempoDisclosureSection(title: "archetype.details", icon: "chart.bar.xaxis") { SportArchetypeSection(workout: latest) }
+                            }
                             SportOverviewSection(sport: sport, manualWorkouts: matchingManual, weeklyTarget: $weeklyTarget)
                         case .program:
                             SportProgramSection(sport: sport, guide: guide)

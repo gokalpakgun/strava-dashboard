@@ -62,7 +62,11 @@ final class TempoHealthStore {
                     default: choice = nil
                     }
                     let title = choice?.title ?? "Diğer".tempoLocalized
-                    return TempoManualWorkout(id: workout.uuid, sportId: choice?.rawValue ?? "other", sportTitle: title, title: title, startedAt: workout.startDate, durationMinutes: max(1, Int((workout.duration / 60).rounded())), notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: Int(workout.duration.rounded()), distanceKm: workout.totalDistance.map { $0.doubleValue(for: .meter()) / 1000 }, routeCoordinates: nil, recordSource: "apple-health", perceivedEffort: nil, enjoyment: nil)
+                    var record = TempoManualWorkout(id: workout.uuid, sportId: choice?.rawValue ?? "other", sportTitle: title, title: title, startedAt: workout.startDate, durationMinutes: max(1, Int((workout.duration / 60).rounded())), notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: Int(workout.duration.rounded()), distanceKm: workout.totalDistance.map { $0.doubleValue(for: .meter()) / 1000 }, routeCoordinates: nil, recordSource: "apple-health", perceivedEffort: nil, enjoyment: nil)
+                    record.originalHealthActivityType = workout.workoutActivityType.rawValue
+                    record.originalArchetype = SportMapper().map(healthKit: workout.workoutActivityType)?.rawValue
+                    record.sourceEnergyKcal = workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie())
+                    return record
                 }
                 continuation.resume(returning: records)
             }

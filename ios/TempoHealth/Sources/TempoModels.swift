@@ -171,6 +171,9 @@ struct TempoWorkoutHealthSignal: Codable, Equatable {
 }
 
 struct TempoManualWorkout: Codable, Identifiable, Equatable {
+    var originalHealthActivityType: UInt? = nil
+    var originalArchetype: String? = nil
+    var sourceEnergyKcal: Double? = nil
     let id: UUID
     let sportId: String
     let sportTitle: String

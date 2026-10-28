@@ -6,6 +6,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F10000000000000000000002 /* SportArchetypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* SportArchetypes.swift */; };
+		F10000000000000000000003 /* PolymorphicWorkoutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000003 /* PolymorphicWorkoutViews.swift */; };
 		F10000000000000000000001 /* TempoWellness.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000001 /* TempoWellness.swift */; };
 		E10000000000000000000001 /* TempoWorkoutLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* TempoWorkoutLedger.swift */; };
 		D10000000000000000000001 /* TempoNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* TempoNotifications.swift */; };
@@ -29,6 +31,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F20000000000000000000002 /* SportArchetypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportArchetypes.swift; sourceTree = "<group>"; };
+		F20000000000000000000003 /* PolymorphicWorkoutViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolymorphicWorkoutViews.swift; sourceTree = "<group>"; };
 		F20000000000000000000001 /* TempoWellness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoWellness.swift; sourceTree = "<group>"; };
 		E20000000000000000000001 /* TempoWorkoutLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoWorkoutLedger.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* TempoNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoNotifications.swift; sourceTree = "<group>"; };
@@ -90,6 +94,8 @@
 				D20000000000000000000001 /* TempoNotifications.swift */,
 				E20000000000000000000001 /* TempoWorkoutLedger.swift */,
 				F20000000000000000000001 /* TempoWellness.swift */,
+				F20000000000000000000002 /* SportArchetypes.swift */,
+				F20000000000000000000003 /* PolymorphicWorkoutViews.swift */,
 				A20000000000000000000018 /* PrivacyInfo.xcprivacy */,
 				A40000000000000000000004 /* Localizable.strings */,
 				A40000000000000000000005 /* InfoPlist.strings */,
@@ -197,6 +203,8 @@
 			D10000000000000000000001 /* TempoNotifications.swift in Sources */,
 			E10000000000000000000001 /* TempoWorkoutLedger.swift in Sources */,
 			F10000000000000000000001 /* TempoWellness.swift in Sources */,
+			F10000000000000000000002 /* SportArchetypes.swift in Sources */,
+			F10000000000000000000003 /* PolymorphicWorkoutViews.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		B80000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B10000000000000000000001 /* TempoHealthUserFlowTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */

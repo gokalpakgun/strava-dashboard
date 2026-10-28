@@ -1282,6 +1282,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             Self.clearCachedHealthDays(accountId: accountId)
             if deleteManualWorkouts {
                 TempoWellnessStore.removeData(for: accountId)
+                SportMetricsStore.removeData(for: accountId)
                 UserDefaults.standard.removeObject(forKey: Self.healthSyncKey(accountId: accountId))
                 UserDefaults.standard.removeObject(forKey: Self.healthLastSyncKey(accountId: accountId))
             }
