@@ -1500,3 +1500,10 @@
 "Invalid friend." = "Invalid friend.";
 "Challenge not found." = "Challenge not found or cancelled.";
 "Only the creator can cancel this challenge." = "Only the creator can cancel this challenge.";
+
+"appearance.title" = "Appearance";
+"appearance.subtitle" = "Choose your app theme";
+"appearance.system" = "System";
+"appearance.light" = "Light";
+"appearance.dark" = "Dark";
+"appearance.detail" = "System follows your iPhone’s light and dark appearance, including automatic changes. Your preference is saved on this device and kept when you reopen the app.";

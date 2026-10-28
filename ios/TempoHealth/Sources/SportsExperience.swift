@@ -91,7 +91,7 @@ private struct SportSummaryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: sport.symbol).font(.title2).foregroundStyle(.black)
+                Image(systemName: sport.symbol).font(.title2).foregroundStyle(TempoTheme.onAccent)
                     .frame(width: 50, height: 50).background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sport.title).font(.headline).fixedSize(horizontal: false, vertical: true)
@@ -115,7 +115,7 @@ private struct SportSummaryCard: View {
             LinearGradient(colors: [TempoTheme.green.opacity(0.09), TempoTheme.card, TempoTheme.blue.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
     }
 }
 
@@ -315,7 +315,7 @@ struct TempoMovementMenuScreen: View {
                         } label: {
                             Text("%d dk".tempoFormatted(option))
                                 .font(.caption.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 10)
-                                .foregroundStyle(minutes == option ? .black : TempoTheme.secondary)
+                                .foregroundStyle(minutes == option ? TempoTheme.onAccent : TempoTheme.secondary)
                                 .background(minutes == option ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                         }
                         .buttonStyle(.plain)
@@ -331,7 +331,7 @@ struct TempoMovementMenuScreen: View {
                                 Label(option.title.tempoLocalized, systemImage: option.symbol)
                                     .font(.caption.weight(.semibold)).labelStyle(.titleAndIcon)
                                     .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                    .foregroundStyle(energy == option ? .black : TempoTheme.secondary)
+                                    .foregroundStyle(energy == option ? TempoTheme.onAccent : TempoTheme.secondary)
                                     .background(energy == option ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                             }
                             .buttonStyle(.plain)
@@ -357,7 +357,7 @@ struct TempoMovementMenuScreen: View {
                     ForEach(TempoSportChoice.allCases) { sport in
                         Button { selectedSportID = sport.rawValue } label: {
                             Text(sport.title).font(.caption.weight(.semibold))
-                                .foregroundStyle(selectedSportID == sport.rawValue ? .black : TempoTheme.secondary)
+                                .foregroundStyle(selectedSportID == sport.rawValue ? TempoTheme.onAccent : TempoTheme.secondary)
                                 .padding(.horizontal, 12).padding(.vertical, 9)
                                 .background(selectedSportID == sport.rawValue ? TempoTheme.green : TempoTheme.card, in: Capsule())
                         }.buttonStyle(.plain)
@@ -446,7 +446,7 @@ private struct MovementRoutineCard: View {
                     .frame(width: 44, height: 44).background(routine.sport.accentColor.opacity(0.13), in: RoundedRectangle(cornerRadius: 14))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label.tempoLocalized.uppercased()).font(.caption2.weight(.bold)).tracking(0.7).foregroundStyle(routine.sport.accentColor)
-                    Text(routine.title.tempoLocalized).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    Text(routine.title.tempoLocalized).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                     Text("%d dk · %@".tempoFormatted(routine.minutes, routine.intensity.tempoLocalized)).font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
                 Spacer()
@@ -454,7 +454,7 @@ private struct MovementRoutineCard: View {
             }
             .padding(14)
             .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(.white.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(TempoTheme.primary.opacity(0.06)))
         }
         .buttonStyle(.plain)
     }
@@ -482,9 +482,9 @@ private struct TempoMovementRoutineScreen: View {
                     }
                     ForEach(Array(routine.steps.enumerated()), id: \.offset) { index, step in
                         HStack(alignment: .top, spacing: 12) {
-                            Text("%02d".tempoFormatted(index + 1)).font(.caption.bold()).foregroundStyle(.black)
+                            Text("%02d".tempoFormatted(index + 1)).font(.caption.bold()).foregroundStyle(TempoTheme.onAccent)
                                 .frame(width: 34, height: 34).background(routine.sport.accentColor, in: Circle())
-                            Text(step.tempoLocalized).font(.subheadline).foregroundStyle(.white.opacity(0.88)).frame(maxWidth: .infinity, alignment: .leading)
+                            Text(step.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.primary.opacity(0.88)).frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(15).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
@@ -592,7 +592,7 @@ private struct SportDetailScreen: View {
                     Text(item.rawValue.tempoLocalized)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1).minimumScaleFactor(0.85)
-                        .foregroundStyle(section == item ? .black : .white.opacity(0.72))
+                        .foregroundStyle(section == item ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.72))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
                         .background {
@@ -608,7 +608,7 @@ private struct SportDetailScreen: View {
         }
         .padding(5)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.08)))
+        .overlay(Capsule().stroke(TempoTheme.primary.opacity(0.08)))
     }
 }
 
@@ -700,7 +700,7 @@ private struct SportOverviewSection: View {
                 }
                 .padding(18)
                 .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.055)))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(TempoTheme.primary.opacity(0.055)))
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("SON AKTİVİTELER".tempoSentenceCased).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
@@ -720,7 +720,7 @@ private struct SportOverviewSection: View {
                                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
                             }
                             Spacer()
-                            Text(TempoFormat.duration(entry.durationSeconds)).font(.caption.bold()).foregroundStyle(.white.opacity(0.8))
+                            Text(TempoFormat.duration(entry.durationSeconds)).font(.caption.bold()).foregroundStyle(TempoTheme.primary.opacity(0.8))
                         }
                     }
                 }
@@ -744,7 +744,7 @@ private struct SportOverviewSection: View {
             }
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.08))
+                    Capsule().fill(TempoTheme.primary.opacity(0.08))
                     Capsule().fill(sport.accentColor).frame(width: geometry.size.width * min(CGFloat(weekCount) / CGFloat(max(weeklyTarget, 1)), 1))
                 }
             }
@@ -795,7 +795,7 @@ private struct WeeklySportChart: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: day.minutes > 0 ? [sport.accentColor, sport.accentColor.opacity(0.38)] : [.white.opacity(0.07), .white.opacity(0.025)],
+                                colors: day.minutes > 0 ? [sport.accentColor, sport.accentColor.opacity(0.38)] : [TempoTheme.primary.opacity(0.07), TempoTheme.primary.opacity(0.025)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -866,7 +866,7 @@ private struct SportProgramSection: View {
                         }
                         .frame(width: 50, height: 50)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(session.title.tempoLocalized).font(.headline).foregroundStyle(.white)
+                            Text(session.title.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
                             Text(session.subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
                             Text("%d dk · %@".tempoFormatted(session.minutes, session.intensity.tempoLocalized))
                                 .font(.caption2.bold()).foregroundStyle(sport.accentColor)
@@ -906,7 +906,7 @@ private struct OfflineSessionScreen: View {
                     ForEach(Array(session.steps.enumerated()), id: \.offset) { index, step in
                         HStack(alignment: .top, spacing: 14) {
                             Text("\(index + 1)")
-                                .font(.subheadline.bold()).foregroundStyle(.black)
+                                .font(.subheadline.bold()).foregroundStyle(TempoTheme.onAccent)
                                 .frame(width: 34, height: 34).background(sport.accentColor, in: Circle())
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(step.title.tempoLocalized).font(.headline)
@@ -926,7 +926,7 @@ private struct OfflineSessionScreen: View {
                     } label: {
                         Label(completed ? "Tamamlandı" : "Antrenmanı tamamla", systemImage: completed ? "checkmark.circle.fill" : "circle")
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 16)
-                            .foregroundStyle(completed ? .black : .white)
+                            .foregroundStyle(completed ? TempoTheme.onAccent : TempoTheme.primary)
                             .background(completed ? sport.accentColor : TempoTheme.raised, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -998,7 +998,7 @@ private struct SportPreparationSection: View {
         Button(action: action) {
             Label(title.tempoLocalized, systemImage: icon)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(selected ? .black : .white.opacity(0.75))
+                .foregroundStyle(selected ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.75))
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
                 .background(selected ? sport.accentColor : TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
@@ -1200,7 +1200,7 @@ private struct ToolCard: View {
             Image(systemName: icon).font(.title2).foregroundStyle(color)
                 .frame(width: 52, height: 52).background(color.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 4) {
-                Text(title.tempoLocalized).font(.headline).foregroundStyle(.white)
+                Text(title.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
                 Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
             }
             Spacer()
@@ -1208,7 +1208,7 @@ private struct ToolCard: View {
         }
         .padding(17)
         .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.primary.opacity(0.07), lineWidth: 1))
     }
 }
 
@@ -1300,7 +1300,7 @@ struct NearbyFacilitiesScreen: View {
                     Button { selectedSport = sport } label: {
                         Label(sport.title, systemImage: sport.symbol).font(.subheadline.weight(.medium))
                             .padding(.horizontal, 14).frame(minHeight: 44)
-                            .foregroundStyle(selectedSport == sport ? Color.black : Color.white)
+                            .foregroundStyle(selectedSport == sport ? TempoTheme.onAccent : TempoTheme.primary)
                             .background(selectedSport == sport ? TempoTheme.green : TempoTheme.card, in: Capsule())
                     }.buttonStyle(.plain)
                         .accessibilityAddTraits(selectedSport == sport ? .isSelected : [])
@@ -1366,7 +1366,7 @@ private struct PlaceCard: View {
         HStack(alignment: .center, spacing: 12) {
             Button(action: onSelect) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(place.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    Text(place.name).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(place.address).font(.caption).foregroundStyle(TempoTheme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1382,7 +1382,7 @@ private struct PlaceCard: View {
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(isSelected ? TempoTheme.green.opacity(0.6) : .white.opacity(0.09), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(isSelected ? TempoTheme.green.opacity(0.6) : TempoTheme.primary.opacity(0.09), lineWidth: 1))
         .accessibilityIdentifier("facilities.place.\(place.id)")
     }
 }

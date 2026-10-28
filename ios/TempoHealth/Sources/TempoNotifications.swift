@@ -406,7 +406,7 @@ struct TempoNotificationsScreen: View {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: notice.icon).foregroundStyle(TempoTheme.green).frame(width: 38, height: 38).background(TempoTheme.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(notice.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                                Text(notice.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                                 Text(notice.message).font(.caption).foregroundStyle(TempoTheme.secondary)
                                 if let date = notice.date { Text(date, style: .relative).font(.caption2).foregroundStyle(TempoTheme.secondary) }
                             }
@@ -455,9 +455,9 @@ struct TempoNotificationSettingsScreen: View {
             TempoCard {
                 VStack(spacing: 16) {
                     Toggle("Arkadaşlık istekleri", isOn: $notifications.preferences.friends).accessibilityIdentifier("notifications.friends")
-                    Divider().overlay(.white.opacity(0.06))
+                    Divider().overlay(TempoTheme.primary.opacity(0.06))
                     Toggle("Yarış davetleri", isOn: $notifications.preferences.challenges).accessibilityIdentifier("notifications.challenges")
-                    Divider().overlay(.white.opacity(0.06))
+                    Divider().overlay(TempoTheme.primary.opacity(0.06))
                     Toggle("Yeni başarımlar", isOn: $notifications.preferences.achievements).accessibilityIdentifier("notifications.achievements")
                 }.tint(TempoTheme.green)
             }
@@ -465,7 +465,7 @@ struct TempoNotificationSettingsScreen: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Toggle("Günlük hareket hatırlatması", isOn: $notifications.preferences.dailyReminder).accessibilityIdentifier("notifications.daily")
                     if notifications.preferences.dailyReminder { DatePicker("Hatırlatma saati", selection: reminderTime, displayedComponents: .hourAndMinute) }
-                    Divider().overlay(.white.opacity(0.06))
+                    Divider().overlay(TempoTheme.primary.opacity(0.06))
                     Toggle("Haftalık değerlendirme", isOn: $notifications.preferences.weeklyReview)
                     Text("Haftalık hatırlatma pazar günü 18.00’de gelir. Hatırlatmalar internet olmadan da çalışır.").font(.caption).foregroundStyle(TempoTheme.secondary)
                 }.tint(TempoTheme.green)

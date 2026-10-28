@@ -262,7 +262,6 @@ struct TempoPhoneTrackerScreen: View {
                 if phase != .active && recorder.isRecording { recorder.pause() }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private var mapCard: some View {
@@ -285,7 +284,7 @@ struct TempoPhoneTrackerScreen: View {
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(.ultraThinMaterial, in: Capsule()).padding(12)
         }
-        .overlay(RoundedRectangle(cornerRadius: 23, style: .continuous).stroke(.white.opacity(0.09)))
+        .overlay(RoundedRectangle(cornerRadius: 23, style: .continuous).stroke(TempoTheme.primary.opacity(0.09)))
     }
 
     private var sportPicker: some View {
@@ -299,7 +298,7 @@ struct TempoPhoneTrackerScreen: View {
         Button { selectedSport = id } label: {
             Label(title.tempoLocalized, systemImage: icon)
                 .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 13)
-                .foregroundStyle(selectedSport == id ? .black : .white.opacity(0.76))
+                .foregroundStyle(selectedSport == id ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.76))
                 .background(selectedSport == id ? TempoTheme.green : TempoTheme.card, in: Capsule())
         }
         .buttonStyle(.plain)
@@ -338,7 +337,7 @@ struct TempoPhoneTrackerScreen: View {
             ForEach(1...5, id: \.self) { value in
                 Button("\(value)") { selection.wrappedValue = selection.wrappedValue == value ? nil : value }
                     .font(.caption.bold()).frame(maxWidth: .infinity).padding(.vertical, 8)
-                    .foregroundStyle(selection.wrappedValue == value ? .black : TempoTheme.secondary)
+                    .foregroundStyle(selection.wrappedValue == value ? TempoTheme.onAccent : TempoTheme.secondary)
                     .background(selection.wrappedValue == value ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                     .buttonStyle(.plain)
             }

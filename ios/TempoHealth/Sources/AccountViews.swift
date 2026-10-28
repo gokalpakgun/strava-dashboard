@@ -43,9 +43,9 @@ struct TempoAmbientBackground: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.07, green: 0.075, blue: 0.085),
+                        TempoTheme.card,
                         TempoTheme.background,
-                        Color(red: 0.045, green: 0.05, blue: 0.06)
+                        TempoTheme.background
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -151,13 +151,13 @@ private struct WellnessIntroCard: View {
             HStack(spacing: 18) {
                 ZStack {
                     Circle()
-                        .stroke(.white.opacity(0.07), lineWidth: 9)
+                        .stroke(TempoTheme.primary.opacity(0.07), lineWidth: 9)
                     Circle()
                         .trim(from: 0, to: 0.82)
                         .stroke(TempoTheme.green, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     Circle()
-                        .stroke(.white.opacity(0.055), lineWidth: 7)
+                        .stroke(TempoTheme.primary.opacity(0.055), lineWidth: 7)
                         .padding(15)
                     Circle()
                         .trim(from: 0, to: 0.64)
@@ -195,7 +195,7 @@ private struct WellnessIntroCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 27, style: .continuous)
-                .stroke(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .stroke(LinearGradient(colors: [TempoTheme.primary.opacity(0.16), TempoTheme.primary.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
         )
         .shadow(color: .black.opacity(0.18), radius: 20, y: 10)
     }
@@ -209,12 +209,12 @@ private struct WellnessPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon).foregroundStyle(color)
-            Text(title.tempoLocalized).foregroundStyle(.white.opacity(0.84))
+            Text(title.tempoLocalized).foregroundStyle(TempoTheme.primary.opacity(0.84))
         }
         .font(.caption.weight(.semibold))
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(.white.opacity(0.045), in: Capsule())
+        .background(TempoTheme.primary.opacity(0.045), in: Capsule())
     }
 }
 
@@ -337,7 +337,7 @@ private struct AccountFormView: View {
                         } label: {
                             HStack {
                                 if account.isBusy {
-                                    ProgressView().tint(.black)
+                                    ProgressView().tint(TempoTheme.onAccent)
                                 }
                                 Text((account.isBusy ? "Giriş hazırlanıyor…" : mode.actionTitle).tempoLocalized)
                                 Spacer()
@@ -355,12 +355,12 @@ private struct AccountFormView: View {
                     .padding(18)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .background(
-                        LinearGradient(colors: [.white.opacity(0.035), TempoTheme.green.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        LinearGradient(colors: [TempoTheme.primary.opacity(0.035), TempoTheme.green.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing),
                         in: RoundedRectangle(cornerRadius: 26, style: .continuous)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .stroke(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .stroke(LinearGradient(colors: [TempoTheme.primary.opacity(0.16), TempoTheme.primary.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
                     .shadow(color: .black.opacity(0.18), radius: 18, y: 9)
 
@@ -471,7 +471,7 @@ private struct PasswordResetSheet: View {
                             }
                         } label: {
                             HStack {
-                                if account.isBusy { ProgressView().tint(.black) }
+                                if account.isBusy { ProgressView().tint(TempoTheme.onAccent) }
                                 Text(account.isBusy ? "Gönderiliyor…" : "Sıfırlama bağlantısı gönder")
                                 Spacer()
                                 if !account.isBusy { Image(systemName: "paperplane.fill") }
@@ -494,7 +494,6 @@ private struct PasswordResetSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .onAppear { account.errorMessage = "" }
     }
 }
@@ -507,7 +506,7 @@ private struct AccountFormFieldLabel<Content: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.tempoLocalized)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(TempoTheme.primary.opacity(0.78))
             content
         }
     }
@@ -590,7 +589,7 @@ struct AccountOnboardingView: View {
                     ZStack(alignment: .bottomTrailing) {
                         AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 116)
                         Image(systemName: "camera.fill")
-                            .foregroundStyle(.black)
+                            .foregroundStyle(TempoTheme.onAccent)
                             .frame(width: 36, height: 36)
                             .background(TempoTheme.green, in: Circle())
                     }
@@ -730,7 +729,7 @@ struct AccountProfileCard: View {
                             AccountAvatarView(data: profile.avatarData, size: 76)
                             Text("\(achievement.level)")
                                 .font(.caption2.bold())
-                                .foregroundStyle(.black)
+                                .foregroundStyle(TempoTheme.onAccent)
                                 .frame(width: 27, height: 27)
                                 .background(TempoTheme.green, in: Circle())
                                 .overlay(Circle().stroke(TempoTheme.card, lineWidth: 3))
@@ -745,7 +744,7 @@ struct AccountProfileCard: View {
                         Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
                     }
 
-                    Divider().overlay(.white.opacity(0.08))
+                    Divider().overlay(TempoTheme.primary.opacity(0.08))
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -757,7 +756,7 @@ struct AccountProfileCard: View {
                         }
                         ProgressView(value: achievement.safeProgress)
                             .tint(TempoTheme.green)
-                            .background(.white.opacity(0.08))
+                            .background(TempoTheme.primary.opacity(0.08))
                             .clipShape(Capsule())
                     }
 
@@ -776,13 +775,13 @@ struct AccountProfileCard: View {
                         }
                     }
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(TempoTheme.primary)
                 .padding(18)
                 .background {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .fill(LinearGradient(colors: [TempoTheme.green.opacity(0.10), TempoTheme.card, TempoTheme.blue.opacity(0.055)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 }
-                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(.white.opacity(0.085), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(TempoTheme.primary.opacity(0.085), lineWidth: 1))
                 .shadow(color: .black.opacity(0.16), radius: 18, y: 9)
             }
             .buttonStyle(.plain)
@@ -825,7 +824,7 @@ struct TempoProfileShareScreen: View {
             VStack(spacing: 10) {
                 Button(action: saveToPhotos) {
                     if isSaving {
-                        ProgressView().tint(.black).frame(maxWidth: .infinity)
+                        ProgressView().tint(TempoTheme.onAccent).frame(maxWidth: .infinity)
                     } else {
                         Label("PNG’yi Fotoğraflar’a kaydet", systemImage: "square.and.arrow.down.fill")
                             .frame(maxWidth: .infinity)
@@ -1204,7 +1203,7 @@ struct AchievementsScreen: View {
                                 } label: {
                                     Label(category.title.tempoLocalized, systemImage: category.symbol)
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(selected ? .black : .white.opacity(0.82))
+                                        .foregroundStyle(selected ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.82))
                                         .padding(.horizontal, 13).padding(.vertical, 9)
                                         .background(selected ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                                 }
@@ -1242,7 +1241,7 @@ struct AchievementsScreen: View {
     private var levelCard: some View {
         VStack(spacing: 20) {
             ZStack {
-                Circle().stroke(.white.opacity(0.08), lineWidth: 14)
+                Circle().stroke(TempoTheme.primary.opacity(0.08), lineWidth: 14)
                 Circle()
                     .trim(from: 0, to: achievement.safeProgress)
                     .stroke(
@@ -1270,7 +1269,7 @@ struct AchievementsScreen: View {
         }
         .padding(22)
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 27, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(.white.opacity(0.055)))
+        .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(TempoTheme.primary.opacity(0.055)))
     }
 }
 
@@ -1290,7 +1289,7 @@ private struct AchievementBadgeCard: View {
                     .font(.title2)
                     .foregroundStyle(badge.unlocked ? badge.tempoColor : TempoTheme.secondary)
                     .frame(width: 45, height: 45)
-                    .background((badge.unlocked ? badge.tempoColor : Color.white).opacity(0.12), in: Circle())
+                    .background((badge.unlocked ? badge.tempoColor : TempoTheme.primary).opacity(0.12), in: Circle())
                 Spacer()
                 Image(systemName: badge.unlocked ? "checkmark.seal.fill" : "lock.fill")
                     .foregroundStyle(badge.unlocked ? TempoTheme.green : TempoTheme.secondary)
@@ -1306,7 +1305,7 @@ private struct AchievementBadgeCard: View {
         .padding(15)
         .frame(maxWidth: .infinity, minHeight: 205, alignment: .topLeading)
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(badge.unlocked ? badge.tempoColor.opacity(0.28) : .white.opacity(0.045)))
+        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(badge.unlocked ? badge.tempoColor.opacity(0.28) : TempoTheme.primary.opacity(0.045)))
         .opacity(badge.unlocked ? 1 : 0.72)
     }
 }
@@ -1432,7 +1431,7 @@ struct AccountSettingsScreen: View {
                         AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 70)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(displayName.isEmpty ? username : displayName)
-                                .font(.title3.bold()).foregroundStyle(.white)
+                                .font(.title3.bold()).foregroundStyle(TempoTheme.primary)
                             Text("@\(username)").font(.subheadline).foregroundStyle(TempoTheme.green)
                             if let email = account.profile?.email {
                                 Text(email).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
@@ -1443,20 +1442,20 @@ struct AccountSettingsScreen: View {
                             withAnimation(.snappy) { isEditingProfile.toggle() }
                         }
                         .font(.caption.bold())
-                        .foregroundStyle(isEditingProfile ? .black : TempoTheme.green)
+                        .foregroundStyle(isEditingProfile ? TempoTheme.onAccent : TempoTheme.green)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(isEditingProfile ? TempoTheme.green : TempoTheme.green.opacity(0.11), in: Capsule())
                     }
                     .padding(16)
                     .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
 
                     if isEditingProfile {
                         PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                             HStack(spacing: 16) {
                                 AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 62)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Profil fotoğrafı").font(.headline).foregroundStyle(.white)
+                                    Text("Profil fotoğrafı").font(.headline).foregroundStyle(TempoTheme.primary)
                                     Text("Fotoğrafı değiştir").font(.caption).foregroundStyle(TempoTheme.green)
                                 }
                                 Spacer()
@@ -1495,7 +1494,7 @@ struct AccountSettingsScreen: View {
                                 withAnimation(.snappy) { isEditingSports.toggle() }
                             }
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(isEditingSports ? .black : TempoTheme.green)
+                            .foregroundStyle(isEditingSports ? TempoTheme.onAccent : TempoTheme.green)
                             .padding(.horizontal, 13).padding(.vertical, 8)
                             .background(isEditingSports ? TempoTheme.green : TempoTheme.green.opacity(0.11), in: Capsule())
                         }
@@ -1505,7 +1504,7 @@ struct AccountSettingsScreen: View {
                                 ForEach(TempoSportChoice.allCases.filter { selectedSports.contains($0) }) { sport in
                                     Label(sport.title, systemImage: sport.symbol)
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.white.opacity(0.86))
+                                        .foregroundStyle(TempoTheme.primary.opacity(0.86))
                                         .padding(.horizontal, 11).padding(.vertical, 9)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .background(TempoTheme.raised, in: Capsule())
@@ -1515,14 +1514,14 @@ struct AccountSettingsScreen: View {
                         }
 
                         if isEditingSports {
-                            Divider().overlay(.white.opacity(0.08))
+                            Divider().overlay(TempoTheme.primary.opacity(0.08))
                             SportSelectionGrid(selection: $selectedSports)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
                     .padding(16)
                     .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.055)))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.primary.opacity(0.055)))
 
                     if !photoError.isEmpty {
                         Label(photoError, systemImage: "photo.badge.exclamationmark")
@@ -1549,6 +1548,15 @@ struct AccountSettingsScreen: View {
                         .buttonStyle(AccountPrimaryButtonStyle())
                         .disabled(account.isBusy || isPreparingPhoto || photoItem != nil || displayName.isEmpty || username.isEmpty || selectedSports.isEmpty)
                     }
+
+                    NavigationLink(destination: TempoAppearanceSettingsScreen()) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "circle.lefthalf.filled").foregroundStyle(TempoTheme.green)
+                            Text("appearance.title".tempoLocalized).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }.padding(16).frame(minHeight: 54).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    }.buttonStyle(.plain).accessibilityIdentifier("account.appearance")
 
                     DisclosureGroup(isExpanded: $showAccountActions) {
                         VStack(spacing: 10) {
@@ -1641,6 +1649,41 @@ struct AccountSettingsScreen: View {
     }
 }
 
+struct TempoAppearanceSettingsScreen: View {
+    @AppStorage(TempoAppearance.storageKey) private var appearance = TempoAppearance.system.rawValue
+    private var selected: TempoAppearance { TempoAppearance(rawValue: appearance) ?? .system }
+
+    var body: some View {
+        TempoPage {
+            PageTitle(title: "appearance.title", subtitle: "appearance.subtitle")
+            TempoCard {
+                VStack(spacing: 0) {
+                    ForEach(TempoAppearance.allCases) { option in
+                        Button { appearance = option.rawValue } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: option.symbol).font(.system(size: 20, weight: .medium))
+                                    .foregroundStyle(TempoTheme.green).frame(width: 32)
+                                Text(option.title).font(.body).foregroundStyle(TempoTheme.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 12)
+                                Image(systemName: selected == option ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3).foregroundStyle(selected == option ? TempoTheme.green : TempoTheme.secondary.opacity(0.4))
+                                    .accessibilityHidden(true)
+                            }.padding(.vertical, 16).frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .accessibilityIdentifier("appearance.\(option.rawValue)")
+                            .accessibilityAddTraits(selected == option ? .isSelected : [])
+                        if option != TempoAppearance.allCases.last { Divider() }
+                    }
+                }
+            }
+            Text("appearance.detail".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+        }
+        .navigationTitle("appearance.title".tempoLocalized).navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+    }
+}
+
 struct SportSelectionGrid: View {
     @Binding var selection: Set<TempoSportChoice>
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
@@ -1658,7 +1701,7 @@ struct SportSelectionGrid: View {
                         Spacer(minLength: 0)
                         if selected { Image(systemName: "checkmark.circle.fill") }
                     }
-                    .foregroundStyle(selected ? .black : .white)
+                    .foregroundStyle(selected ? TempoTheme.onAccent : TempoTheme.primary)
                     .padding(14)
                     .frame(maxWidth: .infinity, minHeight: 58)
                     .background(selected ? TempoTheme.green : TempoTheme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -1691,7 +1734,7 @@ private struct ConnectionCard: View {
             Button(action: action) {
                 if connected { Image(systemName: "checkmark.circle.fill").foregroundStyle(TempoTheme.green) }
                 else if busy { ProgressView().tint(TempoTheme.green) }
-                else { Text("Bağla").font(.caption.bold()).foregroundStyle(.black).padding(.horizontal, 13).padding(.vertical, 9).background(TempoTheme.green, in: Capsule()) }
+                else { Text("Bağla").font(.caption.bold()).foregroundStyle(TempoTheme.onAccent).padding(.horizontal, 13).padding(.vertical, 9).background(TempoTheme.green, in: Capsule()) }
             }
             .disabled(connected || busy)
         }
@@ -1727,8 +1770,8 @@ private struct AccountTextField: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 56)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.07)))
+        .background(TempoTheme.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(TempoTheme.primary.opacity(0.07)))
     }
 }
 
@@ -1762,8 +1805,8 @@ private struct AccountSecureField: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 56)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.07)))
+        .background(TempoTheme.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(TempoTheme.primary.opacity(0.07)))
     }
 }
 
@@ -1788,13 +1831,13 @@ private struct AccountAvatarView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(.white.opacity(0.08), lineWidth: 1))
+        .overlay(Circle().stroke(TempoTheme.primary.opacity(0.08), lineWidth: 1))
     }
 }
 
 private struct AccountPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.headline).foregroundStyle(.black).padding(.vertical, 16)
+        configuration.label.font(.headline).foregroundStyle(TempoTheme.onAccent).padding(.vertical, 16)
             .padding(.horizontal, 18)
             .background(TempoTheme.green.opacity(configuration.isPressed ? 0.76 : 1), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
@@ -1802,10 +1845,10 @@ private struct AccountPrimaryButtonStyle: ButtonStyle {
 
 private struct AccountOutlineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.headline).foregroundStyle(.white).padding(.vertical, 16)
+        configuration.label.font(.headline).foregroundStyle(TempoTheme.primary).padding(.vertical, 16)
             .padding(.horizontal, 18)
             .background(TempoTheme.card.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(TempoTheme.primary.opacity(0.08)))
     }
 }
 
@@ -1895,10 +1938,10 @@ struct TempoGlassBackButtonModifier: ViewModifier {
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(TempoTheme.primary)
                             .frame(width: 40, height: 40)
                             .background(.ultraThinMaterial, in: Circle())
-                            .overlay(Circle().stroke(.white.opacity(0.20), lineWidth: 1))
+                            .overlay(Circle().stroke(TempoTheme.primary.opacity(0.20), lineWidth: 1))
                             .shadow(color: .black.opacity(0.32), radius: 10, y: 4)
                             .contentShape(Circle())
                     }

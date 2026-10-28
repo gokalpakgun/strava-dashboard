@@ -7,12 +7,14 @@ struct TempoHealthApp: App {
     @StateObject private var model = TempoAppModel()
     @StateObject private var account = TempoAccountStore()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(TempoAppearance.storageKey) private var appearance = TempoAppearance.system.rawValue
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(account)
+                .preferredColorScheme((TempoAppearance(rawValue: appearance) ?? .system).colorScheme)
                 .onOpenURL(perform: model.handleCallback)
                 .task(id: (account.profile?.id ?? "") + (account.authorizationToken ?? "")) {
 #if DEBUG

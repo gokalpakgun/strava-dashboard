@@ -6,15 +6,33 @@ import SwiftUI
 import UIKit
 
 enum TempoTheme {
-    static let background = Color(red: 0.055, green: 0.058, blue: 0.065)
-    static let card = Color(red: 0.085, green: 0.09, blue: 0.10)
-    static let raised = Color(red: 0.115, green: 0.12, blue: 0.13)
-    static let green = Color(red: 0.43, green: 0.77, blue: 0.57)
-    static let orange = Color(red: 0.91, green: 0.53, blue: 0.37)
-    static let blue = Color(red: 0.46, green: 0.68, blue: 0.72)
-    static let purple = Color(red: 0.66, green: 0.59, blue: 0.75)
-    static let secondary = Color.white.opacity(0.62)
+    private static func adaptive(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? dark : light })
+    }
+    static let background = adaptive(light: UIColor(red: 0.96, green: 0.97, blue: 0.965, alpha: 1), dark: UIColor(red: 0.055, green: 0.058, blue: 0.065, alpha: 1))
+    static let card = adaptive(light: .white, dark: UIColor(red: 0.085, green: 0.09, blue: 0.10, alpha: 1))
+    static let raised = adaptive(light: UIColor(red: 0.92, green: 0.94, blue: 0.93, alpha: 1), dark: UIColor(red: 0.115, green: 0.12, blue: 0.13, alpha: 1))
+    static let green = adaptive(light: UIColor(red: 0.12, green: 0.43, blue: 0.29, alpha: 1), dark: UIColor(red: 0.43, green: 0.77, blue: 0.57, alpha: 1))
+    static let orange = adaptive(light: UIColor(red: 0.69, green: 0.27, blue: 0.12, alpha: 1), dark: UIColor(red: 0.91, green: 0.53, blue: 0.37, alpha: 1))
+    static let blue = adaptive(light: UIColor(red: 0.16, green: 0.42, blue: 0.52, alpha: 1), dark: UIColor(red: 0.46, green: 0.68, blue: 0.72, alpha: 1))
+    static let purple = adaptive(light: UIColor(red: 0.47, green: 0.34, blue: 0.64, alpha: 1), dark: UIColor(red: 0.66, green: 0.59, blue: 0.75, alpha: 1))
+    static let primary = Color(uiColor: .label)
+    static let secondary = Color(uiColor: .secondaryLabel)
+    static let onAccent = adaptive(light: .white, dark: .black)
     static let scrollBottomClearance: CGFloat = 132
+}
+
+enum TempoAppearance: String, CaseIterable, Identifiable {
+    static let storageKey = "tempo.appearance"
+    case system, light, dark
+    var id: String { rawValue }
+    var colorScheme: ColorScheme? {
+        switch self { case .system: return nil; case .light: return .light; case .dark: return .dark }
+    }
+    var title: String { ("appearance." + rawValue).tempoLocalized }
+    var symbol: String {
+        switch self { case .system: return "circle.lefthalf.filled"; case .light: return "sun.max.fill"; case .dark: return "moon.fill" }
+    }
 }
 
 struct TempoMetricGrid<Content: View>: View {
@@ -42,7 +60,7 @@ struct TempoDisclosureSection<Content: View>: View {
             content.padding(.top, 12)
         } label: {
             Label(title.tempoLocalized, systemImage: icon)
-                .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .tint(TempoTheme.green)
@@ -61,7 +79,7 @@ private struct TempoMenuRow: View {
             Image(systemName: icon).font(.system(size: 17, weight: .medium)).foregroundStyle(TempoTheme.green)
                 .frame(width: 38, height: 38).background(TempoTheme.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 4) {
-                Text(title.tempoLocalized).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                Text(title.tempoLocalized).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                 Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
             }.fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right").font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary).accessibilityHidden(true)
@@ -90,7 +108,6 @@ struct ContentView: View {
             }
         }
         .background(TempoTheme.background.ignoresSafeArea())
-        .preferredColorScheme(.dark)
         .task {
             do { try await Task.sleep(nanoseconds: reduceMotion ? 200_000_000 : 1_150_000_000) }
             catch { return }
@@ -195,7 +212,7 @@ private struct TempoMainShell: View {
                     }
                 }
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Kapat") { presentedRoute = nil } } }
-            }.preferredColorScheme(.dark)
+            }
         }
     }
 }
@@ -219,7 +236,7 @@ private struct TempoGlassTabBar: View {
                     .background(.ultraThinMaterial, in: Capsule())
                     .background(
                         LinearGradient(
-                            colors: [.white.opacity(0.12), TempoTheme.green.opacity(0.045), .black.opacity(0.11)],
+                            colors: [TempoTheme.primary.opacity(0.12), TempoTheme.green.opacity(0.045), .black.opacity(0.11)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -229,7 +246,7 @@ private struct TempoGlassTabBar: View {
                         Capsule()
                             .stroke(
                                 LinearGradient(
-                                    colors: [.white.opacity(0.38), .white.opacity(0.08)],
+                                    colors: [TempoTheme.primary.opacity(0.38), TempoTheme.primary.opacity(0.08)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
@@ -253,12 +270,12 @@ private struct TempoGlassTabBar: View {
                         Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
                             .font(.system(size: 18, weight: isSelected ? .semibold : .medium))
                             .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(isSelected ? TempoTheme.green : .white.opacity(0.76))
+                            .foregroundStyle(isSelected ? TempoTheme.green : TempoTheme.primary.opacity(0.76))
                             .frame(height: 22)
 
                         Text(tab.title.tempoLocalized)
                             .font(.system(size: 10.5, weight: isSelected ? .semibold : .medium, design: .rounded))
-                            .foregroundStyle(isSelected ? .white : .white.opacity(0.64))
+                            .foregroundStyle(isSelected ? TempoTheme.primary : TempoTheme.primary.opacity(0.64))
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
                     }
@@ -281,14 +298,14 @@ private struct TempoGlassTabBar: View {
                                 Capsule()
                                     .fill(
                                         LinearGradient(
-                                            colors: [.white.opacity(0.14), TempoTheme.green.opacity(0.18), .white.opacity(0.045)],
+                                            colors: [TempoTheme.primary.opacity(0.14), TempoTheme.green.opacity(0.18), TempoTheme.primary.opacity(0.045)],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
                                     )
                                     .overlay(
                                         Capsule()
-                                            .stroke(.white.opacity(0.22), lineWidth: 0.8)
+                                            .stroke(TempoTheme.primary.opacity(0.22), lineWidth: 0.8)
                                     )
                             }
                         }
@@ -404,7 +421,7 @@ private struct WelcomeScreen: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(TempoTheme.primary.opacity(0.7))
                         .padding(14)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                     }
@@ -426,7 +443,7 @@ private struct StravaTrustRow: View {
         }
         .padding(.vertical, 13)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(.white.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(TempoTheme.primary.opacity(0.07)))
     }
 
     private func trustItem(icon: String, title: String) -> some View {
@@ -435,7 +452,7 @@ private struct StravaTrustRow: View {
                 .foregroundStyle(TempoTheme.green)
             Text(title.tempoLocalized)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(TempoTheme.primary.opacity(0.7))
         }
         .frame(maxWidth: .infinity)
     }
@@ -447,7 +464,7 @@ private struct ConnectedAppsCard: View {
             HStack {
                 Label("Aktivitelerin hazır olsun", systemImage: "figure.run.circle.fill")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(TempoTheme.primary)
                 Spacer()
                 Text("STRAVA")
                     .font(.caption2.bold()).tracking(1.3).foregroundStyle(TempoTheme.orange)
@@ -456,7 +473,7 @@ private struct ConnectedAppsCard: View {
             HStack(spacing: 13) {
                 Image(systemName: "figure.run")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(TempoTheme.primary)
                     .frame(width: 52, height: 52)
                     .background(TempoTheme.orange, in: Circle())
                 VStack(alignment: .leading, spacing: 4) {
@@ -485,7 +502,7 @@ private struct ConnectedAppsCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .stroke(LinearGradient(colors: [TempoTheme.primary.opacity(0.16), TempoTheme.primary.opacity(0.035)], startPoint: .topLeading, endPoint: .bottomTrailing))
         )
     }
 }
@@ -499,12 +516,12 @@ private struct ImportPill: View {
             Image(systemName: icon)
                 .foregroundStyle(TempoTheme.green)
             Text(title.tempoLocalized)
-                .foregroundStyle(.white.opacity(0.82))
+                .foregroundStyle(TempoTheme.primary.opacity(0.82))
         }
         .font(.caption.weight(.semibold))
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(.white.opacity(0.045), in: Capsule())
+        .background(TempoTheme.primary.opacity(0.045), in: Capsule())
     }
 }
 
@@ -588,7 +605,7 @@ private struct HomeScreen: View {
                         .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         .accessibilityHidden(true)
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(TempoTheme.primary)
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .background(TempoTheme.raised.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -621,12 +638,12 @@ private struct HomeScreen: View {
             Text("Hızlı erişim".tempoLocalized).font(.headline)
             TempoMetricGrid(columns: 2) {
                 HomeQuickAction(title: "Bugün ne yapsam?", icon: "figure.mixed.cardio", color: TempoTheme.green, destination: AnyView(TempoMovementMenuScreen()))
-                    .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
-                    .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
+                    .overlay(alignment: .trailing) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
+                    .overlay(alignment: .bottom) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Tempo Koç", icon: "sparkles", color: TempoTheme.purple, destination: AnyView(CoachScreen()))
-                    .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
+                    .overlay(alignment: .bottom) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
-                    .overlay(alignment: .trailing) { Rectangle().fill(.white.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
+                    .overlay(alignment: .trailing) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Sosyal", icon: "person.2", color: TempoTheme.green, destination: AnyView(SocialScreen()))
             }
             .padding(4)
@@ -669,7 +686,7 @@ private struct HomeMovementMenuCard: View {
                     Text("GÜNÜN HAREKET MENÜSÜ")
                         .font(.caption2.weight(.bold)).tracking(1).foregroundStyle(TempoTheme.green)
                     Text("Bugün ne yapsam?")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                     Text("Vaktine, enerjine ve ekipmanına göre kısa seçenekler")
                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
                 }
@@ -681,7 +698,7 @@ private struct HomeMovementMenuCard: View {
                 LinearGradient(colors: [TempoTheme.green.opacity(0.10), TempoTheme.card, TempoTheme.blue.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing),
                 in: RoundedRectangle(cornerRadius: 21, style: .continuous)
             )
-            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
     }
@@ -704,7 +721,7 @@ private struct HomeSocialCard: View {
                         .foregroundStyle(TempoTheme.green)
                     Text("Arkadaşlarınla hareket et")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(TempoTheme.primary)
                     Text("Arkadaş ekle · haftalık yarışları takip et")
                         .font(.caption)
                         .foregroundStyle(TempoTheme.secondary)
@@ -728,7 +745,7 @@ private struct HomeSocialCard: View {
                 ),
                 in: RoundedRectangle(cornerRadius: 21, style: .continuous)
             )
-            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.085), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.085), lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -755,7 +772,7 @@ private struct AppleHealthHomeCard: View {
                         .foregroundStyle(.pink.opacity(0.95))
                     Text((connected ? "Tempo Dengesi" : "Uyku, hareket ve toparlanma verilerini bağla").tempoLocalized)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(TempoTheme.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     if connected, let balance {
@@ -785,7 +802,7 @@ private struct AppleHealthHomeCard: View {
                 LinearGradient(colors: [TempoTheme.purple.opacity(0.11), TempoTheme.card], startPoint: .topLeading, endPoint: .bottomTrailing),
                 in: RoundedRectangle(cornerRadius: 21, style: .continuous)
             )
-            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -797,7 +814,7 @@ private struct TempoReadinessRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(.white.opacity(0.09), lineWidth: 6)
+            Circle().stroke(TempoTheme.primary.opacity(0.09), lineWidth: 6)
             Circle()
                 .trim(from: 0, to: CGFloat(min(max(value, 0), 100)) / 100)
                 .stroke(
@@ -831,7 +848,7 @@ private struct HomeQuickAction: View {
                     .background(color.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityHidden(true)
                 Text(title.tempoLocalized)
-                    .font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.9))
+                    .font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.primary.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -888,7 +905,7 @@ private struct DailyMotivationCard: View {
                         .foregroundStyle(TempoTheme.green)
                     Text(message.tempoLocalized)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.82))
+                        .foregroundStyle(TempoTheme.primary.opacity(0.82))
                         .lineLimit(2)
                 }
                 Spacer(minLength: 4)
@@ -897,7 +914,7 @@ private struct DailyMotivationCard: View {
             .padding(.vertical, 12)
             .background(
                 LinearGradient(
-                    colors: [.white.opacity(0.035), TempoTheme.green.opacity(0.035)],
+                    colors: [TempoTheme.primary.opacity(0.035), TempoTheme.green.opacity(0.035)],
                     startPoint: .leading,
                     endPoint: .trailing
                 ),
@@ -905,7 +922,7 @@ private struct DailyMotivationCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .stroke(.white.opacity(0.055))
+                    .stroke(TempoTheme.primary.opacity(0.055))
             )
         }
     }
@@ -965,7 +982,7 @@ private struct ActivitiesScreen: View {
                     HStack(spacing: 8) {
                         ForEach(filterOptions) { option in
                             Button { selectedFilter = option } label: {
-                                Text(option.title.tempoLocalized).font(.caption.weight(.semibold)).foregroundStyle(selectedFilter.id == option.id ? .black : .white.opacity(0.8)).padding(.horizontal, 14).padding(.vertical, 10).background(selectedFilter.id == option.id ? TempoTheme.green : TempoTheme.card, in: Capsule())
+                                Text(option.title.tempoLocalized).font(.caption.weight(.semibold)).foregroundStyle(selectedFilter.id == option.id ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.8)).padding(.horizontal, 14).padding(.vertical, 10).background(selectedFilter.id == option.id ? TempoTheme.green : TempoTheme.card, in: Capsule())
                             }.buttonStyle(.plain).accessibilityIdentifier("activity.filter.\(option.id)")
                         }
                     }
@@ -1030,7 +1047,7 @@ private struct ManualWorkoutRow: View {
                 .frame(width: 42, height: 42)
                 .background(TempoTheme.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
-                Text(workout.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(2)
+                Text(workout.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary).lineLimit(2)
                 Text("%@ · %@".tempoFormatted(workout.sportTitle, TempoFormat.duration(Double(workout.durationSeconds ?? workout.durationMinutes * 60))))
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
                 Text(workout.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(TempoTheme.secondary)
@@ -1077,7 +1094,7 @@ private struct ManualWorkoutRow: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(.white.opacity(0.07), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(TempoTheme.primary.opacity(0.07), lineWidth: 1))
         .sheet(isPresented: $isShowingPhotoEvidence) {
             if let url = model.manualWorkoutPhotoURL(for: workout), let image = UIImage(contentsOfFile: url.path) {
                 NavigationStack {
@@ -1089,7 +1106,6 @@ private struct ManualWorkoutRow: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Tamam") { isShowingPhotoEvidence = false } } }
                 }
-                .preferredColorScheme(.dark)
             }
         }
         .sheet(isPresented: $isShowingRoute) {
@@ -1156,7 +1172,6 @@ private struct ManualWorkoutRouteScreen: View {
             }
             .onAppear { updateRegion() }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func updateRegion() {
@@ -1287,7 +1302,6 @@ private struct ManualWorkoutForm: View {
                 Text(errorMessage ?? "Fotoğraf tek başına yeterli değil. Antrenman saatinde anlamlı bir hareket veya Sağlık sinyali bulunamadı.")
             }
         }
-        .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving)
         .onAppear { if workoutSessionID == nil { workoutSessionID = model.activitySessionID } }
         .onChange(of: model.activitySessionID) { _, _ in dismiss() }
@@ -1387,7 +1401,7 @@ private struct ManualWorkoutFeedbackSection: View {
                         Text(labels[score - 1].tempoLocalized)
                             .font(.caption2.weight(.semibold))
                             .lineLimit(1).minimumScaleFactor(0.65)
-                            .foregroundStyle(selection.wrappedValue == score ? .black : TempoTheme.secondary)
+                            .foregroundStyle(selection.wrappedValue == score ? TempoTheme.onAccent : TempoTheme.secondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 9)
                             .background(selection.wrappedValue == score ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                     }
@@ -1521,10 +1535,10 @@ private struct ActivityDetailScreen: View {
             }
             TempoCard {
                 DetailLine(label: "Spor", value: activity.sport.title)
-                Divider().overlay(.white.opacity(0.08))
+                Divider().overlay(TempoTheme.primary.opacity(0.08))
                 if activity.sport.supportsElevation {
                     DetailLine(label: "Ortalama hız", value: String(format: "%.1f km/sa", activity.speedKmh))
-                    Divider().overlay(.white.opacity(0.08))
+                    Divider().overlay(TempoTheme.primary.opacity(0.08))
                 }
                 DetailLine(label: "Strava aktivitesi", value: "#\(activity.id)")
             }
@@ -1563,26 +1577,26 @@ private struct RecentActivitiesPanel: View {
                                 .font(.title2)
                                 .foregroundStyle(TempoTheme.green)
                                 .frame(width: 48, height: 48)
-                                .background(.white.opacity(0.10), in: Circle())
+                                .background(TempoTheme.primary.opacity(0.10), in: Circle())
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("SON AKTİVİTE".tempoSentenceCased)
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(TempoTheme.secondary)
                                 Text(latest.date.map { TempoFormat.shortDate.string(from: $0) } ?? latest.sport.title)
                                     .font(.caption)
-                                    .foregroundStyle(.white.opacity(0.62))
+                                    .foregroundStyle(TempoTheme.primary.opacity(0.62))
                             }
                             Spacer()
                             Image(systemName: "arrow.up.right")
                                 .font(.caption.bold())
-                                .foregroundStyle(.white.opacity(0.82))
+                                .foregroundStyle(TempoTheme.primary.opacity(0.82))
                                 .frame(width: 34, height: 34)
-                                .background(.white.opacity(0.09), in: Circle())
+                                .background(TempoTheme.primary.opacity(0.09), in: Circle())
                         }
 
                         Text(latest.name ?? latest.sport.title)
                             .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(TempoTheme.primary)
                             .lineLimit(2)
 
                         HStack(spacing: 18) {
@@ -1593,12 +1607,12 @@ private struct RecentActivitiesPanel: View {
                             }
                         }
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.74))
+                        .foregroundStyle(TempoTheme.primary.opacity(0.74))
                     }
                     .padding(19)
                     .background(
                         LinearGradient(
-                            colors: [Color(red: 0.10, green: 0.20, blue: 0.15), Color(red: 0.075, green: 0.12, blue: 0.16)],
+                            colors: [TempoTheme.green.opacity(0.12), TempoTheme.blue.opacity(0.08)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -1606,7 +1620,7 @@ private struct RecentActivitiesPanel: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 25, style: .continuous)
-                            .stroke(LinearGradient(colors: [TempoTheme.green.opacity(0.24), .white.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .stroke(LinearGradient(colors: [TempoTheme.green.opacity(0.24), TempoTheme.primary.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
                 }
                 .buttonStyle(.plain)
@@ -1627,12 +1641,12 @@ private struct RecentActivitiesPanel: View {
                                     }
                                     Text(activity.name ?? activity.sport.title)
                                         .font(.subheadline.bold())
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(TempoTheme.primary)
                                         .lineLimit(2)
                                         .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
                                     Text(TempoFormat.distance(activity.distanceKm))
                                         .font(.headline)
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(TempoTheme.primary)
                                     Text(activity.date.map { TempoFormat.shortDate.string(from: $0) } ?? activity.sport.title)
                                         .font(.caption2)
                                         .foregroundStyle(TempoTheme.secondary)
@@ -1640,7 +1654,7 @@ private struct RecentActivitiesPanel: View {
                                 .padding(15)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.05)))
+                                .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.05)))
                             }
                             .buttonStyle(.plain)
                         }
@@ -1658,7 +1672,7 @@ private struct RecentActivitiesPanel: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Aktivite geçmişi")
                                 .font(.subheadline.bold())
-                                .foregroundStyle(.white)
+                                .foregroundStyle(TempoTheme.primary)
                             Text("Aktiviteleri tarihe göre görüntüle")
                                 .font(.caption)
                                 .foregroundStyle(TempoTheme.secondary)
@@ -1666,7 +1680,7 @@ private struct RecentActivitiesPanel: View {
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption.bold())
-                            .foregroundStyle(.white.opacity(0.32))
+                            .foregroundStyle(TempoTheme.primary.opacity(0.32))
                     }
                     .padding(14)
                     .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -1803,7 +1817,7 @@ private struct ActivityTimelineScreen: View {
                                 } label: {
                                     Text(option.title.tempoLocalized)
                                         .font(.caption.bold())
-                                        .foregroundStyle(filter.id == option.id ? .black : .white)
+                                        .foregroundStyle(filter.id == option.id ? TempoTheme.onAccent : TempoTheme.primary)
                                         .padding(.horizontal, 15)
                                         .padding(.vertical, 10)
                                         .background(filter.id == option.id ? TempoTheme.green : TempoTheme.card, in: Capsule())
@@ -2018,7 +2032,7 @@ struct CoachScreen: View {
                 Button { send(suggestion.tempoLocalized) } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "arrow.up.left").font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.green)
-                        Text(suggestion.tempoLocalized).font(.subheadline).foregroundStyle(.white.opacity(0.9))
+                        Text(suggestion.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.primary.opacity(0.9))
                         Spacer()
                     }.padding(13).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                 }.buttonStyle(.plain).disabled(isSending || model.isCoachLoading).accessibilityIdentifier("coach.suggestion.\(index)")
@@ -2052,7 +2066,7 @@ struct CoachScreen: View {
                     .onSubmit { send() }
                 Button { send() } label: {
                     Image(systemName: "arrow.up").font(.headline.bold())
-                        .frame(width: 46, height: 46).foregroundStyle(.black)
+                        .frame(width: 46, height: 46).foregroundStyle(TempoTheme.onAccent)
                         .background(TempoTheme.green, in: Circle())
                 }.buttonStyle(.plain).accessibilityLabel("Gönder".tempoLocalized).accessibilityIdentifier("coach.send")
                     .disabled(isSending || model.isCoachLoading || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.utf16.count > 1_500)
@@ -2074,7 +2088,7 @@ struct CoachScreen: View {
             Text(message.content)
                 .font(.subheadline).lineSpacing(4).padding(13)
                 .background(message.role == "user" ? TempoTheme.green.opacity(0.18) : TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(.white.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(TempoTheme.primary.opacity(0.06)))
                 .accessibilityIdentifier("coach.message.\(message.role)")
                 .contextMenu { Button("Kopyala", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content } }
             if message.role != "user" { Spacer(minLength: 36) }
@@ -2279,7 +2293,7 @@ struct SocialScreen: View {
                     Text(section.title.tempoLocalized).font(.subheadline.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.horizontal, 6)
-                        .foregroundStyle(selectedSection == section ? Color.white : TempoTheme.secondary)
+                        .foregroundStyle(selectedSection == section ? TempoTheme.primary : TempoTheme.secondary)
                         .background(selectedSection == section ? TempoTheme.raised : Color.clear, in: Capsule())
                 }.buttonStyle(.plain)
                     .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
@@ -2443,7 +2457,7 @@ struct SocialScreen: View {
                             }.disabled(working).accessibilityLabel("Kullanıcı seçenekleri".tempoLocalized)
                         }
                         .padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
-                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(selectedFriends.contains(friend.id) ? TempoTheme.green.opacity(0.45) : .white.opacity(0.07), lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(selectedFriends.contains(friend.id) ? TempoTheme.green.opacity(0.45) : TempoTheme.primary.opacity(0.07), lineWidth: 1))
                         .contextMenu { safetyMenu(for: friend) }
                     }
                 }
@@ -2499,7 +2513,7 @@ struct SocialScreen: View {
                     }.padding(16).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 18))
                     Text("@ işaretiyle veya işaretsiz Tempo kullanıcı adını yazabilirsin.".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                     Button { Task { await sendRequest() } } label: {
-                        HStack { if working { ProgressView().tint(.black) }; Label("Arkadaşlık isteği gönder", systemImage: "paperplane") }
+                        HStack { if working { ProgressView().tint(TempoTheme.onAccent) }; Label("Arkadaşlık isteği gönder", systemImage: "paperplane") }
                     }.buttonStyle(TempoPrimaryButtonStyle())
                         .disabled(working || username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("social.sendFriendRequest")
@@ -2566,7 +2580,7 @@ struct SocialScreen: View {
                                     } label: {
                                         Label(friend.displayName.isEmpty ? friend.username : friend.displayName, systemImage: selectedFriends.contains(friend.id) ? "checkmark.circle.fill" : "person.crop.circle")
                                             .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 11)
-                                            .foregroundStyle(selectedFriends.contains(friend.id) ? .black : .white)
+                                            .foregroundStyle(selectedFriends.contains(friend.id) ? TempoTheme.onAccent : TempoTheme.primary)
                                             .background(selectedFriends.contains(friend.id) ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                                     }.buttonStyle(.plain).disabled(working)
                                         .accessibilityIdentifier("social.challenge.friend.\(friend.id)")
@@ -2576,7 +2590,7 @@ struct SocialScreen: View {
                         SocialHealthConsent(metric: metric, isWorking: working, selected: creationHealthSharing) { creationHealthSharing = $0 }
                         Button { Task { await createChallenge() } } label: {
                             HStack {
-                                if working { ProgressView().tint(.black) }
+                                if working { ProgressView().tint(TempoTheme.onAccent) }
                                 Label("Mücadele daveti gönder", systemImage: "flag.checkered")
                             }.frame(maxWidth: .infinity)
                         }
@@ -2856,7 +2870,7 @@ private struct SocialAvatar: View {
             else { Text(String(name.prefix(1)).uppercased()).font(.system(size: size * 0.38, weight: .semibold)).foregroundStyle(TempoTheme.green).frame(maxWidth: .infinity, maxHeight: .infinity) }
         }
         .frame(width: size, height: size).background(TempoTheme.green.opacity(0.12))
-        .clipShape(Circle()).overlay(Circle().stroke(.white.opacity(0.10), lineWidth: 1))
+        .clipShape(Circle()).overlay(Circle().stroke(TempoTheme.primary.opacity(0.10), lineWidth: 1))
         .accessibilityHidden(true)
         .task(id: profile.avatarBase64) {
             image = nil
@@ -2876,7 +2890,7 @@ private struct SocialPersonRow: View {
             SocialAvatar(profile: profile)
             VStack(alignment: .leading, spacing: 4) {
                 Text(profile.displayName.isEmpty ? profile.username : profile.displayName)
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(detail).font(.caption).foregroundStyle(TempoTheme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2902,7 +2916,7 @@ private struct SocialStatTile: View {
                 Spacer(minLength: 2)
                 Text(value.formatted())
                     .font(.title3.weight(.bold).monospacedDigit())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(TempoTheme.primary)
             }
             Text(title.tempoLocalized)
                 .font(.caption.weight(.medium))
@@ -2953,7 +2967,7 @@ private struct SocialParticipantRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(participant.user.displayName.isEmpty ? participant.user.username : participant.user.displayName)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(TempoTheme.primary)
                         .lineLimit(1)
                     Text(status.tempoLocalized)
                         .font(.caption2)
@@ -2964,7 +2978,7 @@ private struct SocialParticipantRow: View {
                 if let score = participant.score {
                     Text("\(score.formatted()) \(metric.unit)")
                         .font(.caption.weight(.bold).monospacedDigit())
-                        .foregroundStyle(isCurrentUser ? TempoTheme.green : .white.opacity(0.9))
+                        .foregroundStyle(isCurrentUser ? TempoTheme.green : TempoTheme.primary.opacity(0.9))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 } else if participant.status == "accepted" {
@@ -2977,7 +2991,7 @@ private struct SocialParticipantRow: View {
             if participant.score != nil {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.08))
+                        Capsule().fill(TempoTheme.primary.opacity(0.08))
                         Capsule()
                             .fill(LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .leading, endPoint: .trailing))
                             .frame(width: geometry.size.width * progress)
@@ -2990,7 +3004,7 @@ private struct SocialParticipantRow: View {
         }
         .padding(10)
         .background(isCurrentUser ? TempoTheme.green.opacity(0.075) : TempoTheme.raised.opacity(0.38), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(isCurrentUser ? TempoTheme.green.opacity(0.22) : .white.opacity(0.04), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(isCurrentUser ? TempoTheme.green.opacity(0.22) : TempoTheme.primary.opacity(0.04), lineWidth: 1))
     }
 }
 
@@ -3085,9 +3099,11 @@ private struct MoreScreen: View {
                 TempoCard {
                     VStack(spacing: 0) {
                         item("Hesap ayarları", "Profilini, sporlarını ve güvenliği düzenle", "gearshape", destination: AccountSettingsScreen()).accessibilityIdentifier("more.accountSettings")
-                        Divider().overlay(.white.opacity(0.06))
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
+                        item("appearance.title", "appearance.subtitle", "circle.lefthalf.filled", destination: TempoAppearanceSettingsScreen()).accessibilityIdentifier("more.appearance")
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Bildirimler", "Tercihler ve gelen bildirimler", "bell", destination: TempoNotificationsScreen()).accessibilityIdentifier("more.notifications")
-                        Divider().overlay(.white.opacity(0.06))
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Profil kartını oluştur", "PNG olarak kaydet veya paylaş", "square.and.arrow.up", destination: TempoProfileShareScreen())
                     }
                 }
@@ -3095,9 +3111,9 @@ private struct MoreScreen: View {
                 TempoCard {
                     VStack(spacing: 0) {
                         item("Sosyal", "Arkadaşlar ve mücadeleler", "person.2", destination: SocialScreen()).accessibilityIdentifier("more.social")
-                        Divider().overlay(.white.opacity(0.06))
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Tempo Koç", "Spor ve sağlıklı yaşam için sohbet", "sparkles", destination: CoachScreen()).accessibilityIdentifier("more.coach")
-                        Divider().overlay(.white.opacity(0.06))
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Başarılar", "Seviye ve rozetlerin", "medal", destination: AchievementsScreen())
                     }
                 }
@@ -3105,9 +3121,9 @@ private struct MoreScreen: View {
                 TempoCard {
                     VStack(spacing: 0) {
                         item("Aylık", "Son 6 ay", "chart.bar", destination: MonthlyStatsScreen()).accessibilityIdentifier("more.monthly")
-                        Divider().overlay(.white.opacity(0.06))
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Yıl Özeti", "Bu yılın", "calendar", destination: YearSummaryScreen())
-                        Divider().overlay(.white.opacity(0.06))
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Eddington", "Koşu istikrarın", "figure.run", destination: EddingtonScreen())
                     }
                 }
@@ -3115,7 +3131,7 @@ private struct MoreScreen: View {
                 TempoCard {
                     VStack(spacing: 0) {
                         item("Spor Alanları", "Yakınındaki tesisler", "mappin.and.ellipse", destination: NearbyFacilitiesScreen())
-                        Divider().overlay(.white.opacity(0.06))
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Rotalar", "Aktivite rotaların", "map", destination: RoutesScreen())
                     }
                 }
@@ -3286,7 +3302,7 @@ private struct HealthScreen: View {
                     }
                 }
                 ZStack {
-                    Circle().stroke(.white.opacity(0.08), lineWidth: 15)
+                    Circle().stroke(TempoTheme.primary.opacity(0.08), lineWidth: 15)
                     Circle().trim(from: 0, to: CGFloat(progress)).stroke(TempoTheme.blue, style: StrokeStyle(lineWidth: 15, lineCap: .round)).rotationEffect(.degrees(-90))
                     VStack(spacing: 2) {
                         Image(systemName: "drop.fill").foregroundStyle(TempoTheme.blue)
@@ -3406,10 +3422,10 @@ private struct HealthDaySelector: View {
                                             Text("Ölçüm".tempoLocalized).font(.caption2.bold())
                                         }
                                     }
-                                    .foregroundStyle(isSelected ? Color.black : Color.white)
+                                    .foregroundStyle(isSelected ? TempoTheme.onAccent : TempoTheme.primary)
                                     .frame(width: 64, height: 76)
                                     .background(isSelected ? TempoTheme.green : TempoTheme.raised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isSelected ? TempoTheme.green : .white.opacity(0.06)))
+                                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isSelected ? TempoTheme.green : TempoTheme.primary.opacity(0.06)))
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(point.day.formatted(date: .complete, time: .omitted))
@@ -3467,7 +3483,7 @@ private struct SleepDetailCard: View {
                 if let selectedMetrics, let assessment {
                     HStack(spacing: 17) {
                         ZStack {
-                            Circle().stroke(.white.opacity(0.08), lineWidth: 10)
+                            Circle().stroke(TempoTheme.primary.opacity(0.08), lineWidth: 10)
                             Circle()
                                 .trim(from: 0, to: CGFloat(assessment.value) / 100)
                                 .stroke(
@@ -3494,7 +3510,7 @@ private struct SleepDetailCard: View {
                     }
 
                     Text(assessment.summary.tempoLocalized)
-                        .font(.subheadline).foregroundStyle(.white.opacity(0.76)).lineSpacing(3)
+                        .font(.subheadline).foregroundStyle(TempoTheme.primary.opacity(0.76)).lineSpacing(3)
                 }
 
                 if !sleepPoints.isEmpty {
@@ -3517,7 +3533,7 @@ private struct SleepDetailCard: View {
                     }
                     .chartYAxis {
                         AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
-                            AxisGridLine().foregroundStyle(.white.opacity(0.06))
+                            AxisGridLine().foregroundStyle(TempoTheme.primary.opacity(0.06))
                             AxisValueLabel { if let hours = value.as(Double.self) { Text("%d sa".tempoFormatted(Int(hours))) } }
                                 .foregroundStyle(TempoTheme.secondary)
                         }
@@ -3545,7 +3561,7 @@ private struct SleepDetailCard: View {
                     .chartXAxis(.hidden)
                     .chartYAxis {
                         AxisMarks(position: .leading, values: [0, 50, 100]) { value in
-                            AxisGridLine().foregroundStyle(.white.opacity(0.06))
+                            AxisGridLine().foregroundStyle(TempoTheme.primary.opacity(0.06))
                             AxisValueLabel().foregroundStyle(TempoTheme.secondary)
                         }
                     }
@@ -3561,7 +3577,7 @@ private struct SleepDetailCard: View {
                     }
 
                     if let assessment {
-                        Divider().overlay(.white.opacity(0.08))
+                        Divider().overlay(TempoTheme.primary.opacity(0.08))
                         VStack(spacing: 13) {
                             ForEach(assessment.factors) { factor in
                                 SleepFactorRow(factor: factor)
@@ -3602,7 +3618,7 @@ private struct SleepFactorRow: View {
                 }
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.07))
+                        Capsule().fill(TempoTheme.primary.opacity(0.07))
                         Capsule().fill(color).frame(width: proxy.size.width * CGFloat(factor.score) / 100)
                     }
                 }
@@ -3773,7 +3789,7 @@ private struct HealthMetricTile: View {
         }
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading).padding(16)
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.045)))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.primary.opacity(0.045)))
         .multilineTextAlignment(.leading)
     }
 }
@@ -3784,7 +3800,7 @@ private struct TempoBalanceHomeCard: View {
     var body: some View {
         HStack(spacing: 16) {
             ZStack {
-                Circle().stroke(.white.opacity(0.08), lineWidth: 7)
+                Circle().stroke(TempoTheme.primary.opacity(0.08), lineWidth: 7)
                 Circle()
                     .trim(from: 0, to: CGFloat(balance.value) / 100)
                     .stroke(
@@ -3811,9 +3827,9 @@ private struct TempoBalanceHomeCard: View {
             Spacer(minLength: 4)
             Image(systemName: "chevron.right")
                 .font(.caption.bold())
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(TempoTheme.primary.opacity(0.3))
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(TempoTheme.primary)
         .padding(17)
         .background(
             LinearGradient(
@@ -3835,7 +3851,7 @@ private struct TempoBalanceDetailCard: View {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .center, spacing: 18) {
                     ZStack {
-                        Circle().stroke(.white.opacity(0.08), lineWidth: 11)
+                        Circle().stroke(TempoTheme.primary.opacity(0.08), lineWidth: 11)
                         Circle()
                             .trim(from: 0, to: CGFloat(balance.value) / 100)
                             .stroke(
@@ -3871,10 +3887,10 @@ private struct TempoBalanceDetailCard: View {
                 if let note = balance.dataNote { Text(note).font(.caption).foregroundStyle(TempoTheme.secondary) }
                 Text(balance.recommendation.tempoLocalized)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.76))
+                    .foregroundStyle(TempoTheme.primary.opacity(0.76))
                     .lineSpacing(4)
 
-                Divider().overlay(.white.opacity(0.08))
+                Divider().overlay(TempoTheme.primary.opacity(0.08))
 
                 VStack(spacing: 15) {
                     ForEach(balance.factors) { factor in
@@ -3919,7 +3935,7 @@ private struct TempoBalanceFactorRow: View {
                 }
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.07))
+                        Capsule().fill(TempoTheme.primary.opacity(0.07))
                         Capsule().fill(color).frame(width: proxy.size.width * CGFloat(factor.score) / 100)
                     }
                 }
@@ -3991,7 +4007,7 @@ private struct MonthlyStatsScreen: View {
                                 } label: {
                                     Text(item.date.formatted(.dateTime.month(.abbreviated)))
                                         .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 10)
-                                        .foregroundStyle(item.date == selection?.date ? .black : .white.opacity(0.8))
+                                        .foregroundStyle(item.date == selection?.date ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.8))
                                         .background(item.date == selection?.date ? accent : TempoTheme.raised, in: Capsule())
                                 }.buttonStyle(.plain)
                                     .accessibilityLabel(item.date.formatted(.dateTime.month(.wide).year()))
@@ -4077,7 +4093,7 @@ private struct SegmentsScreen: View {
                         TempoCard {
                             HStack {
                                 VStack(alignment: .leading, spacing: 5) {
-                                    Text(segment.name ?? "İsimsiz segment".tempoLocalized).font(.headline).foregroundStyle(.white)
+                                    Text(segment.name ?? "İsimsiz segment".tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
                                     Text("%@ · %@%% eğim".tempoFormatted(
                                         TempoFormat.distance((segment.distance ?? 0) / 1000),
                                         (segment.averageGrade ?? 0).formatted(.number.precision(.fractionLength(1)))
@@ -4159,7 +4175,7 @@ private struct PhotosScreen: View {
                                     else { ZStack { TempoTheme.raised; ProgressView() } }
                                 }
                                 .frame(height: 160).clipped().clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                                Text(photo.activityName ?? "Aktivite".tempoLocalized).font(.caption.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
+                                Text(photo.activityName ?? "Aktivite".tempoLocalized).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.primary).lineLimit(1)
                             }
                         }
                         .buttonStyle(.plain)
@@ -4211,7 +4227,7 @@ private struct HomeHeader: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bell").font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44)
                     if notifications.unreadCount > 0 { Circle().fill(TempoTheme.green).frame(width: 7, height: 7).offset(x: -7, y: 6) }
-                }.foregroundStyle(.white.opacity(0.88)).background(.ultraThinMaterial, in: Circle())
+                }.foregroundStyle(TempoTheme.primary.opacity(0.88)).background(.ultraThinMaterial, in: Circle())
             }.buttonStyle(.plain).accessibilityLabel("Bildirimler".tempoLocalized).accessibilityIdentifier("home.notifications")
         }
     }
@@ -4257,7 +4273,7 @@ private struct StravaConnectionCard: View {
 
                     Image(systemName: "figure.run")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(TempoTheme.primary)
                         .frame(width: 23, height: 23)
                         .background(TempoTheme.orange, in: Circle())
                         .overlay(Circle().stroke(TempoTheme.card, lineWidth: 2))
@@ -4273,7 +4289,7 @@ private struct StravaConnectionCard: View {
                             .background(TempoTheme.green.opacity(0.12), in: Capsule())
                     }
                     Text(athlete.fullName.isEmpty ? "Strava Sporcusu".tempoLocalized : athlete.fullName)
-                        .font(.headline).foregroundStyle(.white).lineLimit(1)
+                        .font(.headline).foregroundStyle(TempoTheme.primary).lineLimit(1)
                     Text("Strava hesabın bağlı".tempoLocalized)
                         .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
                 }
@@ -4315,7 +4331,7 @@ struct TempoCard<Content: View>: View {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(.white.opacity(0.075), lineWidth: 1)
+                    .stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.10), radius: 12, y: 5)
     }
@@ -4332,7 +4348,7 @@ private struct MetricCard: View {
         .padding(13)
         .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
         .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(.white.opacity(0.065), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(TempoTheme.primary.opacity(0.065), lineWidth: 1))
     }
 }
 
@@ -4355,19 +4371,19 @@ private struct ActivityRow: View {
             Image(systemName: activity.sport.symbol).font(.title3).foregroundStyle(TempoTheme.orange)
                 .frame(width: 48, height: 48).background(TempoTheme.orange.opacity(0.11), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
-                Text(activity.name ?? activity.sport.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
+                Text(activity.name ?? activity.sport.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary).lineLimit(1)
                 Text("\(activity.sport.title) · \(activity.date.map { TempoFormat.shortDate.string(from: $0) } ?? "")").font(.caption).foregroundStyle(TempoTheme.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
-                if activity.sport.supportsDistance { Text(activity.sport.distanceText(activity.distanceKm)).font(.subheadline.bold()).foregroundStyle(.white) }
-                Text(TempoFormat.duration(activity.movingSeconds)).font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.85))
+                if activity.sport.supportsDistance { Text(activity.sport.distanceText(activity.distanceKm)).font(.subheadline.bold()).foregroundStyle(TempoTheme.primary) }
+                Text(TempoFormat.duration(activity.movingSeconds)).font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.primary.opacity(0.85))
             }
-            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.white.opacity(0.25))
+            Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.primary.opacity(0.25))
         }
         .padding(14)
         .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(.white.opacity(0.065), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.065), lineWidth: 1))
     }
 }
 
@@ -4395,7 +4411,7 @@ private struct StravaOptionalCard: View {
                         .background(TempoTheme.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     Text(title.tempoLocalized)
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(TempoTheme.primary)
                 }
                 Text(message.tempoLocalized)
                     .font(.subheadline)
@@ -4446,7 +4462,7 @@ private struct SearchField: View {
             .frame(height: 50)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .background(TempoTheme.card.opacity(0.80), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(.white.opacity(0.075), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
     }
 }
 
@@ -4482,7 +4498,7 @@ private struct SummaryLine: View {
 
 struct TempoPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.subheadline.weight(.semibold)).foregroundStyle(.black)
+        configuration.label.font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.onAccent)
             .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, minHeight: 48)
             .background(TempoTheme.green.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
@@ -4495,7 +4511,7 @@ struct TempoSecondaryButtonStyle: ButtonStyle {
             .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, minHeight: 48)
             .background(TempoTheme.card.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 17).stroke(.white.opacity(0.10), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 17).stroke(TempoTheme.primary.opacity(0.10), lineWidth: 1))
     }
 }
 

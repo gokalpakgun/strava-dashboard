@@ -975,3 +975,10 @@
 "Invalid friend." = "Geçersiz arkadaş.";
 "Challenge not found." = "Mücadele bulunamadı veya iptal edildi.";
 "Only the creator can cancel this challenge." = "Bu mücadeleyi yalnızca oluşturan kişi iptal edebilir.";
+
+"appearance.title" = "Görünüm";
+"appearance.subtitle" = "Uygulamanın temasını seç";
+"appearance.system" = "Sistem";
+"appearance.light" = "Aydınlık";
+"appearance.dark" = "Karanlık";
+"appearance.detail" = "Sistem seçildiğinde Tempo, iPhone’un aydınlık ve karanlık mod ayarını izler. Tercihin bu cihazda saklanır ve uygulama yeniden açıldığında korunur.";
