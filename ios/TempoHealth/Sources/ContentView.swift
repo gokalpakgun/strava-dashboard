@@ -36,6 +36,36 @@ enum TempoAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+// Ortak yüzey dili: içerik okunaklı kalır, cam yalnız vurgulanan katmanlarda kullanılır.
+struct TempoSurface: ViewModifier {
+    var glass = false
+    var radius: CGFloat = 24
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        content
+            .background {
+                if glass && !reduceTransparency {
+                    shape.fill(.ultraThinMaterial).background(shape.fill(TempoTheme.card.opacity(0.86)))
+                } else { shape.fill(TempoTheme.card) }
+            }
+            .overlay(shape.strokeBorder(TempoTheme.primary.opacity(contrast == .increased ? 0.28 : 0.08), lineWidth: 1))
+            .shadow(color: .black.opacity(scheme == .dark ? 0.12 : 0.045), radius: 16, x: 0, y: 6)
+    }
+}
+
+struct TempoSoftPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.84 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: configuration.isPressed)
+    }
+}
+
 struct TempoMetricGrid<Content: View>: View {
     @Environment(\.dynamicTypeSize) private var textSize
     private let count: Int
@@ -45,7 +75,7 @@ struct TempoMetricGrid<Content: View>: View {
         self.content = content()
     }
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 10, alignment: .topLeading), count: textSize.isAccessibilitySize ? 1 : max(1, count)), alignment: .leading, spacing: 10) { content }
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 12, alignment: .topLeading), count: textSize.isAccessibilitySize ? 1 : textSize >= .xxxLarge ? min(2, max(1, count)) : max(1, count)), alignment: .leading, spacing: 12) { content }
     }
 }
 
@@ -66,7 +96,7 @@ struct TempoDisclosureSection<Content: View>: View {
         }
         .tint(TempoTheme.green)
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .modifier(TempoSurface())
         .multilineTextAlignment(.leading)
     }
 }
@@ -84,7 +114,8 @@ private struct TempoMenuRow: View {
                 Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
             }.fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right").font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary).accessibilityHidden(true)
-        }.padding(.vertical, 11).frame(maxWidth: .infinity, minHeight: 64, alignment: .leading).contentShape(Rectangle()).multilineTextAlignment(.leading)
+        }.padding(.vertical, 14).frame(maxWidth: .infinity, minHeight: 68, alignment: .leading).contentShape(Rectangle()).multilineTextAlignment(.leading)
+            .accessibilityElement(children: .combine)
     }
 }
 
@@ -221,18 +252,23 @@ private struct TempoMainShell: View {
 private struct TempoGlassTabBar: View {
     @Binding var selectedTab: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.dynamicTypeSize) private var textSize
     @Namespace private var liquidGlassNamespace
 
     var body: some View {
         Group {
-            if #available(iOS 26.0, *) {
+            if reduceTransparency {
+                accessibleItems(usesNativeGlass: false).padding(6).background(TempoTheme.card, in: Capsule())
+                    .overlay(Capsule().strokeBorder(TempoTheme.primary.opacity(0.18)))
+            } else if #available(iOS 26.0, *) {
                 GlassEffectContainer {
-                    tabItems(usesNativeGlass: true)
+                    accessibleItems(usesNativeGlass: true)
                         .padding(6)
                         .glassEffect(.regular.interactive(), in: .capsule)
                 }
             } else {
-                tabItems(usesNativeGlass: false)
+                accessibleItems(usesNativeGlass: false)
                     .padding(6)
                     .background(.ultraThinMaterial, in: Capsule())
                     .background(
@@ -260,6 +296,13 @@ private struct TempoGlassTabBar: View {
         .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.88), value: selectedTab)
     }
 
+    @ViewBuilder private func accessibleItems(usesNativeGlass: Bool) -> some View {
+        if textSize.isAccessibilitySize {
+            ScrollView(.horizontal, showsIndicators: false) { tabItems(usesNativeGlass: usesNativeGlass) }
+                .scrollClipDisabled()
+        } else { tabItems(usesNativeGlass: usesNativeGlass) }
+    }
+
     private func tabItems(usesNativeGlass: Bool) -> some View {
         HStack(spacing: 4) {
             ForEach(TempoMainTab.all) { tab in
@@ -275,12 +318,13 @@ private struct TempoGlassTabBar: View {
                             .frame(height: 22)
 
                         Text(tab.title.tempoLocalized)
-                            .font(.system(size: 10.5, weight: isSelected ? .semibold : .medium, design: .rounded))
+                            .font(.caption2.weight(isSelected ? .semibold : .medium))
                             .foregroundStyle(isSelected ? TempoTheme.primary : TempoTheme.primary.opacity(0.64))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.72)
+                            .minimumScaleFactor(0.9)
                     }
                     .frame(maxWidth: .infinity)
+                    .frame(minWidth: textSize.isAccessibilitySize ? 112 : 0, minHeight: 44)
                     .padding(.vertical, 10)
                     .contentShape(Capsule())
                     .background {
@@ -565,7 +609,7 @@ private struct HomeScreen: View {
                             .buttonStyle(.plain).foregroundStyle(TempoTheme.secondary)
                             .accessibilityLabel("Antrenman geçmişi".tempoLocalized)
                         }
-                        ManualWorkoutRow(workout: workout)
+                        TempoCard { ManualWorkoutRow(workout: workout) }
                     }
                 }
                 TempoDisclosureSection(title: "Strava araçları", icon: "link") {
@@ -616,7 +660,7 @@ private struct HomeScreen: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .modifier(TempoSurface(glass: true))
     }
 
     private var weeklyMetrics: some View {
@@ -639,16 +683,12 @@ private struct HomeScreen: View {
             Text("Hızlı erişim".tempoLocalized).font(.headline)
             TempoMetricGrid(columns: 2) {
                 HomeQuickAction(title: "Bugün ne yapsam?", icon: "figure.mixed.cardio", color: TempoTheme.green, destination: AnyView(TempoMovementMenuScreen()))
-                    .overlay(alignment: .trailing) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
-                    .overlay(alignment: .bottom) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Tempo Koç", icon: "sparkles", color: TempoTheme.purple, destination: AnyView(CoachScreen()))
-                    .overlay(alignment: .bottom) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(height: 1).padding(.horizontal, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
-                    .overlay(alignment: .trailing) { Rectangle().fill(TempoTheme.primary.opacity(0.12)).frame(width: 1).padding(.vertical, 12).accessibilityHidden(true) }
                 HomeQuickAction(title: "Sosyal", icon: "person.2", color: TempoTheme.green, destination: AnyView(SocialScreen()))
             }
-            .padding(4)
-            .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(12)
+            .modifier(TempoSurface())
         }
     }
 
@@ -872,8 +912,10 @@ private struct HomeQuickAction: View {
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             .contentShape(Rectangle())
+            .background(color.opacity(0.045), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(color.opacity(0.12)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
     }
 }
 
@@ -1060,9 +1102,9 @@ private struct WorkoutEntryActionCard: View {
             Text(title.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
             Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, minHeight: 105, alignment: .leading).padding(15)
-            .background(color.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(color.opacity(0.14), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 18))
+            .background(color.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(color.opacity(0.14)))
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
@@ -3284,7 +3326,7 @@ private struct MoreScreen: View {
     }
 
     private func item<Destination: View>(_ title: String, _ subtitle: String, _ icon: String, destination: Destination) -> some View {
-        NavigationLink(destination: destination) { TempoMenuRow(title: title, subtitle: subtitle, icon: icon) }.buttonStyle(.plain)
+        NavigationLink(destination: destination) { TempoMenuRow(title: title, subtitle: subtitle, icon: icon) }.buttonStyle(TempoSoftPressStyle())
     }
     @ViewBuilder private var legalLinks: some View {
         Link("Gizlilik Politikası".tempoLocalized, destination: URL(string: "https://apitempo.com/privacy")!)
@@ -3983,12 +4025,12 @@ private struct HealthMetricTile: View {
                     .frame(width: 30, height: 30).background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
                 Text(title.tempoLocalized).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
             }.frame(minHeight: 34, alignment: .leading)
-            Text(value).font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.8)
+            Text(value).font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit()).fixedSize(horizontal: false, vertical: true)
             Text(unit.isEmpty ? " " : unit.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading).padding(16)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.primary.opacity(0.045)))
+        .modifier(TempoSurface())
+        .accessibilityElement(children: .combine)
         .multilineTextAlignment(.leading)
     }
 }
@@ -4448,6 +4490,7 @@ struct PageTitle: View {
                 .font(.title.weight(.bold)).tracking(-0.4)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("page.title.\(title)")
+                .accessibilityAddTraits(.isHeader)
             Text(subtitle.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
     }
@@ -4523,19 +4566,13 @@ private struct StravaConnectionCard: View {
 }
 
 struct TempoCard<Content: View>: View {
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var textSize
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
-        content.padding(20).frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 24, style: .continuous).fill(TempoTheme.card)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.10 : 0.035), radius: 14, y: 5)
+        content.padding(textSize.isAccessibilitySize ? 16 : 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(TempoSurface())
     }
 }
 
@@ -4544,13 +4581,13 @@ private struct MetricCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Image(systemName: icon).font(.subheadline).foregroundStyle(color)
-            Text(value).font(.subheadline.monospacedDigit().weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            Text(value).font(.title3.monospacedDigit().weight(.semibold)).fixedSize(horizontal: false, vertical: true)
             Text(label.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(13)
         .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
-        .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(TempoTheme.primary.opacity(0.065), lineWidth: 1))
+        .modifier(TempoSurface(radius: 22))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -4559,7 +4596,7 @@ struct SectionHeading: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             if !caption.isEmpty { Text(caption.tempoLocalized).font(.caption2.weight(.medium)).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true) }
-            Text(title.tempoLocalized).font(.headline).fixedSize(horizontal: false, vertical: true)
+            Text(title.tempoLocalized).font(.headline).fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, padding ? 7 : 0)
