@@ -28,4 +28,10 @@ Betimleyici bantlar: <0,8 düşük yük; 0,8–1,3 referans aralığı; >1,3–1
 
 ## Doğrulama
 
-Yerel Node kontrolleri: 35/35 geçti (Koç kapsamı, izinler, yeni özetlerin temizlenmesi ve sosyal regresyonlar). Swift 6 hesaplama kontrolleri ve iOS SDK tür denetimi için odaklı GitHub iş akışı kullanılacaktır; simülatör açılmaz, TestFlight yüklenmez. Gerçek Apple Sağlık izin/veri akışı cihazda kullanıcı tarafından denenecektir.
+Doğrulanan kod: `be03db58eaf6eedf6c86f033f6ebe05ed40d4cfc`.
+
+- GitHub [40917517004](https://github.com/gokalpakgun/strava-dashboard/actions/runs/40917517004): 150 Swift 6 hesaplama kontrolü geçti; tüm iOS kaynakları iOS SDK ile tür denetiminden geçti. Proje dosyası ve iki dil dosyası `plutil` kontrolünden geçti.
+- 35/35 Node kontrolü geçti (Koç kapsamı, izinler, yeni özetlerin temizlenmesi ve sosyal regresyonlar).
+- Mevcut eski HealthKit dans türü için bir deprecation uyarısı var; yeni hata veya aktör izolasyon uyarısı yok.
+- Cloudflare sürümü `5d0b0f67-5eb8-4309-8735-4cb577cd3522`; `/api/mobile/ping` HTTP 200 döndü. Bu yalnız servis erişilebilirliğini doğrular.
+- Simülatör açılmadı, TestFlight yüklenmedi. Gerçek Apple Sağlık izin/veri akışı cihazda kullanıcı tarafından denenecek; hesaplama verileri test fixture'larıdır.
