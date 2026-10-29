@@ -2329,6 +2329,12 @@ struct SocialScreen: View {
     @State private var username = ""
     @State private var title = ""
     @State private var metric: TempoSocialMetric = .steps
+    @State private var challengeMode = "competitive"
+    @State private var sharedTarget = ""
+    private var validSharedTarget: Int? {
+        guard let value = Int(sharedTarget.trimmingCharacters(in: .whitespacesAndNewlines)), (1...1_000_000_000).contains(value) else { return nil }
+        return value
+    }
     @State private var selectedFriends: Set<String> = []
     @State private var selectedSection: SocialSection = .overview
     @State private var refreshGeneration = UUID()
@@ -2725,7 +2731,20 @@ struct SocialScreen: View {
                             .onChange(of: title) { _, value in if value.count > 60 { title = String(value.prefix(60)) } }
                         Picker("Hedef", selection: $metric) {
                             ForEach(TempoSocialMetric.allCases) { option in Label(option.title, systemImage: option.symbol).tag(option) }
-                        }.pickerStyle(.menu)
+                        }.pickerStyle(.menu).disabled(working)
+                            .onChange(of: metric) { _, _ in creationHealthSharing = nil; sharedTarget = "" }
+                        Picker("social.mode.title".tempoLocalized, selection: $challengeMode) {
+                            Text("social.mode.competitive".tempoLocalized).tag("competitive")
+                            Text("social.mode.coop".tempoLocalized).tag("coop")
+                        }.pickerStyle(.segmented).disabled(working)
+                        if challengeMode == "coop" {
+                            TextField("social.coop.target".tempoLocalized, text: $sharedTarget).keyboardType(.numberPad)
+                                .onChange(of: sharedTarget) { _, value in if value.count > 10 { sharedTarget = String(value.prefix(10)) } }
+                            Text("social.coop.targetHelp".tempoFormatted(metric.unit)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }
+                        if metric == .sleepDays || metric == .hydrationDays {
+                            Text((metric == .sleepDays ? "social.metric.sleepHelp" : "social.metric.waterHelp").tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }
                         if metric == .movementDays {
                             Text("Hareket günü, en az 3.000 adım veya 10 dakika egzersiz olarak sayılır.")
                                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
@@ -2755,7 +2774,7 @@ struct SocialScreen: View {
                             }.frame(maxWidth: .infinity)
                         }
                         .buttonStyle(TempoPrimaryButtonStyle())
-                        .disabled(working || selectedFriends.isEmpty || creationHealthSharing == nil || (creationHealthSharing == true && (!model.healthSyncEnabled || model.isHealthSyncing)))
+                        .disabled(working || selectedFriends.isEmpty || creationHealthSharing == nil || (challengeMode == "coop" && validSharedTarget == nil) || (creationHealthSharing == true && (!model.healthSyncEnabled || model.isHealthSyncing)))
                         .accessibilityIdentifier("social.challenge.send")
                     }
                 }
@@ -2841,12 +2860,13 @@ struct SocialScreen: View {
 
     private func createChallenge() async {
         guard !working, let share = creationHealthSharing, !share || (model.healthSyncEnabled && !model.isHealthSyncing) else { return }
+        guard challengeMode != "coop" || validSharedTarget != nil else { return }
         working = true; defer { working = false }
         do {
             let submittedTitle = title
             let submittedFriends = selectedFriends
             let name = submittedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-            let created = try await account.createSocialChallenge(title: name.isEmpty ? "Haftalık hareket".tempoLocalized : name, metric: metric, friendIds: Array(submittedFriends), shareHealth: share)
+            let created = try await account.createSocialChallenge(title: name.isEmpty ? "Haftalık hareket".tempoLocalized : name, metric: metric, friendIds: Array(submittedFriends), shareHealth: share, mode: challengeMode, targetTotal: challengeMode == "coop" ? validSharedTarget : nil)
             retainChallengeResponse(created)
             if title == submittedTitle { title = "" }
             if selectedFriends == submittedFriends { selectedFriends.removeAll() }
@@ -3119,10 +3139,12 @@ private struct SocialParticipantRow: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 9) {
+                if rank > 0 {
                 Text("%d".tempoFormatted(rank))
                     .font(.caption.bold().monospacedDigit())
                     .foregroundStyle(rankColor)
                     .frame(width: 23)
+                }
                 SocialAvatar(profile: participant.user, size: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(participant.user.displayName.isEmpty ? participant.user.username : participant.user.displayName)
@@ -3178,6 +3200,7 @@ private struct SocialChallengeCard: View {
     private var metric: TempoSocialMetric { TempoSocialMetric(rawValue: challenge.metric) ?? .steps }
     private var sortedParticipants: [TempoSocialParticipant] {
         challenge.participants.sorted {
+            if challenge.isCooperative { return $0.user.displayName.localizedStandardCompare($1.user.displayName) == .orderedAscending }
             if $0.score != $1.score { return ($0.score ?? -1) > ($1.score ?? -1) }
             return $0.user.displayName.localizedStandardCompare($1.user.displayName) == .orderedAscending
         }
@@ -3202,7 +3225,7 @@ private struct SocialChallengeCard: View {
                     } label: {
                         Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(TempoTheme.secondary)
                     }
-                    Image(systemName: "trophy.fill").foregroundStyle(TempoTheme.orange)
+                    Image(systemName: challenge.isCooperative ? "person.2.fill" : "trophy.fill").foregroundStyle(TempoTheme.orange)
                 }
                 if let starts = TempoFormat.date(from: challenge.startsAt) {
                     Text("Başlangıç: %@".tempoFormatted(starts.formatted(date: .abbreviated, time: .shortened)))
@@ -3218,6 +3241,14 @@ private struct SocialChallengeCard: View {
                         Button("Reddet") { onAction("decline") }.buttonStyle(TempoSecondaryButtonStyle()).disabled(isWorking)
                     }
                 } else if challenge.myStatus == "accepted" {
+                    if challenge.isCooperative, let target = challenge.targetTotal, (1...1_000_000_000).contains(target) {
+                        VStack(alignment: .leading, spacing: 9) {
+                            Label("social.mode.coop".tempoLocalized, systemImage: "person.2.fill").font(.subheadline.weight(.semibold))
+                            Text("social.coop.progress".tempoFormatted(challenge.sharedTotal.map { $0.formatted() } ?? "—", target.formatted(), metric.unit)).font(.subheadline.monospacedDigit())
+                            ProgressView(value: min(Double(challenge.sharedTotal ?? 0) / Double(target), 1)).tint(TempoTheme.green)
+                            Text("social.coop.partial".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        }.padding(14).background(TempoTheme.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+                    }
                     Button { onShareChange(!challenge.myShareHealth) } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Label("social.health.manage".tempoLocalized, systemImage: challenge.myShareHealth ? "heart.fill" : "heart")
@@ -3232,7 +3263,7 @@ private struct SocialChallengeCard: View {
                         .font(.caption2).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
                     ForEach(sortedParticipants.indices, id: \.self) { index in
                         let participant = sortedParticipants[index]
-                        SocialParticipantRow(participant: participant, rank: index + 1, myUserId: challenge.myUserId, metric: metric, maxScore: leaderScore)
+                        SocialParticipantRow(participant: participant, rank: challenge.isCooperative ? 0 : index + 1, myUserId: challenge.myUserId, metric: metric, maxScore: challenge.isCooperative ? (challenge.targetTotal ?? 1) : leaderScore)
                     }
                     Text("Skorlar yalnızca paylaşmayı açan katılımcılar için görünür.").font(.caption2).foregroundStyle(TempoTheme.secondary)
                 }

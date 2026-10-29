@@ -596,6 +596,13 @@ struct TempoSocialChallenge: Decodable, Identifiable {
     let myStatus: String
     let myShareHealth: Bool
     let participants: [TempoSocialParticipant]
+    var mode: String? = nil
+    var targetTotal: Int? = nil
+    var isCooperative: Bool { mode == "coop" }
+    var sharedTotal: Int? {
+        let scores = participants.filter { $0.status == "accepted" && $0.shareHealth }.compactMap(\.score).filter { (0...1_000_000_000).contains($0) }
+        return scores.isEmpty ? nil : scores.reduce(0, +)
+    }
 }
 
 struct TempoSocialSnapshot: Decodable {
@@ -623,12 +630,16 @@ enum TempoSocialMetric: String, CaseIterable, Identifiable {
     case steps
     case exerciseMinutes
     case movementDays
+    case sleepDays
+    case hydrationDays
     var id: String { rawValue }
     var title: String {
         switch self {
         case .steps: return "Adımlar".tempoLocalized
         case .exerciseMinutes: return "Egzersiz dakikası".tempoLocalized
         case .movementDays: return "Hareket edilen gün".tempoLocalized
+        case .sleepDays: return "social.metric.sleepDays".tempoLocalized
+        case .hydrationDays: return "social.metric.hydrationDays".tempoLocalized
         }
     }
     var symbol: String {
@@ -636,13 +647,15 @@ enum TempoSocialMetric: String, CaseIterable, Identifiable {
         case .steps: return "figure.walk"
         case .exerciseMinutes: return "figure.run"
         case .movementDays: return "calendar.badge.checkmark"
+        case .sleepDays: return "moon.zzz.fill"
+        case .hydrationDays: return "drop.fill"
         }
     }
     var unit: String {
         switch self {
         case .steps: return "adım".tempoLocalized
         case .exerciseMinutes: return "dk"
-        case .movementDays: return "gün".tempoLocalized
+        case .movementDays, .sleepDays, .hydrationDays: return "gün".tempoLocalized
         }
     }
 }

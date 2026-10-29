@@ -1855,3 +1855,25 @@
 "progress.verified10.title" = "10 sensor-supported workouts";
 
 "progress.verified10.description" = "Record 10 workouts from Health/GPS or with enough supporting sensor signals. This is a source badge, not independent verification.";
+
+"social.metric.sleepDays" = "Sleep goal days";
+
+"social.metric.hydrationDays" = "Hydration goal days";
+
+"social.metric.sleepHelp" = "A day counts when at least 7 hours of sleep are recorded in Apple Health.";
+
+"social.metric.waterHelp" = "A day counts with at least 2,000 ml recorded in Apple Health. This is a challenge threshold, not a personal fluid prescription.";
+
+"social.mode.title" = "Challenge mode";
+
+"social.mode.competitive" = "Compete";
+
+"social.mode.coop" = "Shared goal";
+
+"social.coop.target" = "Enter a shared total";
+
+"social.coop.targetHelp" = "Choose a positive whole number in %@ for the whole team over 7 days.";
+
+"social.coop.progress" = "%@ / %@ %@ together";
+
+"social.coop.partial" = "Only available scores from accepted members who enable sharing contribute. Missing or private data is not counted.";

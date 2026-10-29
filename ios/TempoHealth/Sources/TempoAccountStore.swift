@@ -376,8 +376,8 @@ final class TempoAccountStore: ObservableObject {
         _ = try await socialRequest(path: "/api/account/social/challenges/\(id)", method: "DELETE", body: Optional<EmptyPayload>.none)
     }
 
-    func createSocialChallenge(title: String, metric: TempoSocialMetric, friendIds: [String], shareHealth: Bool = false) async throws -> TempoSocialChallenge {
-        let data = try await socialRequest(path: "/api/account/social/challenges", method: "POST", body: SocialChallengeCreate(title: title, metric: metric.rawValue, friendIds: friendIds, shareHealth: shareHealth))
+    func createSocialChallenge(title: String, metric: TempoSocialMetric, friendIds: [String], shareHealth: Bool = false, mode: String = "competitive", targetTotal: Int? = nil) async throws -> TempoSocialChallenge {
+        let data = try await socialRequest(path: "/api/account/social/challenges", method: "POST", body: SocialChallengeCreate(title: title, metric: metric.rawValue, friendIds: friendIds, shareHealth: shareHealth, mode: mode, targetTotal: targetTotal))
         return try JSONDecoder().decode(SocialChallengeCreated.self, from: data).challenge
     }
 
@@ -663,7 +663,7 @@ private struct SocialBlockAction: Encodable { let userId: String; let action: St
 private struct SocialReportRequest: Encodable { let userId: String?; let challengeId: String?; let category: String }
 private struct SocialChallengeCreated: Decodable { let challenge: TempoSocialChallenge }
 private struct SocialFriendRemoval: Encodable { let userId: String }
-private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String]; let shareHealth: Bool }
+private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String]; let shareHealth: Bool; let mode: String; let targetTotal: Int? }
 private struct SocialChallengeAction: Encodable { let action: String; var share: Bool? = nil }
 private struct AccountEnvelope: Decodable {
     let token: String?

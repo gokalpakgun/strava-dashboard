@@ -262,6 +262,48 @@ async function challengeFixture() {
   return { ...data, challenge };
 }
 
+test("social avatars survive public projection without exposing account fields", async () => {
+  const { env, alice, bob } = await challengeFixture();
+  await env.TOKEN_STORE.put("account-user:" + bob.id, JSON.stringify({ ...bob, avatarBase64: "avatar-fixture", passwordHash: "private-hash" }));
+  const data = await (await social(env, alice, "", undefined, "GET")).json();
+  const friend = data.friends.find(item => item.id === bob.id);
+  assert.equal(friend.avatarBase64, "avatar-fixture"); assert.equal(friend.passwordHash, undefined); assert.equal(friend.token, undefined);
+});
+
+test("sleep and hydration day goals count exact thresholds and keep missing data null", async () => {
+  for (const [metric, field, threshold] of [["sleepDays", "sleepMinutes", 420], ["hydrationDays", "waterMl", 2000]]) {
+    const { env, alice, bob, challenge } = await challengeFixture();
+    challenge.metric = metric;
+    await env.TOKEN_STORE.put("social-challenge:" + challenge.id, JSON.stringify(challenge));
+    await env.TOKEN_STORE.put("account-health:" + alice.id, JSON.stringify({ days: { [day(-1)]: { [field]: threshold - 1 }, [day()]: { [field]: threshold }, [day(1)]: { [field]: threshold * 2 } } }));
+    let data = await (await social(env, alice, "", undefined, "GET")).json();
+    assert.equal(data.challenges[0].participants.find(p => p.userId === alice.id).score, 1);
+    env.TOKEN_STORE.reads = [];
+    const invited = await (await social(env, bob, "", undefined, "GET")).json();
+    assert.ok(invited.challenges[0].participants.every(p => p.score === null));
+    assert.equal(env.TOKEN_STORE.reads.some(key => key.startsWith("account-health:")), false);
+    await env.TOKEN_STORE.put("account-health:" + alice.id, JSON.stringify({ days: { [day()]: { [field]: "420" } } }));
+    data = await (await social(env, alice, "", undefined, "GET")).json();
+    assert.equal(data.challenges[0].participants.find(p => p.userId === alice.id).score, null);
+  }
+});
+
+test("cooperative creation validates target and old competitions default safely", async () => {
+  for (const targetTotal of [undefined, 0, -1, 1.2, "10", 1_000_000_001]) {
+    const { env, alice, bob } = await challengeFixture();
+    assert.equal((await social(env, alice, "/challenges", { title: "Together", metric: "sleepDays", friendIds: [bob.id], mode: "coop", targetTotal })).status, 400);
+  }
+  const { env, alice, bob } = await challengeFixture();
+  env.AI.run = async () => ({ response: "safe" });
+  const response = await social(env, alice, "/challenges", { title: "Together", metric: "hydrationDays", friendIds: [bob.id], mode: "coop", targetTotal: 10, shareHealth: true });
+  assert.equal(response.status, 201);
+  const result = (await response.json()).challenge;
+  assert.equal(result.mode, "coop"); assert.equal(result.targetTotal, 10);
+  assert.equal(result.participants.find(p => p.userId === bob.id).score, null);
+  const snapshot = await (await social(env, alice, "", undefined, "GET")).json();
+  assert.equal(snapshot.challenges.find(c => c.id !== result.id).mode, "competitive");
+});
+
 test("social UX: removing a friend is symmetric, idempotent and preserves challenges and other friends", async () => {
   const { env, alice, bob, carol, challenge } = await challengeFixture();
   assert.equal((await social(env, alice, "/friends/remove", { userId: alice.id })).status, 400);

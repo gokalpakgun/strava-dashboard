@@ -1330,3 +1330,25 @@
 "progress.verified10.title" = "10 Sensör Onaylı Antrenman";
 
 "progress.verified10.description" = "Sağlık/GPS kaynaklı veya yeterli destekleyici sinyali olan 10 antrenman kaydet. Bu bir kaynak rozetidir, bağımsız doğrulama değildir.";
+
+"social.metric.sleepDays" = "Uyku hedefine ulaşılan gün";
+
+"social.metric.hydrationDays" = "Su hedefine ulaşılan gün";
+
+"social.metric.sleepHelp" = "Apple Sağlık’ta en az 7 saat uyku kaydedilen gün sayılır.";
+
+"social.metric.waterHelp" = "Apple Sağlık’ta en az 2.000 ml su kaydedilen gün sayılır. Bu yarışma eşiğidir, kişisel sıvı ihtiyacı önerisi değildir.";
+
+"social.mode.title" = "Mücadele modu";
+
+"social.mode.competitive" = "Yarış";
+
+"social.mode.coop" = "Ortak hedef";
+
+"social.coop.target" = "Ortak toplam hedefi gir";
+
+"social.coop.targetHelp" = "7 gün boyunca tüm ekip için %@ cinsinden pozitif bir tam sayı seç.";
+
+"social.coop.progress" = "Birlikte %@ / %@ %@";
+
+"social.coop.partial" = "Yalnız katılıp paylaşımı açan üyelerin mevcut skorları katkı sağlar. Eksik veya gizli veriler hesaba katılmaz.";

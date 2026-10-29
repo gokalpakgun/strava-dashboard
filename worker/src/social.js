@@ -347,6 +347,9 @@ async function createChallenge(request, env, user, ctx) {
   if (body.error) return body.error;
   const title = typeof body.value.title === "string" ? body.value.title.trim().slice(0, 60) : "";
   const metric = body.value.metric;
+  const mode = body.value.mode ?? "competitive";
+  const targetTotal = body.value.targetTotal ?? null;
+  if (!["competitive", "coop"].includes(mode) || (mode === "coop" && (!Number.isSafeInteger(targetTotal) || targetTotal < 1 || targetTotal > 1_000_000_000))) return json({ error: "Ortak hedef geçersiz. Pozitif bir tam sayı seç." }, 400);
   const friendIds = Array.isArray(body.value.friendIds) ? [...new Set(body.value.friendIds.filter(value => typeof value === "string"))] : [];
   if (!title) return json({ error: "Yarışmaya kısa bir ad ver." }, 400);
   const cooldownKey = "social-challenge-create-cooldown:" + user.id;
@@ -357,7 +360,7 @@ async function createChallenge(request, env, user, ctx) {
   const moderation = await moderateCommunityText(env, title);
   if (moderation.unavailable) return json({ error: "Yarışma adı denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene." }, 503);
   if (!moderation.allowed) return json({ error: "Bu yarışma adı topluluk kurallarına uygun değil." }, 400);
-  if (!["steps", "exerciseMinutes", "movementDays"].includes(metric)) return json({ error: "Yarışma hedefi geçersiz." }, 400);
+  if (!["steps", "exerciseMinutes", "movementDays", "sleepDays", "hydrationDays"].includes(metric)) return json({ error: "Yarışma hedefi geçersiz." }, 400);
   if (friendIds.length < 1 || friendIds.length > MAX_CHALLENGE_MEMBERS - 1) return json({ error: "En az bir arkadaş seç; yarışmaya en fazla 20 arkadaş eklenebilir." }, 400);
   const state = await readState(env, user.id);
   await pruneExpiredChallenges(env, user.id, state);
@@ -369,7 +372,7 @@ async function createChallenge(request, env, user, ctx) {
   const id = crypto.randomUUID();
   const participants = [{ userId: user.id, status: "accepted", shareHealth: body.value.shareHealth === true, joinedAt: now.toISOString() }]
     .concat(friendIds.map(userId => ({ userId, status: "invited", shareHealth: false, invitedAt: now.toISOString() })));
-  const challenge = { id, creatorId: user.id, title, metric, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), participants };
+  const challenge = { id, creatorId: user.id, title, metric, mode, targetTotal: mode === "coop" ? targetTotal : null, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), participants };
   state.challenges.unshift(id);
   await Promise.all([
     env.TOKEN_STORE.put("social-challenge:" + id, JSON.stringify(challenge), { expirationTtl: CHALLENGE_SECONDS + 60 * 60 * 24 * 14 }),
@@ -430,6 +433,8 @@ async function presentChallenge(env, challenge, viewerId) {
     myUserId: viewerId,
     title: challenge.title,
     metric: challenge.metric,
+    mode: challenge.mode === "coop" ? "coop" : "competitive",
+    targetTotal: challenge.mode === "coop" ? challenge.targetTotal : null,
     startsAt: challenge.startsAt,
     endsAt: challenge.endsAt,
     myStatus: challenge.participants.find(item => item.userId === viewerId)?.status ?? "none",
@@ -447,6 +452,15 @@ async function challengeScore(env, userId, challenge) {
   let hasMeasurement = false;
   for (const [day, values] of Object.entries(health?.days || {})) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < startDay || day >= endDayExclusive || day > today || Date.now() < Date.parse(challenge.startsAt)) continue;
+    if (challenge.metric === "sleepDays" || challenge.metric === "hydrationDays") {
+      const value = challenge.metric === "sleepDays" ? values?.sleepMinutes : values?.waterMl;
+      const threshold = challenge.metric === "sleepDays" ? 420 : 2000;
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+        hasMeasurement = true;
+        if (value >= threshold) total += 1;
+      }
+      continue;
+    }
     if (challenge.metric === "movementDays") {
       const steps = values?.steps;
       const minutes = values?.exerciseMinutes;
@@ -528,7 +542,7 @@ async function loadChallenge(env, id) {
 }
 
 function publicProfile(user) {
-  return { id: user.id, username: user.username, displayName: user.displayName || user.username, avatarBase64: null };
+  return { id: user.id, username: user.username, displayName: user.displayName || user.username, avatarBase64: user.avatarBase64 || null };
 }
 
 function normalizeUsername(value) {
