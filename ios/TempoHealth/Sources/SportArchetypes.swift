@@ -169,7 +169,7 @@ enum TempoTrainingGuidance {
         let effort = sourceEffort.flatMap { $0.isFinite && (1...10).contains($0) ? $0 : nil } ?? perceivedEffort.flatMap { (1...5).contains($0) ? Double($0) * 2 : nil }
         guard effort != nil || supportingMeasurement else { return 0 }
         let factor = effort.map { 0.5 + $0 / 10 * 1.5 } ?? 1
-        return min(Int(minutes * factor), 300)
+        return min(Int(minutes * factor + 1e-9), 300)
     }
 }
 
