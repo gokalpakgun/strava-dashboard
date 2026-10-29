@@ -10,6 +10,7 @@ struct StrainWorkout: Sendable, Identifiable {
     let source: StrainRecordSource
     var isMindBody = false
     var userEntered = false
+    var effortIsEstimated = false
     var endedAt: Date { startedAt.addingTimeInterval(durationSeconds) }
     var isValid: Bool {
         source != .strava && startedAt.timeIntervalSince1970.isFinite && durationSeconds.isFinite && (1...604_800).contains(durationSeconds) && payload.isValid && (payload.heartRateZones.map { $0.totalSeconds <= durationSeconds + 1 } ?? true) && (payload.loadInputs.explosiveSeconds.map { $0 <= durationSeconds } ?? true)
@@ -46,7 +47,8 @@ struct UniversalStrainScore: Sendable, Identifiable {
     let combinedDose: Double
     let userEntered: Bool
     let modelVersion: String
-    var hasLimitedEvidence: Bool { cardioLoad == nil || muscleLoad == nil || (cardioLoad != nil && zoneCoverage < 0.999) || (setCoverage.map { $0 < 0.999 } ?? false) }
+    var effortIsEstimated = false
+    var hasLimitedEvidence: Bool { effortIsEstimated || cardioLoad == nil || muscleLoad == nil || (cardioLoad != nil && zoneCoverage < 0.999) || (setCoverage.map { $0 < 0.999 } ?? false) }
 }
 
 struct StrainWindowSummary: Sendable {
@@ -140,7 +142,7 @@ struct UniversalStrainEngine: UniversalStrainCalculating, Sendable {
         if let muscleDose { weighted += muscleDose * weights.muscle; totalWeight += weights.muscle }
         guard totalWeight > 0 else { return nil }
         let combined = weighted / totalWeight
-        return UniversalStrainScore(id: workout.id, value: normalized(combined), cardioLoad: cardioDose.map(normalized), muscleLoad: muscleDose.map(normalized), cardioTRIMP: trimp, sessionRPELoadAU: sessionAU, recordedTonnageKg: tonnage, personalTonnageReferenceKg: tonnageReference, zoneCoverage: coverage, setCoverage: setCoverage, cardioDose: cardioDose, muscleDose: muscleDose, combinedDose: combined, userEntered: workout.userEntered, modelVersion: configuration.modelVersion)
+        return UniversalStrainScore(id: workout.id, value: normalized(combined), cardioLoad: cardioDose.map(normalized), muscleLoad: muscleDose.map(normalized), cardioTRIMP: trimp, sessionRPELoadAU: sessionAU, recordedTonnageKg: tonnage, personalTonnageReferenceKg: tonnageReference, zoneCoverage: coverage, setCoverage: setCoverage, cardioDose: cardioDose, muscleDose: muscleDose, combinedDose: combined, userEntered: workout.userEntered, modelVersion: configuration.modelVersion, effortIsEstimated: workout.effortIsEstimated)
     }
 
     func summary(_ workouts: [StrainWorkout], since start: Date, until end: Date) -> StrainWindowSummary {

@@ -26,11 +26,14 @@ final class TempoHealthStore {
     private var bodyMassType: HKQuantityType { HKQuantityType(.bodyMass) }
 
     private var readTypes: Set<HKObjectType> {
-        [
+        var types: Set<HKObjectType> = [
             waterType, sleepType, stepType, energyType, exerciseTimeType, restingHeartRateType, hrvType,
             respiratoryRateType, oxygenSaturationType, vo2MaxType, walkingHeartRateType,
             heartRateRecoveryType, wristTemperatureType, bodyMassType, HKObjectType.workoutType(),
+            heartRateType, HKQuantityType(.runningPower), HKQuantityType(.cyclingPower), HKQuantityType(.cyclingCadence),
         ]
+        if #available(iOS 18.0, *) { types.formUnion([HKQuantityType(.workoutEffortScore), HKQuantityType(.estimatedWorkoutEffortScore)]) }
+        return types
     }
 
     func requestAuthorization() async throws {
@@ -41,7 +44,7 @@ final class TempoHealthStore {
     func readRecentWorkouts(dayCount: Int = 365) async throws -> [TempoManualWorkout] {
         let now = Date()
         let start = Calendar.current.date(byAdding: .day, value: -min(max(dayCount, 1), 365), to: now) ?? now
-        return try await withCheckedThrowingContinuation { continuation in
+        let records: [TempoManualWorkout] = try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: HKQuery.predicateForSamples(withStart: start, end: now, options: .strictStartDate), limit: HKObjectQueryNoLimit, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) { _, samples, error in
                 if let error { continuation.resume(throwing: error); return }
                 let records = ((samples as? [HKWorkout]) ?? []).filter { $0.endDate <= now && $0.duration > 0 }.map { workout in
@@ -66,11 +69,57 @@ final class TempoHealthStore {
                     record.originalHealthActivityType = workout.workoutActivityType.rawValue
                     record.originalArchetype = SportMapper().map(healthKit: workout.workoutActivityType)?.rawValue
                     record.sourceEnergyKcal = workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie())
+                    let heart = workout.statistics(for: HKQuantityType(.heartRate))
+                    let bpm = HKUnit.count().unitDivided(by: .minute())
+                    record.sourceAverageHeartRateBpm = heart?.averageQuantity()?.doubleValue(for: bpm)
+                    record.sourcePeakHeartRateBpm = heart?.maximumQuantity()?.doubleValue(for: bpm)
+                    let powerType: HKQuantityTypeIdentifier? = workout.workoutActivityType == .running ? .runningPower : (workout.workoutActivityType == .cycling ? .cyclingPower : nil)
+                    if let powerType { record.sourceAveragePowerWatts = workout.statistics(for: HKQuantityType(powerType))?.averageQuantity()?.doubleValue(for: .watt()) }
+                    if workout.workoutActivityType == .cycling { record.sourceCadencePerMinute = workout.statistics(for: HKQuantityType(.cyclingCadence))?.averageQuantity()?.doubleValue(for: bpm) }
                     return record
                 }
                 continuation.resume(returning: records)
             }
             store.execute(query)
+        }
+        if #available(iOS 18.0, *), !records.isEmpty, !Task.isCancelled {
+            let efforts = await readWorkoutEfforts(ids: Set(records.map(\.id)))
+            return records.map { original in
+                var record = original
+                if let effort = efforts[record.id] { record.sourceWorkoutEffort = effort.value; record.sourceEffortIsEstimated = effort.estimated }
+                return record
+            }
+        }
+        return records
+    }
+
+    @available(iOS 18.0, *)
+    private func readWorkoutEfforts(ids: Set<UUID>) async -> [UUID: HealthWorkoutEffort] {
+        let healthStore = store
+        let gate = HealthEffortReadGate()
+        return await withCheckedContinuation { continuation in
+            // İlişki sorgusu uzun ömürlüdür: ilk sonuçtan sonra durdurulur. Ana eşitleme bekletilmez.
+            let query = HKWorkoutEffortRelationshipQuery(predicate: HKQuery.predicateForObjects(with: ids), anchor: nil, options: .mostRelevant) { query, relationships, _, _ in
+                guard gate.claimCompletion() else { return }
+                healthStore.stop(query)
+                var result: [UUID: HealthWorkoutEffort] = [:]
+                for relationship in relationships ?? [] where relationship.activity == nil && ids.contains(relationship.workout.uuid) {
+                    let samples = (relationship.samples ?? []).compactMap { $0 as? HKQuantitySample }
+                    let rated = samples.filter { $0.quantityType.identifier == HKQuantityTypeIdentifier.workoutEffortScore.rawValue }
+                    let estimated = samples.filter { $0.quantityType.identifier == HKQuantityTypeIdentifier.estimatedWorkoutEffortScore.rawValue }
+                    guard let sample = (rated.isEmpty ? estimated : rated).max(by: { $0.endDate < $1.endDate }), sample.quantity.is(compatibleWith: .appleEffortScore()) else { continue }
+                    let value = sample.quantity.doubleValue(for: .appleEffortScore())
+                    guard value.isFinite, (1...10).contains(value) else { continue }
+                    result[relationship.workout.uuid] = HealthWorkoutEffort(value: value, estimated: rated.isEmpty)
+                }
+                continuation.resume(returning: result)
+            }
+            healthStore.execute(query)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 4) {
+                guard gate.claimCompletion() else { return }
+                healthStore.stop(query)
+                continuation.resume(returning: [:])
+            }
         }
     }
 
@@ -232,7 +281,8 @@ final class TempoHealthStore {
 
     func startBackgroundDelivery(onChange: @escaping () async -> Void) {
         stopObservers()
-        for type in readTypes.compactMap({ $0 as? HKSampleType }) {
+        let highFrequency = Set([HKQuantityTypeIdentifier.heartRate.rawValue, HKQuantityTypeIdentifier.runningPower.rawValue, HKQuantityTypeIdentifier.cyclingPower.rawValue, HKQuantityTypeIdentifier.cyclingCadence.rawValue])
+        for type in readTypes.compactMap({ $0 as? HKSampleType }) where !highFrequency.contains(type.identifier) {
             let query = HKObserverQuery(sampleType: type, predicate: nil) { _, completion, error in
                 guard error == nil else { completion(); return }
                 Task {
@@ -515,6 +565,20 @@ final class TempoHealthStore {
         NSError(domain: "TempoSimulatorHealthIntegration", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
     #endif
+}
+
+private struct HealthWorkoutEffort: Sendable { let value: Double; let estimated: Bool }
+
+// Yalnız kilit altında değişen bitiş bayrağı; zaman aşımı ve HealthKit aynı continuation'ı iki kez bitiremez.
+private final class HealthEffortReadGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    func claimCompletion() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished else { return false }
+        finished = true
+        return true
+    }
 }
 
 private enum HealthStoreError: LocalizedError {

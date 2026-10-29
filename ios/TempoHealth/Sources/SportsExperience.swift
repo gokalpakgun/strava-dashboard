@@ -563,6 +563,7 @@ private struct SportDetailScreen: View {
                     Group {
                         switch section {
                         case .overview:
+                            CrossSportPreparationView(sportID: sport.rawValue)
                             if let latest = matchingManual.max(by: { $0.startedAt < $1.startedAt }) {
                                 TempoDisclosureSection(title: "archetype.details", icon: "chart.bar.xaxis") { SportArchetypeSection(workout: latest) }
                             }

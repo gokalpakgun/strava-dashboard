@@ -3,6 +3,7 @@ import { createHash, webcrypto } from "node:crypto";
 import test from "node:test";
 import { handleAccountHealth, handleSportsChat } from "../src/sports-chat.js";
 import { handleSocialRequest } from "../src/social.js";
+import { ATHLETIC_REFUSAL } from "../src/athletic-context.js";
 
 globalThis.crypto ||= webcrypto;
 
@@ -48,6 +49,28 @@ function request(path, user, body, method = "POST") {
 }
 
 function chat(env, user, body) { return handleSportsChat(request("/api/account/sports-chat", user, body), env); }
+
+test("off-topic coach requests never call the model or read Health, including when AI is unavailable", async () => {
+  const { env, alice } = await fixture();
+  env.TOKEN_STORE.reads = [];
+  const response = await chat({ ...env, AI: undefined }, alice, { includeHealth: true, messages: [{ role: "user", content: "Tell me about bitcoin" }] });
+  assert.equal(response.status, 200); assert.equal((await response.json()).answer, ATHLETIC_REFUSAL.en);
+  assert.equal(env.TOKEN_STORE.reads.some(key => key.startsWith("account-health:")), false);
+});
+
+test("coach strips opted-out structured measurements and rejects malformed contexts before model invocation", async () => {
+  const { env, alice } = await fixture();
+  let sent, calls = 0;
+  env.AI.run = async (_, input) => { sent = input; calls++; return { response: "A training answer." }; };
+  const athleticContext = { schemaVersion: 1, modelVersion: "tempo-load-v1", activeSport: { sportID: "tennis", archetype: "teamAndCourt" }, latestMetrics: { hoursSinceWorkout: 1, tonnageKg: 987654 }, load24h: { hours: 24, score: 78 } };
+  const body = { messages: [{ role: "user", content: "How should I train for tennis?" }], athleticContext, includeTraining: false };
+  assert.equal((await chat(env, alice, body)).status, 200);
+  assert.doesNotMatch(JSON.stringify(sent), /987654/);
+  const structured = JSON.parse(sent.messages[1].content.split("Context: ")[1]);
+  assert.equal(structured.load24h, null); assert.equal(structured.latestMetrics, null); assert.equal(structured.activeSport.sportID, "tennis");
+  assert.equal((await chat(env, alice, { ...body, athleticContext: { schemaVersion: 99 } })).status, 400);
+  assert.equal(calls, 1);
+});
 function social(env, user, suffix = "", body, method = "POST") {
   const input = request("/api/account/social" + suffix, user, body, method);
   return handleSocialRequest(input, env, new URL(input.url));

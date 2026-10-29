@@ -1166,7 +1166,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         } catch { }
     }
 
-    func askSportsChat(messages: [TempoCoachMessage], includeHealth: Bool) async throws -> String {
+    func askSportsChat(messages: [TempoCoachMessage], includeHealth: Bool, includeTraining: Bool = false, athleticContext: AthleticAIContext? = nil) async throws -> String {
         guard let accountId = activeTempoAccountId,
               let accountAccessToken, !accountAccessToken.isEmpty else {
             throw APIError.server("Tempo hesabına yeniden giriş yapman gerekiyor.")
@@ -1183,15 +1183,25 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
               messages.reduce(0, { $0 + $1.content.utf16.count }) <= 48_000 else {
             throw APIError.server("Sohbet çok uzun. Yeni bir sohbet başlat.")
         }
+        switch AthleticGuardrailValidator().validate(messages.last?.content ?? "") {
+        case .refuse: return "cross.refusal".tempoLocalized
+        case .urgentSafety: return "cross.urgentSafety".tempoLocalized
+        case .allow: break
+        }
         var request = URLRequest(url: URL(string: "/api/account/sports-chat", relativeTo: baseURL)!)
         request.httpMethod = "POST"
         request.timeoutInterval = 90
         request.setValue("Bearer \(accountAccessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
+        let safeContext = athleticContext.map { context in
+            includeTraining && (!context.includesHealthWorkouts || (includeHealth && healthSyncEnabled)) ? context : AIContextBuilder().build(active: context.activeSport, workouts: [], includeTraining: false, includeHealth: false)
+        }
         request.httpBody = try JSONEncoder().encode(SportsChatRequest(
             messages: messages.map { SportsChatTurn(role: $0.role, content: $0.content) },
-            includeHealth: includeHealth && healthSyncEnabled
+            includeHealth: includeHealth && healthSyncEnabled,
+            includeTraining: includeTraining,
+            athleticContext: safeContext
         ))
         let data: Data
         let response: URLResponse
@@ -1639,7 +1649,7 @@ private struct TicketResponse: Decodable { let token: String?; let error: String
 private struct ManualWaterRequest: Encodable { let date: String; let amountMl: Int }
 private struct ManualWaterResponse: Decodable { let totalMl: Int?; let error: String? }
 private struct WaterStateResponse: Decodable { let totals: [String: Double] }
-private struct SportsChatRequest: Encodable { let messages: [SportsChatTurn]; let includeHealth: Bool }
+private struct SportsChatRequest: Encodable { let messages: [SportsChatTurn]; let includeHealth: Bool; let includeTraining: Bool; let athleticContext: AthleticAIContext? }
 private struct SportsChatTurn: Encodable { let role: String; let content: String }
 private struct StravaDisconnectResponse: Decodable { let stravaRevoked: Bool? }
 private struct ServerError: Decodable { let error: String }

@@ -83,4 +83,61 @@ for archetype in SportArchetype.allCases {
 }
 var invalid = UniversalStrainConfiguration(); invalid.cardioReferenceTRIMP = 0
 check(UniversalStrainEngine(configuration: invalid).score(for: zone3) == nil, "Geçersiz model ayarı puan üretmez")
-print("STRAIN_CORE_PASS checks=\(checked) swift6=true")
+let lower = ActiveSportContext(sportID: "fitness", archetype: .strengthAndHypertrophy, strengthFocus: .lowerBody)
+let upper = ActiveSportContext(sportID: "fitness", archetype: .strengthAndHypertrophy, strengthFocus: .upperBody)
+let undecided = ActiveSportContext(sportID: "fitness", archetype: .strengthAndHypertrophy)
+let analyzer = InterferenceAnalyzer()
+let court = CrossSportWorkout(workout: workout("court", archetype: .teamAndCourt, minutes: 45, end: now.addingTimeInterval(-12 * 3_600)), hasLowerBodyImpact: true)
+check(analyzer.warning(for: lower, workouts: [court], now: now)?.suggestedVolumeReductionPercent == 30, "Yakın saha kaydı için koşullu planlama")
+check(analyzer.warning(for: lower, workouts: [court], now: now)?.limitedEvidence == true, "Yoğunluğu bilinmeyen saha kaydı ölçülmüş yorgunluk sayılmaz")
+check(analyzer.warning(for: upper, workouts: [court], now: now) == nil, "Üst vücuda alt vücut uyarısı taşınmaz")
+check(analyzer.warning(for: undecided, workouts: [court], now: now) == nil, "Fitness ekranı otomatik bacak sayılmaz")
+check(analyzer.warning(for: lower, workouts: [CrossSportWorkout(workout: court.workout)], now: now) == nil, "Golf gibi belirsiz kort grubu bacak yükü sayılmaz")
+for (id, hours, source) in [("oldCourt", 48.0, StrainRecordSource.tempo), ("futureCourt", -1.0, .tempo), ("stravaCourt", 5.0, .strava)] {
+    let item = CrossSportWorkout(workout: workout(id, archetype: .teamAndCourt, end: now.addingTimeInterval(-hours * 3_600), source: source), hasLowerBodyImpact: true)
+    check(analyzer.warning(for: lower, workouts: [item], now: now) == nil, "48 saat sınırı, gelecek ve kaynak filtresi")
+}
+let olderCourt = CrossSportWorkout(workout: workout("olderCourt", archetype: .teamAndCourt, minutes: 40, end: now.addingTimeInterval(-36 * 3_600)), hasLowerBodyImpact: true)
+check(analyzer.warning(for: lower, workouts: [olderCourt], now: now)?.suggestedVolumeReductionPercent == 20, "24–48 saat seçeneği")
+var hardRun = workout("hardRun", minutes: 30, zones: [540, 0, 0, 1_260, 0])
+if case .endurance(var metrics) = hardRun.payload { metrics.discipline = .running; hardRun = StrainWorkout(id: hardRun.id, startedAt: hardRun.startedAt, durationSeconds: hardRun.durationSeconds, payload: .endurance(metrics), source: .tempo) }
+check(analyzer.warning(for: lower, workouts: [CrossSportWorkout(workout: hardRun)], now: now)?.reason == .intenseEndurance, "Ölçülmüş Z4–5 yirmi dakikayı geçerse uyarı")
+let legSets = (0..<4).map { _ in StrengthSet(muscle: .legs, repetitions: 8, loadKg: 80, rpe: 8) }
+let legs = StrainWorkout(id: "legs", startedAt: now.addingTimeInterval(-7_200), durationSeconds: 1_800, payload: .strength(StrengthMetrics(sets: legSets)), source: .tempo)
+check(analyzer.warning(for: lower, workouts: [CrossSportWorkout(workout: legs)], now: now)?.reason == .legStrength, "Kas grubu belli zor setler")
+
+let builder = AIContextBuilder()
+let noConsent = builder.build(active: lower, workouts: [court], includeTraining: false, includeHealth: true, now: now)
+check(noConsent.load24h == nil && noConsent.interference == nil && noConsent.balance7d == nil && noConsent.latestMetrics == nil, "Kişisel bağlam için ayrı onay")
+let healthOnly = CrossSportWorkout(workout: workout("health-rpe", archetype: .strengthAndHypertrophy, minutes: 30, rpe: 7, source: .health))
+let healthOff = builder.build(active: lower, workouts: [healthOnly], includeTraining: true, includeHealth: false, now: now)
+check(healthOff.load24h?.scoredWorkouts == 0 && healthOff.latestMetrics == nil, "Sağlık izni kapalıyken sağlık antrenmanı çıkarılır")
+let healthOn = builder.build(active: lower, workouts: [healthOnly], includeTraining: true, includeHealth: true, now: now)
+check(healthOn.load24h?.scoredWorkouts == 1 && healthOn.latestMetrics?.sessionRPE == 7, "İzinli gerçek RPE bağlama girer")
+check(healthOn.load48h?.hours == 48 && healthOn.load24h?.hours == 24, "Pencereler ayrı etiketlenir")
+let remoteContext = builder.build(active: lower, workouts: [CrossSportWorkout(workout: workout("remote", rpe: 7, source: .strava))], includeTraining: true, includeHealth: true, now: now)
+check(remoteContext.load24h?.scoredWorkouts == 0 && remoteContext.latestMetrics == nil, "AI bağlamında Strava yok")
+check(builder.focusMetrics(for: ActiveSportContext(sportID: "tennis", archetype: .teamAndCourt)).contains(.shoulderElbowControl), "Tenis odak noktası")
+check(builder.focusMetrics(for: ActiveSportContext(sportID: "cycling", archetype: .endurance)).contains(.cadence), "Bisiklet odak noktası")
+let encodedContext = try JSONEncoder().encode(healthOn)
+let decodedContext = try JSONDecoder().decode(AthleticAIContext.self, from: encodedContext)
+check(decodedContext.activeSport == lower && decodedContext.schemaVersion == 1, "Tip güvenli JSON gidiş dönüşü")
+
+let guardrail = AthleticGuardrailValidator()
+for question in ["JavaScript kod yaz", "Basketbol ve bitcoin", "SİYASET konuşalım", "merhaba!"] { check(guardrail.validate(question) == .refuse, "Spor dışı soru modelden önce durdurulur") }
+for question in ["Can you shorten that?", "Tenis tekniği", "HRV toparlanmamı nasıl etkiler?", "Protein ne kadar?"] { check(guardrail.validate(question) == .allow, "Spor ve kısa takip soruları korunur") }
+for question in ["Göğsüm ağrıyor", "Koşarken bayıldım", "I have chest pain"] { check(guardrail.validate(question) == .urgentSafety, "Acil belirtiler sessizce reddedilmez") }
+
+var automatic = WorkoutPayload.endurance(EnduranceMetrics(discipline: .cycling, distanceMeters: 15_000, movingSeconds: 1_800, cadencePerMinute: 85, averagePowerWatts: 180))
+automatic.loadInputs = WorkoutLoadInputs(sessionRPE: 7)
+let annotations = automatic.removingAutomaticMatches(from: automatic)
+check(annotations.loadInputs.sessionRPE == nil, "Otomatik efor notu düzenleme kaydında dondurulmaz")
+if case .endurance(let values) = annotations { check(values.averagePowerWatts == nil && values.distanceMeters == nil, "Otomatik güç ve mesafe güncellenebilir kalır") }
+var refreshed = automatic; if case .endurance(var metrics) = refreshed { metrics.averagePowerWatts = 200; refreshed = .endurance(metrics) }
+let merged = annotations.fillingMissing(from: refreshed)
+if case .endurance(let metrics) = merged { check(metrics.averagePowerWatts == 200 && metrics.cadencePerMinute == 85, "Yeni kaynak değerleri boş alanları tamamlar") }
+var edited = automatic; var effort = edited.loadInputs; effort.sessionRPE = 9; edited.loadInputs = effort
+check(edited.removingAutomaticMatches(from: automatic).fillingMissing(from: refreshed).loadInputs.sessionRPE == 9, "Kullanıcının ayrı efor notu korunur")
+var estimatedWorkout = workout("estimated", rpe: 7); estimatedWorkout.effortIsEstimated = true
+check(engine.score(for: estimatedWorkout)?.hasLimitedEvidence == true, "Apple efor tahmini doğrudan ölçüm sayılmaz")
+print("STRAIN_CORE_PASS checks=\(checked) swift6=true module3=true")

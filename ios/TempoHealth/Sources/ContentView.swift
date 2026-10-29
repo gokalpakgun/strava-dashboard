@@ -935,6 +935,7 @@ private struct ActivitiesScreen: View {
     @State private var selectedFilter = ActivityTimelineFilter.all
     @State private var isShowingManualWorkoutForm = false
     @State private var isShowingPhoneTracker = false
+    @State private var trackingSport = "run"
     private var filterOptions: [ActivityTimelineFilter] {
         let featured: [TempoSport] = [.run, .ride, .walk, .tennis, .basketball, .football, .swim]
         let present = Set(model.activityWorkouts.map { TempoSport(rawValue: $0.sportId) } + (model.dashboard?.activities ?? []).map(\.sport))
@@ -954,9 +955,23 @@ private struct ActivitiesScreen: View {
         NavigationStack {
             TempoPage {
                 PageTitle(title: "Aktiviteler", subtitle: "Tüm antrenman geçmişin")
-                TempoMetricGrid(columns: 2) {
-                    Button { isShowingPhoneTracker = true } label: { Label("Koşu / yürüyüş kaydet", systemImage: "location.north.circle.fill").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 36) }.buttonStyle(TempoPrimaryButtonStyle())
-                    Button { isShowingManualWorkoutForm = true } label: { Label("Manuel kayıt", systemImage: "plus.circle.fill").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 36) }.buttonStyle(TempoSecondaryButtonStyle()).accessibilityIdentifier("activity.manual.add")
+                TempoCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("record.start".tempoLocalized).font(.headline)
+                        Text("record.startHint".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        TempoMetricGrid(columns: 2) {
+                            Button { trackingSport = "run"; isShowingPhoneTracker = true } label: { WorkoutEntryActionCard(title: "Koşu", subtitle: "record.routeTimer", icon: "figure.run", color: TempoTheme.green) }.accessibilityIdentifier("activity.record.run")
+                            Button { trackingSport = "walking"; isShowingPhoneTracker = true } label: { WorkoutEntryActionCard(title: "Yürüyüş", subtitle: "record.routeTimer", icon: "figure.walk", color: TempoTheme.blue) }.accessibilityIdentifier("activity.record.walk")
+                        }
+                        Button { isShowingManualWorkoutForm = true } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(TempoTheme.purple)
+                                VStack(alignment: .leading, spacing: 4) { Text("record.completed".tempoLocalized).font(.subheadline.weight(.semibold)); Text("record.completedHint".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                                Spacer(minLength: 6)
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.secondary)
+                            }.foregroundStyle(TempoTheme.primary).padding(14).frame(maxWidth: .infinity, minHeight: 64).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 17))
+                        }.accessibilityIdentifier("activity.manual.add")
+                    }.buttonStyle(.plain)
                 }
                 if !model.activityWorkouts.isEmpty {
                     TempoMetricGrid {
@@ -1012,8 +1027,25 @@ private struct ActivitiesScreen: View {
                 Button("Tamam") { deletionError = nil }
             } message: { Text(deletionError ?? "") }
             .sheet(isPresented: $isShowingManualWorkoutForm) { ManualWorkoutForm() }
-            .sheet(isPresented: $isShowingPhoneTracker) { TempoPhoneTrackerScreen() }
+            .sheet(isPresented: $isShowingPhoneTracker) { TempoPhoneTrackerScreen(initialSportID: trackingSport) }
         }
+    }
+}
+
+private struct WorkoutEntryActionCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon).font(.title2.weight(.medium)).foregroundStyle(color)
+            Text(title.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
+            Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, minHeight: 105, alignment: .leading).padding(15)
+            .background(color.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(color.opacity(0.14), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -1266,6 +1298,10 @@ private struct ManualWorkoutForm: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Label("record.completed".tempoLocalized, systemImage: selectedChoice?.symbol ?? "figure.mixed.cardio").font(.title3.weight(.semibold))
+                    Text("record.formHint".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                }.listRowBackground(Color.clear)
                 ManualWorkoutDetailsSection(
                     sportId: $sportId,
                     title: $title,
@@ -1273,8 +1309,10 @@ private struct ManualWorkoutForm: View {
                     durationMinutes: $durationMinutes
                 )
                 Section("Kayıt türü") {
-                    Toggle("Sağlık ve hareket sinyali ekle (isteğe bağlı)", isOn: $checkHealthSignals)
-                    Text("Sinyal olmadan kişisel kayıt tutulur; doğrulanmış antrenman veya mücadele puanı sayılmaz.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    DisclosureGroup("record.signalOptions".tempoLocalized) {
+                        Toggle("Sağlık ve hareket sinyali ekle (isteğe bağlı)", isOn: $checkHealthSignals)
+                        Text("Sinyal olmadan kişisel kayıt tutulur; doğrulanmış antrenman veya mücadele puanı sayılmaz.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
                 }
                 ManualWorkoutFeedbackSection(effort: $perceivedEffort, enjoyment: $enjoyment)
                 ManualWorkoutEvidenceSection(
@@ -1287,7 +1325,18 @@ private struct ManualWorkoutForm: View {
             .disabled(isSaving)
             .accessibilityIdentifier("activity.manual.form")
             .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .background(TempoTheme.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button(action: saveTapped) {
+                    HStack(spacing: 10) {
+                        if isSaving || isPreparingPhoto || photoItem != nil { ProgressView().tint(TempoTheme.onAccent) }
+                        Text((isSaving ? "Kaydediliyor…" : (isPreparingPhoto || photoItem != nil ? "Fotoğraf hazırlanıyor…" : "record.save")).tempoLocalized)
+                    }.frame(maxWidth: .infinity)
+                }.buttonStyle(TempoPrimaryButtonStyle()).disabled(isSaving || isPreparingPhoto || photoItem != nil)
+                    .accessibilityIdentifier("activity.manual.save")
+                    .padding(.horizontal, 16).padding(.vertical, 12).background(TempoTheme.background)
+            }
             .navigationTitle("Antrenman ekle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1303,6 +1352,8 @@ private struct ManualWorkoutForm: View {
             }
         }
         .interactiveDismissDisabled(isSaving)
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
         .onAppear { if workoutSessionID == nil { workoutSessionID = model.activitySessionID } }
         .onChange(of: model.activitySessionID) { _, _ in dismiss() }
     }
@@ -1374,44 +1425,22 @@ private struct ManualWorkoutFeedbackSection: View {
 
     var body: some View {
         Section {
+            DisclosureGroup("Antrenman sonrası kısa not".tempoLocalized) {
             ratingRow(title: "Ne kadar zor hissettirdi?", selection: $effort, labels: ["Çok kolay", "Kolay", "Orta", "Zor", "Çok zor"])
             ratingRow(title: "Ne kadar keyif aldın?", selection: $enjoyment, labels: ["Hiç", "Az", "Orta", "İyi", "Çok"])
             Text("Bu geri bildirim yalnızca bu cihazdaki antrenman kaydında tutulur ve sonraki önerileri yumuşatmaya yardımcı olur.")
                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
+            }
         } header: {
             Text("Antrenman sonrası kısa not")
         }
     }
 
     private func ratingRow(title: String, selection: Binding<Int?>, labels: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title.tempoLocalized).font(.subheadline.weight(.medium))
-                Spacer()
-                if selection.wrappedValue != nil {
-                    Button("Temizle") { selection.wrappedValue = nil }
-                        .font(.caption).foregroundStyle(TempoTheme.green)
-                }
-            }
-            HStack(spacing: 7) {
-                ForEach(1...5, id: \.self) { score in
-                    Button {
-                        selection.wrappedValue = selection.wrappedValue == score ? nil : score
-                    } label: {
-                        Text(labels[score - 1].tempoLocalized)
-                            .font(.caption2.weight(.semibold))
-                            .lineLimit(1).minimumScaleFactor(0.65)
-                            .foregroundStyle(selection.wrappedValue == score ? TempoTheme.onAccent : TempoTheme.secondary)
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .background(selection.wrappedValue == score ? TempoTheme.green : TempoTheme.raised, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("%@, %d".tempoFormatted(title, score))
-                    .accessibilityAddTraits(selection.wrappedValue == score ? .isSelected : [])
-                }
-            }
-        }
-        .padding(.vertical, 4)
+        Picker(title.tempoLocalized, selection: selection) {
+            Text("record.notSet".tempoLocalized).tag(Optional<Int>.none)
+            ForEach(1...5, id: \.self) { score in Text(labels[score - 1].tempoLocalized).tag(Optional(score)) }
+        }.pickerStyle(.menu).tint(TempoTheme.green).padding(.vertical, 4)
     }
 }
 
@@ -1451,7 +1480,18 @@ private struct ManualWorkoutDetailsSection: View {
                     .tag("other")
             }
             TextField("Antrenman adı (isteğe bağlı)", text: $title)
-            DatePicker("Başlangıç zamanı", selection: $startedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+            DatePicker("Başlangıç zamanı", selection: $startedAt, in: ...Date().addingTimeInterval(-Double(durationMinutes) * 60), displayedComponents: [.date, .hourAndMinute])
+            TempoMetricGrid(columns: 4) {
+                ForEach([15, 30, 45, 60], id: \.self) { minutes in
+                    Button("record.minutes".tempoFormatted(minutes)) {
+                        durationMinutes = minutes
+                        startedAt = min(startedAt, Date().addingTimeInterval(-Double(minutes) * 60))
+                    }.font(.caption.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                        .foregroundStyle(durationMinutes == minutes ? TempoTheme.onAccent : TempoTheme.primary)
+                        .background(durationMinutes == minutes ? TempoTheme.green : TempoTheme.raised, in: RoundedRectangle(cornerRadius: 12))
+                        .buttonStyle(.plain)
+                }
+            }
             Stepper("Süre: %d dk".tempoFormatted(durationMinutes), value: $durationMinutes, in: 1...360)
                 .onChange(of: durationMinutes) { _, duration in
                     startedAt = min(startedAt, Date().addingTimeInterval(-Double(duration) * 60))
@@ -1469,6 +1509,7 @@ private struct ManualWorkoutEvidenceSection: View {
 
     var body: some View {
         Section("Fotoğraf ve notlar") {
+            DisclosureGroup("record.evidenceOptions".tempoLocalized) {
             PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
                 Label(photoData == nil ? "Antrenman fotoğrafı ekle (isteğe bağlı)" : "Fotoğraf eklendi · değiştir", systemImage: "photo.badge.plus")
             }
@@ -1485,6 +1526,7 @@ private struct ManualWorkoutEvidenceSection: View {
                 .font(.caption).foregroundStyle(TempoTheme.secondary)
             Text("iPhone adım ölçümü için Hareket ve Fitness izni gerekebilir. iPhone sensöründeki adım geçmişi son 7 gün için sorgulanabilir.")
                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
+            }
         }
     }
 }
@@ -1959,6 +2001,12 @@ private struct RouteMap: View {
 
 struct CoachScreen: View {
     @EnvironmentObject private var model: TempoAppModel
+    @EnvironmentObject private var account: TempoAccountStore
+    var sportContext: ActiveSportContext? = nil
+    @StateObject private var sportMetrics = SportMetricsStore()
+    @State private var selectedSportID = "general"
+    @State private var strengthFocus: StrengthSessionFocus = .unspecified
+    @State private var includeTraining = false
     @State private var messages: [TempoCoachMessage] = []
     @State private var draft = ""
     @State private var includeHealth = false
@@ -1975,7 +2023,8 @@ struct CoachScreen: View {
             TempoAmbientBackground()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    PageTitle(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet asistanın")
+                    PageTitle(title: "Tempo Koç", subtitle: "cross.coachSubtitle")
+                    sportControls
                     privacyControls
                     if messages.isEmpty { welcome }
                     ForEach(messages) { message in
@@ -2016,6 +2065,36 @@ struct CoachScreen: View {
             }
         }
         .onDisappear { cancelRequest() }
+        .task(id: account.profile?.id) { sportMetrics.bind(account.profile?.id); strengthFocus = sportContext?.strengthFocus ?? strengthFocus }
+        .onChange(of: account.profile?.id) { _, _ in newConversation(); includeHealth = false; includeTraining = false }
+        .onChange(of: includeHealth) { _, enabled in if !enabled { clearPersonalConversation() } }
+        .onChange(of: includeTraining) { _, enabled in if !enabled { clearPersonalConversation() } }
+        .onChange(of: model.healthSyncEnabled) { _, enabled in if !enabled { includeHealth = false } }
+    }
+
+    private var activeSport: ActiveSportContext {
+        if var context = sportContext {
+            if context.archetype == .strengthAndHypertrophy { context.strengthFocus = strengthFocus }
+            return context
+        }
+        return .selected(selectedSportID, focus: strengthFocus)
+    }
+    private var sportControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let sportContext {
+                Label(TempoSportChoice(rawValue: sportContext.sportID)?.title ?? "cross.general".tempoLocalized, systemImage: "figure.mixed.cardio").font(.subheadline.weight(.semibold))
+            } else {
+                Picker("cross.sport".tempoLocalized, selection: $selectedSportID) {
+                    Text("cross.general".tempoLocalized).tag("general")
+                    ForEach(TempoSportChoice.allCases) { Text($0.title).tag($0.rawValue) }
+                }.pickerStyle(.menu)
+            }
+            if activeSport.archetype == .strengthAndHypertrophy {
+                Picker("cross.focusTitle".tempoLocalized, selection: $strengthFocus) {
+                    ForEach(StrengthSessionFocus.allCases) { Text($0.title).tag($0) }
+                }.pickerStyle(.menu)
+            }
+        }.tint(TempoTheme.green).padding(.horizontal, 4).disabled(isSending)
     }
 
     private var welcome: some View {
@@ -2024,7 +2103,7 @@ struct CoachScreen: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Image(systemName: "sparkles").font(.title2).foregroundStyle(TempoTheme.green)
                     Text("Nereden başlamak istersin?").font(.title3.bold())
-                    Text("Antrenman, toparlanma, uyku veya günlük iyi oluş hakkında dilediğini sor. Strava hesabı gerekmiyor.")
+                    Text("cross.welcome".tempoLocalized)
                         .font(.subheadline).foregroundStyle(TempoTheme.secondary)
                 }
             }
@@ -2046,6 +2125,10 @@ struct CoachScreen: View {
                 Toggle("Apple Sağlık özetimi kullan", isOn: $includeHealth)
                     .font(.subheadline).tint(TempoTheme.green)
                     .disabled(!model.healthSyncEnabled || isSending)
+                Toggle("cross.shareTraining".tempoLocalized, isOn: $includeTraining)
+                    .font(.subheadline).tint(TempoTheme.green).disabled(isSending)
+                Text("cross.privacy".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                Text("cross.privacyHistory".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
                 Text((model.healthSyncEnabled ? "Yalnızca bu sohbet isteğinde paylaşılır." : "Kişisel sağlık ölçüsü eklemek için önce Apple Sağlık’ı bağla.").tempoLocalized)
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
                 Text("Kapalıyken Apple Sağlık verin gönderilmez. Sohbet geçmişi sunucuda saklanmaz. Strava verileri bu asistana aktarılmaz.")
@@ -2108,6 +2191,11 @@ struct CoachScreen: View {
         errorMessage = nil
         scrollTarget = nil
     }
+    private func clearPersonalConversation() {
+        let unsent = draft
+        newConversation()
+        draft = unsent
+    }
     private func send(_ suggested: String? = nil) {
         let text = (suggested ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.utf16.count <= 1_500, !isSending, !model.isCoachLoading else { return }
@@ -2120,6 +2208,12 @@ struct CoachScreen: View {
         let previous = messages
         let updated = Array((previous + [TempoCoachMessage(role: "user", content: text)]).suffix(12))
         let shareHealth = includeHealth && model.healthSyncEnabled
+        sportMetrics.bind(account.profile?.id)
+        sportMetrics.reload()
+        let shareTraining = includeTraining
+        let athleticContext = CrossSportAIService().context(active: activeSport,
+            workouts: shareTraining ? CrossSportInputAdapter.workouts(model.activityWorkouts, store: sportMetrics, includeHealth: shareHealth) : [],
+            includeTraining: shareTraining, includeHealth: shareHealth)
         messages = updated
         if suggested == nil || draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { draft = "" }
         scrollTarget = "coach-bottom"
@@ -2128,7 +2222,7 @@ struct CoachScreen: View {
                 if requestID == id { isSending = false; requestTask = nil; requestID = nil }
             }
             do {
-                let answer = try await model.askSportsChat(messages: updated, includeHealth: shareHealth)
+                let answer = try await model.askSportsChat(messages: updated, includeHealth: shareHealth, includeTraining: shareTraining, athleticContext: athleticContext)
                 try Task.checkCancellation()
                 guard requestID == id else { return }
                 messages = Array((updated + [TempoCoachMessage(role: "assistant", content: answer)]).suffix(12))
@@ -4317,12 +4411,12 @@ struct PageTitle: View {
     let title: String
     let subtitle: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(subtitle.tempoLocalized).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 7) {
             Text(title.tempoLocalized)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(.title.weight(.bold)).tracking(-0.4)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("page.title.\(title)")
+            Text(subtitle.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
     }
 }
@@ -4397,23 +4491,19 @@ private struct StravaConnectionCard: View {
 }
 
 struct TempoCard<Content: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
-        content.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        content.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .fill(TempoTheme.card.opacity(0.92))
-                    }
+                RoundedRectangle(cornerRadius: 24, style: .continuous).fill(TempoTheme.card)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.10), radius: 12, y: 5)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.10 : 0.035), radius: 14, y: 5)
     }
 }
 
@@ -4577,21 +4667,31 @@ private struct SummaryLine: View {
 }
 
 struct TempoPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.onAccent)
             .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, minHeight: 48)
             .background(TempoTheme.green.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .opacity(isEnabled ? 1 : 0.48)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: configuration.isPressed)
     }
 }
 
 struct TempoSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.subheadline.weight(.semibold)).foregroundStyle(configuration.role == .destructive ? Color.red : TempoTheme.green)
             .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, minHeight: 48)
             .background(TempoTheme.card.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 17).stroke(TempoTheme.primary.opacity(0.10), lineWidth: 1))
+            .opacity(isEnabled ? 1 : 0.48)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: configuration.isPressed)
     }
 }
 

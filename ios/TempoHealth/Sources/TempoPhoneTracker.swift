@@ -176,6 +176,7 @@ private final class TempoLocationRecorder: NSObject, ObservableObject, @preconcu
 }
 
 struct TempoPhoneTrackerScreen: View {
+    var initialSportID = "run"
     @EnvironmentObject private var model: TempoAppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -202,13 +203,17 @@ struct TempoPhoneTrackerScreen: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 15) {
-                    mapCard
+                    PageTitle(title: "record.phoneTitle", subtitle: "record.phoneHint")
                     sportPicker
+                    mapCard
                     metrics
 
                     Label("Konum izni yalnızca rotayı iPhone’da kaydetmek için kullanılır. Kayıt uygulama açıkken sürer ve Strava’ya gönderilmez.", systemImage: "hand.raised.fill")
                         .font(.caption2).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
 
+                    DisclosureGroup("auto.additional".tempoLocalized) {
+                        Text("GPS noktası".tempoLocalized + ": \(recorder.route.count)").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }.font(.caption).tint(TempoTheme.secondary)
                     if let error = recorder.errorMessage {
                         Label(error.tempoLocalized, systemImage: "location.slash.fill")
                             .font(.caption).foregroundStyle(TempoTheme.orange)
@@ -230,12 +235,14 @@ struct TempoPhoneTrackerScreen: View {
                         }
                     }
 
-                    recorderControls.disabled(isSaving)
                 }
                 .padding(16)
-                .padding(.bottom, TempoTheme.scrollBottomClearance)
+                .padding(.bottom, 12)
             }
             .background(TempoTheme.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                recorderControls.disabled(isSaving).padding(.horizontal, 16).padding(.vertical, 12).background(TempoTheme.background)
+            }
             .navigationTitle("Telefonla kayıt")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -253,7 +260,7 @@ struct TempoPhoneTrackerScreen: View {
                 Text("Çıkarsan bu rota kaydedilmeyecek.")
             }
             .interactiveDismissDisabled(recorder.hasStarted || isSaving)
-            .onAppear { if workoutSessionID == nil { workoutSessionID = model.activitySessionID } }
+            .onAppear { if workoutSessionID == nil { workoutSessionID = model.activitySessionID; selectedSport = initialSportID == "walking" ? "walking" : "run" } }
             .onChange(of: model.activitySessionID) { _, _ in recorder.cancel(); dismiss() }
             .onDisappear { recorder.cancel() }
             .onChange(of: recorder.route.count) { _, _ in updateRegion() }
@@ -288,7 +295,7 @@ struct TempoPhoneTrackerScreen: View {
     }
 
     private var sportPicker: some View {
-        HStack(spacing: 9) {
+        TempoMetricGrid(columns: 2) {
             sportButton("run", title: "Koşu", icon: "figure.run")
             sportButton("walking", title: "Yürüyüş", icon: "figure.walk")
         }
@@ -306,10 +313,9 @@ struct TempoPhoneTrackerScreen: View {
     }
 
     private var metrics: some View {
-        HStack(spacing: 9) {
+        TempoMetricGrid(columns: 2) {
             trackerMetric(value: timeText, title: "Süre", icon: "timer")
             trackerMetric(value: TempoFormat.distance(recorder.distanceMeters / 1_000), title: "Mesafe", icon: "point.topleft.down.to.point.bottomright.curvepath")
-            trackerMetric(value: "\(recorder.route.count)", title: "GPS noktası", icon: "location.fill")
         }
     }
 

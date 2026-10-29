@@ -8,8 +8,8 @@ permissions:
 
 jobs:
   math:
-    runs-on: macos-15
-    timeout-minutes: 5
+    runs-on: macos-26
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - name: Swift 6 efor motoru kontrolü
@@ -18,6 +18,17 @@ jobs:
           swiftc -swift-version 6 -D STRAIN_CORE_TESTS \
             ios/TempoHealth/Sources/SportArchetypes.swift \
             ios/TempoHealth/Sources/UniversalStrainEngine.swift \
+            ios/TempoHealth/Sources/CrossSportAI.swift \
             ios/StrainRegressionTests/main.swift \
             -o "$RUNNER_TEMP/tempo-strain-checks"
           "$RUNNER_TEMP/tempo-strain-checks"
+      - name: iOS kaynaklarını tür denetiminden geçir (simülatör başlatılmaz)
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          SOURCES=()
+          while IFS= read -r -d '' FILE; do SOURCES+=("$FILE"); done < <(find ios/TempoHealth/Sources -maxdepth 1 -name '*.swift' -print0)
+          xcrun swiftc -typecheck -parse-as-library -swift-version 5 -module-name TempoHealth -sdk "$SDK" -target arm64-apple-ios17.0-simulator "${SOURCES[@]}"
+          plutil -lint ios/TempoHealth/TempoHealth.xcodeproj/project.pbxproj ios/TempoHealth/Sources/en.lproj/Localizable.strings ios/TempoHealth/Sources/tr.lproj/Localizable.strings
+      - name: Koç bağlamı ve izin kontrolleri
+        run: node --test worker/test/coach-social.test.js worker/test/athletic-context.test.js

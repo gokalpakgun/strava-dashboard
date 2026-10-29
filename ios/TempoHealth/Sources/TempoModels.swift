@@ -174,6 +174,12 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
     var originalHealthActivityType: UInt? = nil
     var originalArchetype: String? = nil
     var sourceEnergyKcal: Double? = nil
+    var sourceAverageHeartRateBpm: Double? = nil
+    var sourcePeakHeartRateBpm: Double? = nil
+    var sourceAveragePowerWatts: Double? = nil
+    var sourceCadencePerMinute: Double? = nil
+    var sourceWorkoutEffort: Double? = nil
+    var sourceEffortIsEstimated: Bool? = nil
     let id: UUID
     let sportId: String
     let sportTitle: String

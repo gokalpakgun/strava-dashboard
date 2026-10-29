@@ -10,19 +10,33 @@ struct TempoLaunchView: View {
     var body: some View {
         ZStack {
             TempoTheme.background
-            TempoBrandMark(size: 154)
-                .scaleEffect(reduceMotion || hasAppeared ? 1 : 0.94)
-                .blur(radius: reduceMotion || hasAppeared ? 0 : 3)
-                .opacity(reduceMotion || hasAppeared ? 1 : 0)
-                .animation(reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.82), value: hasAppeared)
-                .accessibilityIdentifier("launch.brand")
+            if reduceMotion {
+                TempoBrandMark(size: 154).accessibilityIdentifier("launch.brand")
+            } else {
+                TempoBrandMark(size: 154)
+                    .keyframeAnimator(initialValue: TempoLaunchMotion(), trigger: hasAppeared) { logo, motion in
+                        logo.opacity(motion.opacity).scaleEffect(motion.scale).offset(y: motion.offset).blur(radius: motion.blur)
+                    } keyframes: { _ in
+                        KeyframeTrack(\.opacity) { CubicKeyframe(1, duration: 0.32) }
+                        KeyframeTrack(\.scale) { CubicKeyframe(1.012, duration: 0.56); CubicKeyframe(1, duration: 0.30) }
+                        KeyframeTrack(\.offset) { CubicKeyframe(0, duration: 0.68) }
+                        KeyframeTrack(\.blur) { CubicKeyframe(0, duration: 0.40) }
+                    }.accessibilityIdentifier("launch.brand")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
-        .onAppear { hasAppeared = true }
+        .task { await Task.yield(); guard !Task.isCancelled else { return }; hasAppeared = true }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Tempo")
     }
+}
+
+private struct TempoLaunchMotion {
+    var opacity = 0.0
+    var scale: CGFloat = 0.90
+    var offset: CGFloat = 10
+    var blur: CGFloat = 2.5
 }
 
 struct TempoBrandMark: View {

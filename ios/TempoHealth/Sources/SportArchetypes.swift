@@ -15,6 +15,10 @@ protocol SportMappingProtocol: Sendable {
 }
 
 struct SportMapper: SportMappingProtocol, Sendable {
+    static func hasLowerBodyImpact(healthKitRawValue value: UInt?) -> Bool {
+        guard let value else { return false }
+        return [HKWorkoutActivityType.soccer, .basketball, .tennis, .volleyball, .badminton, .squash, .rugby, .handball, .pickleball].contains { $0.rawValue == value }
+    }
     static func isMindBody(healthKitRawValue value: UInt?) -> Bool {
         guard let value else { return false }
         return [HKWorkoutActivityType.yoga, .pilates, .barre, .taiChi, .mindAndBody, .flexibility, .preparationAndRecovery, .cooldown, .danceInspiredTraining].contains { $0.rawValue == value }
@@ -243,6 +247,51 @@ enum WorkoutPayload: Codable, Sendable {
             if case .teamCourt(var v) = self { v.zones = newValue; v.loadInputs?.zones = nil; self = .teamCourt(v) }
             else { var input = loadInputs; input.zones = newValue; loadInputs = input }
         }
+    }
+}
+
+extension WorkoutPayload {
+    func removingAutomaticMatches(from automatic: WorkoutPayload?) -> WorkoutPayload {
+        guard let automatic, automatic.archetype == archetype else { return self }
+        var result = self
+        switch (result, automatic) {
+        case (.endurance(var saved), .endurance(let source)):
+            if saved.distanceMeters == source.distanceMeters { saved.distanceMeters = nil }
+            if saved.movingSeconds == source.movingSeconds { saved.movingSeconds = nil }
+            if saved.cadencePerMinute == source.cadencePerMinute { saved.cadencePerMinute = nil }
+            if saved.averagePowerWatts == source.averagePowerWatts { saved.averagePowerWatts = nil }
+            result = .endurance(saved)
+        case (.teamCourt(var saved), .teamCourt(let source)):
+            if saved.activeEnergyKcal == source.activeEnergyKcal { saved.activeEnergyKcal = nil }
+            result = .teamCourt(saved)
+        default: break
+        }
+        var input = result.loadInputs
+        if input.sessionRPE == automatic.loadInputs.sessionRPE { input.sessionRPE = nil }
+        result.loadInputs = input
+        return result
+    }
+    func fillingMissing(from automatic: WorkoutPayload?) -> WorkoutPayload {
+        guard let automatic, automatic.archetype == archetype, automatic.isValid else { return self }
+        var result = self
+        switch (result, automatic) {
+        case (.endurance(var saved), .endurance(let source)):
+            saved.distanceMeters = saved.distanceMeters ?? source.distanceMeters
+            saved.movingSeconds = saved.movingSeconds ?? source.movingSeconds
+            saved.cadencePerMinute = saved.cadencePerMinute ?? source.cadencePerMinute
+            saved.averagePowerWatts = saved.averagePowerWatts ?? source.averagePowerWatts
+            result = .endurance(saved)
+        case (.teamCourt(var saved), .teamCourt(let source)):
+            saved.activeEnergyKcal = saved.activeEnergyKcal ?? source.activeEnergyKcal
+            result = .teamCourt(saved)
+        default: break
+        }
+        var input = result.loadInputs
+        input.sessionRPE = input.sessionRPE ?? automatic.loadInputs.sessionRPE
+        input.explosiveSeconds = input.explosiveSeconds ?? automatic.loadInputs.explosiveSeconds
+        result.loadInputs = input
+        if result.heartRateZones == nil { result.heartRateZones = automatic.heartRateZones }
+        return result
     }
 }
 

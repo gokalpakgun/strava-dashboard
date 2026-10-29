@@ -14,7 +14,7 @@ extension HybridAxis {
 enum StrainInputAdapter {
     static func input(_ record: ArchetypeWorkoutRecord) -> StrainWorkout? {
         guard record.source != .strava, let payload = record.payload else { return nil }
-        return StrainWorkout(id: record.id, startedAt: record.date, durationSeconds: record.durationSeconds, payload: payload, source: record.source == .health ? .health : .tempo, isMindBody: record.isMindBody, userEntered: record.userEdited)
+        return StrainWorkout(id: record.id, startedAt: record.date, durationSeconds: record.durationSeconds, payload: payload, source: record.source == .health ? .health : .tempo, isMindBody: record.isMindBody, userEntered: record.userEdited, effortIsEstimated: record.effortIsEstimated && payload.loadInputs.sessionRPE == record.automaticEffort)
     }
 }
 

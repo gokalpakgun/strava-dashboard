@@ -6,6 +6,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        F10000000000000000000006 /* CrossSportAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000006 /* CrossSportAI.swift */; };
+        F10000000000000000000007 /* CrossSportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000007 /* CrossSportViews.swift */; };
 		F10000000000000000000004 /* UniversalStrainEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000004 /* UniversalStrainEngine.swift */; };
 		F10000000000000000000005 /* StrainViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000005 /* StrainViews.swift */; };
 		F10000000000000000000002 /* SportArchetypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* SportArchetypes.swift */; };
@@ -33,6 +35,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+        F20000000000000000000006 /* CrossSportAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossSportAI.swift; sourceTree = "<group>"; };
+        F20000000000000000000007 /* CrossSportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossSportViews.swift; sourceTree = "<group>"; };
 		F20000000000000000000004 /* UniversalStrainEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniversalStrainEngine.swift; sourceTree = "<group>"; };
 		F20000000000000000000005 /* StrainViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrainViews.swift; sourceTree = "<group>"; };
 		F20000000000000000000002 /* SportArchetypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportArchetypes.swift; sourceTree = "<group>"; };
@@ -102,6 +106,8 @@
 				F20000000000000000000003 /* PolymorphicWorkoutViews.swift */,
 				F20000000000000000000004 /* UniversalStrainEngine.swift */,
 				F20000000000000000000005 /* StrainViews.swift */,
+                F20000000000000000000006 /* CrossSportAI.swift */,
+                F20000000000000000000007 /* CrossSportViews.swift */,
 				A20000000000000000000018 /* PrivacyInfo.xcprivacy */,
 				A40000000000000000000004 /* Localizable.strings */,
 				A40000000000000000000005 /* InfoPlist.strings */,
@@ -213,6 +219,8 @@
 			F10000000000000000000003 /* PolymorphicWorkoutViews.swift in Sources */,
 			F10000000000000000000004 /* UniversalStrainEngine.swift in Sources */,
 			F10000000000000000000005 /* StrainViews.swift in Sources */,
+            F10000000000000000000006 /* CrossSportAI.swift in Sources */,
+            F10000000000000000000007 /* CrossSportViews.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		B80000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B10000000000000000000001 /* TempoHealthUserFlowTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
