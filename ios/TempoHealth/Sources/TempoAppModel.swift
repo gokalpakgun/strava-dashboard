@@ -833,7 +833,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     var tempoAchievement: TempoAchievement {
-        TempoAchievementFactory.make(workouts: manualWorkouts, healthDays: healthDays)
+        TempoAchievementFactory.make(workouts: activityWorkouts, healthDays: healthDays)
+    }
+
+    func dailyStrainSummary(using metrics: SportMetricsStore, now: Date = Date()) -> StrainWindowSummary {
+        guard metrics.error == nil, metrics.owner == activeTempoAccountId, activeTempoAccountId != nil else {
+            return UniversalStrainEngine().summary([], since: Calendar.autoupdatingCurrent.startOfDay(for: now), until: now)
+        }
+        let inputs = CrossSportInputAdapter.workouts(activityWorkouts, store: metrics, includeHealth: healthSyncEnabled).map(\.workout)
+        return UniversalStrainEngine().summary(inputs, since: Calendar.autoupdatingCurrent.startOfDay(for: now), until: now)
     }
 
     var tempoBalance: TempoBalanceScore? {

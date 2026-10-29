@@ -114,7 +114,7 @@ final class SportMetricsStore: ObservableObject {
             entries = decoded; error = nil
         } catch { self.error = "archetype.storageError".tempoLocalized }
     }
-    static func removeData(for owner: String) { UserDefaultsWorkoutMetricsRepository().remove(for: owner) }
+    static func removeData(for owner: String) { UserDefaultsWorkoutMetricsRepository().remove(for: owner); StrengthPresetStore.removeData(for: owner) }
     func applying(to record: ArchetypeWorkoutRecord) -> ArchetypeWorkoutRecord {
         var result = record
         if record.source != .strava, let saved = entries[record.id], saved.archetype == record.payload?.archetype { result.payload = saved.fillingMissing(from: record.payload); result.userEdited = true }
@@ -142,6 +142,45 @@ final class SportMetricsStore: ObservableObject {
         var updated = entries; updated[record.id] = payload.removingAutomaticMatches(from: record.payload)
         try repository.save(updated, for: owner); entries = updated; revision += 1
     }
+}
+
+@MainActor
+final class StrengthPresetStore: ObservableObject {
+    @Published private(set) var presets: [StrengthWorkoutPreset] = []
+    @Published private(set) var error: String?
+    private var owner: String?
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    private static func key(_ owner: String) -> String { "tempo.strength-presets.v1." + owner }
+    func bind(_ owner: String?) {
+        self.owner = owner; presets = []; error = nil
+        guard let owner, !owner.isEmpty, let data = defaults.data(forKey: Self.key(owner)) else { return }
+        do {
+            guard data.count <= 2_000_000 else { throw CocoaError(.coderReadCorrupt) }
+            let decoded = try JSONDecoder().decode([StrengthWorkoutPreset].self, from: data)
+            guard decoded.count <= 50, decoded.allSatisfy(\.isValid), Set(decoded.map(\.id)).count == decoded.count else { throw CocoaError(.coderReadCorrupt) }
+            presets = decoded
+        } catch { self.error = "preset.storageError".tempoLocalized }
+    }
+    func save(name: String, sportID: String, sets: [StrengthSet], owner expected: String) throws -> UUID {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preset = StrengthWorkoutPreset(sportID: sportID, name: name, sets: sets)
+        guard owner == expected, !expected.isEmpty, error == nil, preset.isValid, presets.count < 50 else { throw NSError(domain: "TempoPreset", code: 2, userInfo: [NSLocalizedDescriptionKey: "preset.saveError".tempoLocalized]) }
+        guard !presets.contains(where: { $0.sportID == sportID && $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }) else {
+            throw NSError(domain: "TempoPreset", code: 1, userInfo: [NSLocalizedDescriptionKey: "preset.duplicate".tempoLocalized])
+        }
+        var next = presets; next.append(preset); try persist(next, owner: expected); return preset.id
+    }
+    func remove(_ id: UUID, owner expected: String) throws {
+        guard owner == expected, !expected.isEmpty, error == nil else { throw CocoaError(.fileWriteNoPermission) }
+        try persist(presets.filter { $0.id != id }, owner: expected)
+    }
+    private func persist(_ next: [StrengthWorkoutPreset], owner: String) throws {
+        let data = try JSONEncoder().encode(next)
+        guard data.count <= 2_000_000 else { throw CocoaError(.fileWriteOutOfSpace) }
+        defaults.set(data, forKey: Self.key(owner)); presets = next
+    }
+    static func removeData(for owner: String) { UserDefaults.standard.removeObject(forKey: key(owner)) }
 }
 
 @MainActor
@@ -370,6 +409,13 @@ private struct WorkoutMetricsEditor: View {
     @State private var invalidFields: Set<String> = []
     @State private var error = ""
     @StateObject private var draft = MetricTextDraft()
+    @EnvironmentObject private var model: TempoAppModel
+    @StateObject private var presets = StrengthPresetStore()
+    @State private var presetName = ""
+    @State private var previousSets: [StrengthSet] = []
+    @State private var pendingPreset: StrengthWorkoutPreset?
+    @State private var confirmsReplacement = false
+    @State private var confirmsDeletion = false
     private let owner: String
     init(record: ArchetypeWorkoutRecord, initial: WorkoutPayload, store: SportMetricsStore) {
         self.record = record; self.store = store; _payload = State(initialValue: initial); owner = store.owner ?? ""
@@ -378,13 +424,15 @@ private struct WorkoutMetricsEditor: View {
         NavigationStack {
             Form {
                 Section { Text("archetype.editNote".tempoLocalized).font(.footnote) }
+                if case .strength = payload { presetControls }
                 WorkoutLoadInputEditor(payload: $payload, invalid: $invalidFields)
                 Section {
                     DisclosureGroup("auto.additional".tempoLocalized, isExpanded: $showsAdditionalMetrics) {
                         Text("auto.editHelp".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
                 }
-                if showsAdditionalMetrics { fields }
+                if case .strength = payload { fields }
+                else if showsAdditionalMetrics { fields }
                 if !error.isEmpty { Section { Text(error).foregroundStyle(TempoTheme.orange) } }
             }.environmentObject(draft).scrollContentBackground(.hidden).background(TempoTheme.background)
                 .navigationTitle("archetype.edit".tempoLocalized).navigationBarTitleDisplayMode(.inline)
@@ -398,12 +446,92 @@ private struct WorkoutMetricsEditor: View {
                     }
                 }
                 .onChange(of: store.owner) { _, value in if value != owner { dismiss() } }
+                .task {
+                    presets.bind(owner)
+                    if case .strength(let strength) = payload {
+                        if strength.sets.isEmpty, let previous = previousStrength(presetID: strength.presetID) { applyPrevious(previous) }
+                        else { previousSets = previousStrength(presetID: strength.presetID)?.sets ?? [] }
+                    }
+                }
+                .confirmationDialog("preset.replace".tempoLocalized, isPresented: $confirmsReplacement, titleVisibility: .visible) {
+                    Button("preset.use".tempoLocalized) { if let preset = pendingPreset { applyPreset(preset) }; pendingPreset = nil }
+                    Button("Vazgeç".tempoLocalized, role: .cancel) { pendingPreset = nil }
+                }
+                .confirmationDialog("preset.deleteConfirm".tempoLocalized, isPresented: $confirmsDeletion, titleVisibility: .visible) {
+                    Button("archetype.remove".tempoLocalized, role: .destructive) {
+                        if let preset = pendingPreset { do { try presets.remove(preset.id, owner: owner) } catch { self.error = "preset.storageError".tempoLocalized } }
+                        pendingPreset = nil
+                    }
+                    Button("Vazgeç".tempoLocalized, role: .cancel) { pendingPreset = nil }
+                }
+        }
+    }
+
+    private var sportID: String { record.sportID ?? "fitness" }
+    private func previousStrength(presetID: UUID?) -> StrengthMetrics? {
+        let records = model.activityWorkouts.map { store.applying(to: WorkoutPayloadAdapter.record($0)) }
+            .filter { $0.id != record.id && $0.source != .strava && $0.sportID == record.sportID && $0.endedAt <= record.date }
+            .sorted { $0.endedAt > $1.endedAt }
+        for record in records {
+            if case .strength(let strength) = record.payload, !strength.sets.isEmpty, strength.isValid,
+               presetID == nil || strength.presetID == presetID { return strength }
+        }
+        return nil
+    }
+    private func applyPrevious(_ previous: StrengthMetrics) {
+        guard case .strength(var strength) = payload else { return }
+        resetSetDrafts(strength.sets)
+        previousSets = previous.sets
+        strength.sets = StrengthProgression.draft(from: previous.sets); strength.presetID = previous.presetID
+        payload = .strength(strength)
+    }
+    private func applyPreset(_ preset: StrengthWorkoutPreset) {
+        guard case .strength(var strength) = payload else { return }
+        resetSetDrafts(strength.sets)
+        let previous = previousStrength(presetID: preset.id)
+        previousSets = previous?.sets ?? []
+        strength.sets = StrengthProgression.draft(from: previous?.sets ?? preset.sets); strength.presetID = preset.id
+        payload = .strength(strength); error = ""
+    }
+    private func resetSetDrafts(_ sets: [StrengthSet]) {
+        let prefixes = sets.map { $0.id.uuidString }
+        draft.values = draft.values.filter { key, _ in !prefixes.contains { key.hasPrefix($0) } }
+        invalidFields = Set(invalidFields.filter { key in !prefixes.contains { key.hasPrefix($0) } })
+    }
+    @ViewBuilder private var presetControls: some View {
+        if case .strength(let strength) = payload {
+            Section("preset.title".tempoLocalized) {
+                if let name = presets.presets.first(where: { $0.id == strength.presetID })?.name { Text(name).font(.subheadline.weight(.semibold)) }
+                Menu("preset.choose".tempoLocalized) {
+                    ForEach(presets.presets.filter { $0.sportID == sportID }) { preset in
+                        Button(preset.name) {
+                            if strength.sets.isEmpty { applyPreset(preset) }
+                            else { pendingPreset = preset; confirmsReplacement = true }
+                        }
+                    }
+                }.disabled(presets.error != nil || !presets.presets.contains { $0.sportID == sportID })
+                TextField("preset.name".tempoLocalized, text: $presetName).onChange(of: presetName) { _, value in if value.count > 64 { presetName = String(value.prefix(64)) } }
+                Button("preset.save".tempoLocalized) {
+                    do {
+                        let id = try presets.save(name: presetName, sportID: sportID, sets: strength.sets, owner: owner)
+                        var updated = strength; updated.presetID = id; payload = .strength(updated); presetName = ""
+                    } catch { self.error = (error as NSError).domain == "TempoPreset" ? error.localizedDescription : "preset.saveError".tempoLocalized }
+                }.disabled(presetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || strength.sets.isEmpty || !strength.isValid || !invalidFields.isEmpty || presets.error != nil || store.owner != owner)
+                if !presets.presets.isEmpty {
+                    Menu("preset.manage".tempoLocalized) { ForEach(presets.presets.filter { $0.sportID == sportID }) { preset in
+                        Button(preset.name, role: .destructive) { pendingPreset = preset; confirmsDeletion = true }
+                    } }
+                }
+                Text("preset.draftNote".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                if !previousSets.isEmpty { Text("preset.progressionNote".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                if let error = presets.error { Text(error).font(.caption).foregroundStyle(TempoTheme.orange) }
+            }
         }
     }
     @ViewBuilder private var fields: some View {
         switch payload {
         case .strength:
-            StrengthMetricsEditor(value: Binding(get: { if case .strength(let v) = payload { return v }; return StrengthMetrics() }, set: { payload = .strength($0) }), invalid: $invalidFields)
+            StrengthMetricsEditor(value: Binding(get: { if case .strength(let v) = payload { return v }; return StrengthMetrics() }, set: { payload = .strength($0) }), invalid: $invalidFields, previousSets: previousSets)
         case .endurance:
             EnduranceMetricsEditor(value: Binding(get: { if case .endurance(let v) = payload { return v }; return EnduranceMetrics() }, set: { payload = .endurance($0) }), invalid: $invalidFields)
         case .teamCourt:
@@ -502,6 +630,7 @@ private struct MetricIntegerField: View {
 private struct StrengthMetricsEditor: View {
     @Binding var value: StrengthMetrics
     @Binding var invalid: Set<String>
+    var previousSets: [StrengthSet] = []
     @State private var expanded: UUID?
     var body: some View {
         Section("archetype.sets".tempoLocalized) {
@@ -514,6 +643,12 @@ private struct StrengthMetricsEditor: View {
                     MetricNumberField(title: "archetype.rir", id: set.id.uuidString + "rir", value: $set.rir, invalid: $invalid)
                     MetricNumberField(title: "archetype.rest", id: set.id.uuidString + "rest", value: $set.restSeconds, invalid: $invalid)
                     Button("archetype.remove".tempoLocalized, role: .destructive) { let removedID = set.id; invalid = Set(invalid.filter { !$0.hasPrefix(removedID.uuidString) }); value.sets.removeAll { $0.id == removedID } }
+                }
+                if let previous = StrengthProgression.previousSet(for: set, in: value.sets, previous: previousSets), StrengthProgression.suggestsIncrease(previous, current: set) {
+                    Label(((set.repetitions ?? 500) >= 500 ? "preset.overloadWeight" : ((set.loadKg ?? 0) > 0 && (set.loadKg ?? 0) <= 1_997.5 ? "preset.overload" : "preset.overloadReps")).tempoLocalized, systemImage: "arrow.up.right.circle.fill")
+                        .font(.caption).foregroundStyle(TempoTheme.blue).padding(8)
+                        .background(TempoTheme.blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Button("archetype.addSet".tempoLocalized) { let set = StrengthSet(); value.sets.append(set); expanded = set.id }.disabled(value.sets.count >= 100)

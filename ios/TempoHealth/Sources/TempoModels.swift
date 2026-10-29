@@ -164,6 +164,8 @@ struct TempoWorkoutHealthSignal: Codable, Equatable {
         supportingSignalScore >= 2
     }
 
+    var isSensorVerified: Bool { TempoTrainingGuidance.isSensorVerified(source: nil, score: supportingSignalScore) }
+
     var respiratoryRateRisePerMinute: Double? {
         guard let averageRespiratoryRatePerMinute, let baselineRespiratoryRatePerMinute else { return nil }
         return averageRespiratoryRatePerMinute - baselineRespiratoryRatePerMinute
@@ -200,6 +202,8 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
     let enjoyment: Int?
 
     var isLocalRecord: Bool { recordSource != "apple-health" }
+    // Kaynak/sinyal etiketi; sporun yapıldığına dair bağımsız bir kimlik doğrulaması değildir.
+    var isSensorVerified: Bool { TempoTrainingGuidance.isSensorVerified(source: recordSource, score: healthSignal?.supportingSignalScore) }
     var sourceTitle: String {
         switch recordSource {
         case "apple-health": return "Apple Sağlık".tempoLocalized
@@ -378,7 +382,12 @@ enum TempoAchievementFactory {
     }
 
     static func make(workouts: [TempoManualWorkout], healthDays: [String: TempoHealthMetrics]) -> TempoAchievement {
-        let valid = workouts.filter { $0.durationMinutes > 0 }
+        let now = Date()
+        var seen = Set<UUID>()
+        let valid = workouts.filter {
+            let seconds = $0.durationSeconds.map(Double.init) ?? Double($0.durationMinutes) * 60
+            return seconds.isFinite && (1...604_800).contains(seconds) && $0.startedAt.timeIntervalSince1970.isFinite && ($0.sourceEndedAt ?? $0.startedAt.addingTimeInterval(seconds)) <= now && $0.recordSource != "strava" && ($0.distanceKm.map { $0.isFinite && $0 >= 0 && $0 <= 100_000 } ?? true) && seen.insert($0.id).inserted
+        }
         let calendar = Calendar.current
         var activeDays = Set(valid.map { calendar.startOfDay(for: $0.startedAt) })
         for (day, metrics) in healthDays where (metrics.steps ?? 0) >= 3_000 || (metrics.exerciseMinutes ?? 0) >= 10 {
@@ -403,6 +412,7 @@ enum TempoAchievementFactory {
         }
 
         var badges = [
+            badge("verified_10", "progress.verified10.title".tempoLocalized, "progress.verified10.description".tempoLocalized, "checkmark.shield.fill", "blue", Double(valid.filter(\.isSensorVerified).count), 10, "aktivite"),
             badge("first_activity", "İlk Tempo Antrenmanı", "Tempo’da ilk antrenmanını tamamla.", "flag.checkered", "green", Double(valid.count), 1, "aktivite"),
             badge("activity_10", "Ritim Yakala", "Tempo’da 10 antrenman kaydet.", "10.circle.fill", "blue", Double(valid.count), 10, "aktivite"),
             badge("activity_25", "İstikrar", "Tempo’da 25 antrenman kaydet.", "25.circle.fill", "green", Double(valid.count), 25, "aktivite"),
@@ -474,7 +484,8 @@ enum TempoAchievementFactory {
         let xp = valid.reduce(0) { total, workout in
             let minutes = Double(workout.durationSeconds ?? workout.durationMinutes * 60) / 60
             let distance = workout.distanceKm ?? 0
-            return total + 25 + min(Int(minutes) * 2, 360) + min(Int(distance * 8), 300)
+            let intensity = TempoTrainingGuidance.intensityBonus(minutes: minutes, distanceKm: workout.distanceKm, sourceEffort: workout.sourceWorkoutEffort, perceivedEffort: workout.perceivedEffort, supportingMeasurement: workout.healthSignal?.hasSupportingMeasurement == true)
+            return total + 25 + min(Int(minutes) * 2, 360) + min(Int(distance * 8), 300) + intensity
         }
         let level = (1...50).last { xp >= 100 * $0 * ($0 - 1) } ?? 1
         let levelStart = 100 * level * (level - 1)
@@ -885,6 +896,7 @@ struct TempoBalanceScore: Equatable {
     let confidence: String
     let factors: [TempoBalanceFactor]
     var measurementDays: [String: String] = [:]
+    var targetStrainRange: ClosedRange<Int> { TempoTrainingGuidance.targetStrainRange(readiness: value) }
 
     var dataNote: String? {
         let days = measurementDays.values.sorted()

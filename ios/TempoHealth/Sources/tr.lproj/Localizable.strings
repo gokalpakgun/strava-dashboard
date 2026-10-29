@@ -1282,3 +1282,51 @@
 "acwr.doses" = "7 günlük yük: %@ · 28 günün haftalık ortalaması: %@";
 "acwr.bands" = "Kayıt karşılaştırması: <0,8 düşük; 0,8–1,3 referans; >1,3–1,5 artış; >1,5 belirgin artış. Bu aralıklar kişiye özel güvenli veya optimal sınırlar değildir.";
 "acwr.note" = "ACWR sakatlık tahmini veya koruyucu garanti değildir. Düşük oran daha fazla çalışman gerektiği anlamına gelmez; ağrı, uyku ve nasıl hissettiğin ayrıca önemlidir.";
+
+"preset.title" = "Ağırlık şablonları";
+
+"preset.choose" = "Şablon seç";
+
+"preset.name" = "Şablon adı, ör. Upper A";
+
+"preset.save" = "Bu setleri şablon olarak kaydet";
+
+"preset.manage" = "Şablonları yönet";
+
+"preset.storageError" = "Şablonlar okunamadı veya kaydedilemedi. Mevcut kayıtların korundu.";
+
+"preset.saveError" = "64 karaktere kadar bir ad ve geçerli setler kullan. En fazla 50 şablon saklayabilirsin.";
+
+"preset.duplicate" = "Bu sporda aynı isimli bir şablon var. Farklı bir ad seç.";
+
+"preset.replace" = "Mevcut set taslağı değiştirilsin mi? Diğer antrenman ölçümleri korunur.";
+
+"preset.use" = "Bu şablonu kullan";
+
+"preset.deleteConfirm" = "Şablon silinsin mi? Kaydedilmiş antrenmanlar korunur.";
+
+"preset.draftNote" = "Kilo ve tekrarlar son eşleşen antrenman veya şablondan gelir. Kaydetmeden önce kontrol et; RPE/RIR değerlerini bu antrenmana göre gir.";
+
+"preset.progressionNote" = "İpuçları önceki kaydın eforuna dayanır, bugünkü hazırlığına değil. Bugün nasıl hissettiğini dikkate al; artış otomatik uygulanmaz.";
+
+"preset.overload" = "+2,5 kg veya +1 tekrar denemeyi düşün";
+
+"preset.overloadReps" = "+1 tekrar denemeyi düşün";
+
+"preset.overloadWeight" = "+2,5 kg denemeyi düşün";
+
+"progress.currentStrain" = "Bugünkü efor: %@ /100";
+
+"progress.targetRange" = "Önerilen aralık: %d–%d";
+
+"progress.targetNote" = "Bir planlama önerisidir, günlük kota değildir. Eksik ölçümler puana dönüştürülmez.";
+
+"progress.checkInWarning" = "Fizyolojik göstergelerin güçlü görünüyor ancak yüksek yorgunluk veya düşük enerji bildirdin. Isınmayı uzatıp algılanan eforu (RPE) kontrollü tut.";
+
+"progress.sensorVerified" = "Sensör Onaylı";
+
+"progress.sensorHint" = "Sağlık/GPS kaynağına veya destekleyici sensör sinyallerine dayanır; sporun yapıldığına dair bağımsız kanıt değildir.";
+
+"progress.verified10.title" = "10 Sensör Onaylı Antrenman";
+
+"progress.verified10.description" = "Sağlık/GPS kaynaklı veya yeterli destekleyici sinyali olan 10 antrenman kaydet. Bu bir kaynak rozetidir, bağımsız doğrulama değildir.";

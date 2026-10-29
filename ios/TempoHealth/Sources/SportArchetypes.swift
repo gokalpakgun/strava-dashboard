@@ -98,6 +98,7 @@ struct MuscleWorkload: Sendable, Identifiable {
 }
 
 struct StrengthMetrics: WorkoutMetricsProtocol {
+    var presetID: UUID? = nil
     var loadInputs: WorkoutLoadInputs?
     var sets: [StrengthSet] = []
     var archetype: SportArchetype { .strengthAndHypertrophy }
@@ -119,6 +120,56 @@ struct StrengthMetrics: WorkoutMetricsProtocol {
             guard !records.isEmpty else { return nil }
             return MuscleWorkload(muscle: muscle, sets: records.count, repetitions: records.reduce(0) { $0 + ($1.repetitions ?? 0) }, highEffortSets: records.filter { ($0.rpe ?? 0) >= 8 || ($0.rir.map { $0 <= 2 } ?? false) }.count)
         }
+    }
+}
+
+// Şablon bir plan taslağıdır; önceki efor notları yeni antrenmanın ölçümü sayılmaz.
+struct StrengthWorkoutPreset: Codable, Sendable, Identifiable {
+    var id = UUID()
+    let sportID: String
+    var name: String
+    var sets: [StrengthSet]
+    var isValid: Bool {
+        !sportID.isEmpty && sportID.count <= 80 && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 64 && !sets.isEmpty && Set(sets.map(\.id)).count == sets.count && StrengthMetrics(sets: sets).isValid
+    }
+}
+
+enum StrengthProgression {
+    static func draft(from sets: [StrengthSet]) -> [StrengthSet] {
+        sets.map { old in
+            var set = old; set.id = UUID(); set.rpe = nil; set.rir = nil
+            return set
+        }
+    }
+    static func previousSet(for set: StrengthSet, in current: [StrengthSet], previous: [StrengthSet]) -> StrengthSet? {
+        guard let index = current.firstIndex(where: { $0.id == set.id }) else { return nil }
+        let ordinal = current.prefix(index).filter { $0.muscle == set.muscle }.count
+        let matches = previous.filter { $0.muscle == set.muscle }
+        return matches.indices.contains(ordinal) ? matches[ordinal] : nil
+    }
+    static func suggestsIncrease(_ previous: StrengthSet, current: StrengthSet) -> Bool {
+        previous.isValid && current.isValid && ((current.repetitions ?? 500) < 500 || ((current.loadKg ?? 0) > 0 && (current.loadKg ?? 0) <= 1_997.5)) && previous.muscle != .unspecified && previous.muscle == current.muscle && previous.loadKg == current.loadKg && previous.repetitions == current.repetitions && ((previous.rpe.map { $0 <= 7 } ?? false) || (previous.rir.map { $0 >= 3 } ?? false))
+    }
+}
+
+// Bu aralık günlük bir zorunluluk veya tıbbi güvenlik eşiği değildir.
+enum TempoTrainingGuidance {
+    static func isSensorVerified(source: String?, score: Double?) -> Bool {
+        source == "apple-health" || source == "phone-gps" || (score.map { $0.isFinite && $0 >= 4 } ?? false)
+    }
+    static func targetStrainRange(readiness: Int) -> ClosedRange<Int> {
+        switch readiness { case 85...: return 65...85; case 70..<85: return 45...65; case 55..<70: return 25...45; default: return 10...25 }
+    }
+    static func checkInMismatch(readiness: Int?, energy: Int, mood: Int, tiredness: Int) -> Bool {
+        guard let readiness, readiness >= 75, [energy, mood, tiredness].allSatisfy({ (1...5).contains($0) }) else { return false }
+        return tiredness >= 4 || energy <= 2
+    }
+    static func intensityBonus(minutes: Double, distanceKm: Double?, sourceEffort: Double?, perceivedEffort: Int?, supportingMeasurement: Bool) -> Int {
+        guard minutes.isFinite, minutes > 0, minutes <= 10_080, distanceKm == nil || distanceKm == 0 else { return 0 }
+        let effort = sourceEffort.flatMap { $0.isFinite && (1...10).contains($0) ? $0 : nil } ?? perceivedEffort.flatMap { (1...5).contains($0) ? Double($0) * 2 : nil }
+        guard effort != nil || supportingMeasurement else { return 0 }
+        let factor = effort.map { 0.5 + $0 / 10 * 1.5 } ?? 1
+        return min(Int(minutes * factor), 300)
     }
 }
 

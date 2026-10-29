@@ -39,6 +39,9 @@ struct TempoWellnessCheckIn: Codable, Identifiable {
     let energy: Int
     let mood: Int
     let tiredness: Int
+    func conflicts(with balance: TempoBalanceScore?) -> Bool {
+        Calendar.autoupdatingCurrent.isDateInToday(date) && TempoTrainingGuidance.checkInMismatch(readiness: balance?.value, energy: energy, mood: mood, tiredness: tiredness)
+    }
 }
 
 struct TempoWellnessWaterEntry: Codable, Identifiable {
@@ -72,7 +75,6 @@ final class TempoWellnessStore: ObservableObject {
     var localWaterTotal: Int { todayWater.filter { $0.healthID == nil }.reduce(0) { $0 + $1.amount } }
 
     func bind(_ owner: String?) {
-        guard ownerID != owner else { return }
         data = TempoWellnessData(); storageError = nil; ownerID = owner
         guard let owner, let stored = UserDefaults.standard.data(forKey: Self.key(owner)) else { return }
         do {
@@ -81,6 +83,8 @@ final class TempoWellnessStore: ObservableObject {
             data = restored
         } catch { storageError = "wellness.storageError".tempoLocalized }
     }
+
+    func reload() { bind(ownerID) }
 
     static func removeData(for owner: String) { UserDefaults.standard.removeObject(forKey: key(owner)) }
 
@@ -113,6 +117,21 @@ final class TempoWellnessStore: ObservableObject {
     }
     func removeWater(_ entry: TempoWellnessWaterEntry, owner: String) {
         guard ownerID == owner else { return }; update { $0.water.removeAll { $0.id == entry.id } }
+    }
+}
+
+struct TempoCheckInComparison: View {
+    let entry: TempoWellnessCheckIn
+    let balance: TempoBalanceScore?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("wellness.checkIn".tempoLocalized, systemImage: "person.crop.circle.badge.checkmark").font(.subheadline.weight(.medium))
+            Text("wellness.checkIn.summary".tempoFormatted(entry.energy, entry.mood, entry.tiredness)).font(.caption).foregroundStyle(TempoTheme.secondary)
+            if entry.conflicts(with: balance) {
+                Label("progress.checkInWarning".tempoLocalized, systemImage: "info.circle.fill")
+                    .font(.subheadline).foregroundStyle(TempoTheme.orange).fixedSize(horizontal: false, vertical: true)
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

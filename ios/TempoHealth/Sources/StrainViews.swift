@@ -27,6 +27,7 @@ struct StrainDashboardState: Sendable {
     let missingDailyRecords: Int
     let muscleRecovery: MuscleRecoverySummary
     let acwr: ACWRSummary
+    let todayStrain: Int?
 }
 
 @MainActor
@@ -45,7 +46,7 @@ final class StrainDashboardViewModel: ObservableObject {
             if let input = StrainInputAdapter.input(record), let value = engine.score(for: input, history: inputs) { scores[record.id] = value }
         }
         let dailyCount = local.filter { $0.endedAt > dailyStart }.count
-        state = StrainDashboardState(summary: summary, balance: engine.hybridBalance(inputs, now: now), recent: recent, scores: scores, missingDailyRecords: max(0, dailyCount - summary.workoutsWithScore), muscleRecovery: MuscleRecoveryCalculator().summary(inputs, now: now), acwr: engine.acwrSummary(inputs, now: now))
+        state = StrainDashboardState(summary: summary, balance: engine.hybridBalance(inputs, now: now), recent: recent, scores: scores, missingDailyRecords: max(0, dailyCount - summary.workoutsWithScore), muscleRecovery: MuscleRecoveryCalculator().summary(inputs, now: now), acwr: engine.acwrSummary(inputs, now: now), todayStrain: engine.summary(inputs, since: Calendar.autoupdatingCurrent.startOfDay(for: now), until: now).value)
     }
 }
 
@@ -61,6 +62,7 @@ struct StrainDashboardScreen: View {
             PageTitle(title: "strain.title", subtitle: "strain.subtitle")
             if let state = viewModel.state {
                 StrainScorePanel(value: state.summary.value, cardio: state.summary.cardioLoad, muscle: state.summary.muscleLoad)
+                if let balance = model.tempoBalance { TempoCard { DailyStrainTargetView(balance: balance, current: state.todayStrain) } }
                 Text("strain.scoredCount".tempoFormatted(state.summary.workoutsWithScore, state.missingDailyRecords)).font(.caption).foregroundStyle(TempoTheme.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if state.summary.hasLimitedEvidence || state.missingDailyRecords > 0 || state.summary.value == nil {
@@ -117,6 +119,40 @@ struct StrainDashboardScreen: View {
     }
     private func refresh() {
         viewModel.update(records: model.activityWorkouts.map { store.applying(to: WorkoutPayloadAdapter.record($0)) })
+    }
+}
+
+struct DailyStrainTargetView: View {
+    let balance: TempoBalanceScore
+    let current: Int?
+    private var range: ClosedRange<Int> { balance.targetStrainRange }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) { currentLabel; Spacer(minLength: 12); rangeLabel }
+                VStack(alignment: .leading, spacing: 6) { currentLabel; rangeLabel }
+            }
+            GeometryReader { geometry in
+                let width = max(0, geometry.size.width)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(TempoTheme.primary.opacity(0.07))
+                    Capsule().fill(TempoTheme.blue.opacity(0.28))
+                        .frame(width: width * Double(range.upperBound - range.lowerBound) / 100)
+                        .offset(x: width * Double(range.lowerBound) / 100)
+                    if let current {
+                        Circle().fill(TempoTheme.primary).frame(width: 10, height: 10)
+                            .offset(x: max(0, min(max(0, width - 10), width * Double(min(100, max(0, current))) / 100 - 5)))
+                    }
+                }
+            }.frame(height: 10).accessibilityHidden(true)
+            Text("progress.targetNote".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+        }.accessibilityElement(children: .combine)
+    }
+    private var currentLabel: some View {
+        Text("progress.currentStrain".tempoFormatted(current.map(String.init) ?? "—")).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.primary)
+    }
+    private var rangeLabel: some View {
+        Text("progress.targetRange".tempoFormatted(range.lowerBound, range.upperBound)).font(.caption).foregroundStyle(TempoTheme.blue)
     }
 }
 

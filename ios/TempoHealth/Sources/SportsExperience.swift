@@ -193,6 +193,7 @@ struct TempoMovementMenuScreen: View {
     @State private var hasEquipment = false
     @State private var selectedSportID = "walking"
     @StateObject private var recoveryMetrics = SportMetricsStore()
+    @StateObject private var wellness = TempoWellnessStore()
     @State private var muscleRecovery: MuscleRecoverySummary?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -210,7 +211,7 @@ struct TempoMovementMenuScreen: View {
 
     private var adaptedSport: TempoSportChoice {
         let recentHardSession = model.manualWorkouts.sorted { $0.startedAt > $1.startedAt }.first?.perceivedEffort ?? 0
-        if hasMuscleLoadConcern || isReturningAfterBreak || energy == .low || (model.tempoBalance?.value ?? 100) < 55 || recentHardSession >= 4 {
+        if wellness.todayCheckIn?.conflicts(with: model.tempoBalance) == true || hasMuscleLoadConcern || isReturningAfterBreak || energy == .low || (model.tempoBalance?.value ?? 100) < 55 || recentHardSession >= 4 {
             return profileSports.contains(.yoga) ? .yoga : .walking
         }
         let needsEquipment: Set<TempoSportChoice> = [.cycling, .swimming, .tennis, .basketball, .football, .volleyball, .padel, .badminton]
@@ -272,6 +273,7 @@ struct TempoMovementMenuScreen: View {
         return count
     }
     private var adjustmentNote: String {
+        if wellness.todayCheckIn?.conflicts(with: model.tempoBalance) == true { return "progress.checkInWarning".tempoLocalized }
         if hasMuscleLoadConcern { return "recovery.movementNote".tempoLocalized }
         if isReturningAfterBreak, let daysSinceLastWorkout {
             return "Son antrenman kaydının üzerinden %d gün geçti. Kısa ve kolay başlayıp ritmini yeniden kurabilirsin.".tempoFormatted(daysSinceLastWorkout)
@@ -289,6 +291,7 @@ struct TempoMovementMenuScreen: View {
         TempoPage {
             PageTitle(title: "Günün hareket menüsü", subtitle: "Bugün sana uyan seçeneği bul")
             readinessCard
+            if let checkIn = wellness.todayCheckIn { TempoCard { TempoCheckInComparison(entry: checkIn, balance: model.tempoBalance) } }
             if let muscleRecovery, muscleRecovery.hasData {
                 TempoDisclosureSection(title: "recovery.title", icon: "figure.strengthtraining.traditional") { MuscleRecoveryCard(summary: muscleRecovery) }
             }
@@ -308,11 +311,12 @@ struct TempoMovementMenuScreen: View {
             if !profileSports.contains(selectedSport) { selectedSportID = profileSports.first?.rawValue ?? "walking" }
             recoveryMetrics.reload(); refreshMuscleRecovery()
         }
-        .task(id: account.profile?.id) { recoveryMetrics.bind(account.profile?.id); refreshMuscleRecovery() }
+        .task(id: account.profile?.id) { recoveryMetrics.bind(account.profile?.id); wellness.bind(account.profile?.id); refreshMuscleRecovery() }
+        .onAppear { wellness.reload() }
         .onChange(of: recoveryMetrics.revision) { _, _ in refreshMuscleRecovery() }
         .onChange(of: model.activityWorkouts) { _, _ in refreshMuscleRecovery() }
         .onChange(of: model.healthSyncEnabled) { _, _ in refreshMuscleRecovery() }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { refreshMuscleRecovery() } }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { wellness.reload(); refreshMuscleRecovery() } }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in refreshMuscleRecovery() }
     }
 

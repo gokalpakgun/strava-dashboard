@@ -1,4 +1,5 @@
 import Charts
+import Combine
 import CoreLocation
 import MapKit
 import PhotosUI
@@ -756,9 +757,15 @@ private struct HomeSocialCard: View {
 private struct AppleHealthHomeCard: View {
     let balance: TempoBalanceScore?
     let connected: Bool
+    @EnvironmentObject private var model: TempoAppModel
+    @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var metrics = SportMetricsStore()
+    @State private var currentStrain: Int?
 
     var body: some View {
         NavigationLink(destination: HealthScreen()) {
+            VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 13) {
                 Image(systemName: "heart.text.square.fill")
                     .font(.system(size: 21, weight: .semibold))
@@ -796,6 +803,8 @@ private struct AppleHealthHomeCard: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(TempoTheme.secondary)
             }
+            if connected, let balance { DailyStrainTargetView(balance: balance, current: currentStrain) }
+            }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
@@ -805,7 +814,15 @@ private struct AppleHealthHomeCard: View {
             .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .task(id: account.profile?.id) { metrics.bind(account.profile?.id); refreshStrain() }
+        .onAppear { metrics.reload(); refreshStrain() }
+        .onChange(of: metrics.revision) { _, _ in refreshStrain() }
+        .onChange(of: model.activityWorkouts) { _, _ in refreshStrain() }
+        .onChange(of: connected) { _, _ in refreshStrain() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { metrics.reload(); refreshStrain() } }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in refreshStrain() }
     }
+    private func refreshStrain() { currentStrain = model.dailyStrainSummary(using: metrics).value }
 }
 
 private struct TempoReadinessRing: View {
@@ -1091,6 +1108,13 @@ private struct ManualWorkoutRow: View {
                     }
                 }
                 .foregroundStyle(workout.recordSource == "phone-gps" ? TempoTheme.blue : TempoTheme.green)
+                if workout.isSensorVerified {
+                    Label("progress.sensorVerified".tempoLocalized, systemImage: "checkmark.shield.fill")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(TempoTheme.blue)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(TempoTheme.blue.opacity(0.1), in: Capsule())
+                        .accessibilityHint("progress.sensorHint".tempoLocalized)
+                }
                 if let signal = workout.healthSignal {
                     WorkoutHealthSignalSummary(signal: signal, durationMinutes: workout.durationMinutes)
                 }
@@ -3284,6 +3308,7 @@ private struct HealthScreen: View {
             if ProcessInfo.processInfo.arguments.contains("--ui-testing-healthkit") { SimulatorHealthIntegrationPanel() }
 #endif
             wellnessHero
+            if let checkIn = wellness.todayCheckIn { TempoCard { TempoCheckInComparison(entry: checkIn, balance: model.tempoBalance) } }
             dailyRings
             if model.healthSyncEnabled { sleepPreview }
             TempoWellnessTools(store: wellness)
@@ -3361,7 +3386,7 @@ private struct HealthScreen: View {
             }
         }
         .navigationTitle("Sağlık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
-        .onAppear { selectLatestHealthDayIfNeeded() }
+        .onAppear { selectLatestHealthDayIfNeeded(); wellness.reload() }
         .onChange(of: model.healthDays) { _, _ in selectLatestHealthDayIfNeeded() }
         .task(id: account.profile?.id) { wellness.bind(account.profile?.id) }
     }
@@ -4019,6 +4044,9 @@ private struct TempoBalanceHomeCard: View {
 
 private struct TempoBalanceDetailCard: View {
     let balance: TempoBalanceScore
+    @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var wellness = TempoWellnessStore()
 
     var body: some View {
         TempoCard {
@@ -4059,6 +4087,7 @@ private struct TempoBalanceDetailCard: View {
                 }
 
                 if let note = balance.dataNote { Text(note).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                if let checkIn = wellness.todayCheckIn { TempoCheckInComparison(entry: checkIn, balance: balance) }
                 Text(balance.recommendation.tempoLocalized)
                     .font(.subheadline)
                     .foregroundStyle(TempoTheme.primary.opacity(0.76))
@@ -4078,6 +4107,9 @@ private struct TempoBalanceDetailCard: View {
                     .lineSpacing(3)
             }
         }
+        .task(id: account.profile?.id) { wellness.bind(account.profile?.id) }
+        .onAppear { wellness.reload() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { wellness.reload() } }
     }
 }
 
