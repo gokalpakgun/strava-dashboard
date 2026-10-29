@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 extension StrengthSessionFocus {
     var title: String { ("cross.focus." + rawValue).tempoLocalized }
@@ -46,6 +47,7 @@ struct CrossSportPreparationView: View {
     let sportID: String
     @EnvironmentObject private var model: TempoAppModel
     @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = SportMetricsStore()
     @State private var focus: StrengthSessionFocus = .unspecified
     @State private var warning: InterferenceWarning?
@@ -73,6 +75,8 @@ struct CrossSportPreparationView: View {
         .onChange(of: store.revision) { _, _ in refresh() }
         .onChange(of: model.activityWorkouts) { _, _ in refresh() }
         .onChange(of: model.healthSyncEnabled) { _, _ in refresh() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { refresh() } }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in refresh() }
     }
     private func refresh() {
         warning = InterferenceAnalyzer().warning(for: active, workouts: CrossSportInputAdapter.workouts(model.activityWorkouts, store: store, includeHealth: model.healthSyncEnabled))

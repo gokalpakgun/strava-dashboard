@@ -599,9 +599,10 @@ struct AccountOnboardingView: View {
             OnboardingTitle(title: "Profilini oluşturalım", subtitle: "İnsanların seni nasıl göreceğini seç.")
                 .accessibilityIdentifier("onboarding.profile.title")
             VStack(spacing: 12) {
+                let currentAvatarData = avatarData ?? account.profile?.avatarData
                 PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                     ZStack(alignment: .bottomTrailing) {
-                        AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 116)
+                        AccountAvatarView(data: currentAvatarData, size: 116)
                         Image(systemName: "camera.fill")
                             .foregroundStyle(TempoTheme.onAccent)
                             .frame(width: 36, height: 36)
@@ -1465,9 +1466,10 @@ struct AccountSettingsScreen: View {
                     .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
 
                     if isEditingProfile {
+                        let currentAvatarData = avatarData ?? account.profile?.avatarData
                         PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                             HStack(spacing: 16) {
-                                AccountAvatarView(data: avatarData ?? account.profile?.avatarData, size: 62)
+                                AccountAvatarView(data: currentAvatarData, size: 62)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Profil fotoğrafı").font(.headline).foregroundStyle(TempoTheme.primary)
                                     Text("Fotoğrafı değiştir").font(.caption).foregroundStyle(TempoTheme.green)

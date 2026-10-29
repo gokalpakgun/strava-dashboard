@@ -311,6 +311,7 @@ struct SportArchetypeSection: View {
     var body: some View {
         NavigationLink(destination: PolymorphicWorkoutDetailScreen(record: record, store: store)) { PolymorphicWorkoutCardView(record: record, showsDisclosure: true) }
             .buttonStyle(.plain).task(id: account.profile?.id) { store.bind(account.profile?.id) }
+            .onAppear { store.reload() }
     }
 }
 
