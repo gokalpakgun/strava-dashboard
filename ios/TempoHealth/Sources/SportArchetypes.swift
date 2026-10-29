@@ -124,7 +124,7 @@ struct StrengthMetrics: WorkoutMetricsProtocol {
 
 struct HeartRateZones: Codable, Sendable {
     var seconds: [Double?]
-    var isValid: Bool { seconds.count == 5 && seconds.allSatisfy { guard let value = $0 else { return false }; return value.isFinite && value >= 0 && value <= 86_400 } }
+    var isValid: Bool { seconds.count == 5 && seconds.allSatisfy { guard let value = $0 else { return false }; return value.isFinite && value >= 0 && value <= 604_800 } }
     var totalSeconds: Double { seconds.compactMap { $0 }.reduce(0, +) }
     var explosiveSharePercent: Double? { guard isValid, totalSeconds > 0, let high = seconds[4] else { return nil }; return high / totalSeconds * 100 }
 }
@@ -269,6 +269,7 @@ extension WorkoutPayload {
         var input = result.loadInputs
         if input.sessionRPE == automatic.loadInputs.sessionRPE { input.sessionRPE = nil }
         result.loadInputs = input
+        if result.heartRateZones?.seconds == automatic.heartRateZones?.seconds { result.heartRateZones = nil }
         return result
     }
     func fillingMissing(from automatic: WorkoutPayload?) -> WorkoutPayload {

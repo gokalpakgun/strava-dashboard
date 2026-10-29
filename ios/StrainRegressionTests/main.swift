@@ -140,4 +140,88 @@ var edited = automatic; var effort = edited.loadInputs; effort.sessionRPE = 9; e
 check(edited.removingAutomaticMatches(from: automatic).fillingMissing(from: refreshed).loadInputs.sessionRPE == 9, "Kullanıcının ayrı efor notu korunur")
 var estimatedWorkout = workout("estimated", rpe: 7); estimatedWorkout.effortIsEstimated = true
 check(engine.score(for: estimatedWorkout)?.hasLimitedEvidence == true, "Apple efor tahmini doğrudan ölçüm sayılmaz")
-print("STRAIN_CORE_PASS checks=\(checked) swift6=true module3=true")
+let zoneStart = now.addingTimeInterval(-50)
+let zoneWindow = HeartRateWorkoutWindow(id: UUID(), start: zoneStart, end: now, activeDurationSeconds: 50, activeIntervals: [DateInterval(start: zoneStart, end: now)])
+let heartReadings = [100.0, 120, 140, 160, 180].enumerated().map { index, value in TimedHeartRateReading(start: zoneStart.addingTimeInterval(Double(index * 10)), end: zoneStart.addingTimeInterval(Double(index * 10 + 10)), bpm: value) }
+let inferred = HeartRateZoneInference().infer(windows: [zoneWindow], readings: heartReadings, recordedPeakBpm: 200)[zoneWindow.id]!
+check(inferred.seconds == [10, 10, 10, 10, 10] && inferred.evidence.observedSeconds == 50, "Z1–Z5 alt sınırları ve gerçek örnek süreleri")
+let fallbackZones = HeartRateZoneInference().infer(windows: [zoneWindow], readings: heartReadings, recordedPeakBpm: nil)[zoneWindow.id]!
+check(fallbackZones.evidence.maximumHeartRateBpm == 190 && fallbackZones.evidence.reference == .fallback190, "190 varsayımı açık kaynak bilgisi taşır")
+let duplicatedSignal = HeartRateZoneInference().infer(windows: [zoneWindow], readings: heartReadings + heartReadings, recordedPeakBpm: 200)[zoneWindow.id]!
+check(duplicatedSignal.seconds == inferred.seconds, "Çift kaynak zamanları iki kez sayılmaz")
+check(HeartRateZoneInference().infer(windows: [zoneWindow], readings: [], recordedPeakBpm: 200).isEmpty, "Nabız yoksa beş sahte sıfır üretilmez")
+let pausedWindow = HeartRateWorkoutWindow(id: UUID(), start: zoneStart, end: now, activeDurationSeconds: 40, activeIntervals: [DateInterval(start: zoneStart, end: zoneStart.addingTimeInterval(20)), DateInterval(start: zoneStart.addingTimeInterval(30), end: now)])
+let pausedZones = HeartRateZoneInference().infer(windows: [pausedWindow], readings: heartReadings, recordedPeakBpm: 200)[pausedWindow.id]!
+check(pausedZones.seconds == [10, 10, 0, 10, 10] && pausedZones.evidence.observedSeconds == 40, "Duraklamanın nabız süreleri çıkarılır")
+let gapStart = now.addingTimeInterval(-100)
+let gapWindow = HeartRateWorkoutWindow(id: UUID(), start: gapStart, end: now, activeDurationSeconds: 100, activeIntervals: [DateInterval(start: gapStart, end: now)])
+let gapReadings = [TimedHeartRateReading(start: gapStart, end: gapStart, bpm: 100), TimedHeartRateReading(start: gapStart.addingTimeInterval(90), end: now, bpm: 180)]
+let gapZones = HeartRateZoneInference().infer(windows: [gapWindow], readings: gapReadings, recordedPeakBpm: 200)[gapWindow.id]!
+check(gapZones.evidence.observedSeconds == 40, "90 saniyelik boşluk tam süre olarak doldurulmaz")
+var gapPayload = WorkoutPayload.empty(for: .endurance); gapPayload.heartRateZones = HeartRateZones(seconds: gapZones.seconds.map(Optional.some))
+let gapWorkout = StrainWorkout(id: "gap", startedAt: gapStart, durationSeconds: 100, payload: gapPayload, source: .health, heartRateZoneEvidence: gapZones.evidence)
+check(engine.score(for: gapWorkout) == nil, "Yetersiz sinyal kapsaması TRIMP puanı üretmez")
+let lowReadings = (0..<10).map { index in TimedHeartRateReading(start: gapStart.addingTimeInterval(Double(index * 10)), end: gapStart.addingTimeInterval(Double(index * 10 + 10)), bpm: 70) }
+let lowZones = HeartRateZoneInference().infer(windows: [gapWindow], readings: lowReadings, recordedPeakBpm: 200)[gapWindow.id]!
+check(lowZones.seconds == [0, 0, 0, 0, 0] && lowZones.evidence.belowZoneSeconds == 100, "Ölçülmüş düşük nabız eksik veri sayılmaz")
+var lowPayload = WorkoutPayload.empty(for: .endurance); lowPayload.heartRateZones = HeartRateZones(seconds: lowZones.seconds.map(Optional.some))
+let lowWorkout = StrainWorkout(id: "lowMeasured", startedAt: gapStart, durationSeconds: 100, payload: lowPayload, source: .health, heartRateZoneEvidence: lowZones.evidence)
+check(engine.score(for: lowWorkout)?.cardioLoad == 0, "Yeterli ölçüm varsa Z1 altındaki TRIMP sıfır olabilir")
+var pausedPayload = WorkoutPayload.empty(for: .endurance); pausedPayload.heartRateZones = HeartRateZones(seconds: pausedZones.seconds.map(Optional.some))
+let pausedWorkout = StrainWorkout(id: "paused", startedAt: zoneStart, durationSeconds: 40, payload: pausedPayload, source: .health, heartRateZoneEvidence: pausedZones.evidence, sourceEndedAt: now)
+check(pausedWorkout.isValid && pausedWorkout.endedAt == now, "Duraklamalı antrenmanın gerçek bitiş zamanı korunur")
+var badEnd = pausedWorkout; badEnd.sourceEndedAt = zoneStart.addingTimeInterval(-1)
+check(!badEnd.isValid, "Başlangıçtan önceki bitiş reddedilir")
+
+let zoneCache = HeartRateZoneCache()
+let emptyCache = await zoneCache.lookup([zoneWindow], referenceBpm: 200, reference: .recorded90DayPeak, now: now, force: false)
+check(emptyCache.pending.count == 1, "İlk okumada sorgu gerekir")
+await zoneCache.save([zoneWindow.id: inferred], windows: [zoneWindow], referenceBpm: 200, reference: .recorded90DayPeak, now: now, generation: emptyCache.generation)
+let hit = await zoneCache.lookup([zoneWindow], referenceBpm: 200, reference: .recorded90DayPeak, now: now, force: false)
+check(hit.pending.isEmpty && hit.values.count == 1, "Tekrarlanan eşitleme ham nabzı yeniden okumaz")
+let changedReference = await zoneCache.lookup([zoneWindow], referenceBpm: 190, reference: .fallback190, now: now, force: false)
+check(changedReference.pending.count == 1, "Nabız referansı değişirse yeniden hesaplanır")
+await zoneCache.removeAll()
+await zoneCache.save([zoneWindow.id: inferred], windows: [zoneWindow], referenceBpm: 200, reference: .recorded90DayPeak, now: now, generation: emptyCache.generation)
+let afterDisconnect = await zoneCache.lookup([zoneWindow], referenceBpm: 200, reference: .recorded90DayPeak, now: now, force: false)
+check(afterDisconnect.pending.count == 1, "Bağlantı kesildikten sonra eski sorgu önbelleği geri yazamaz")
+
+@MainActor func legSession(_ id: String, hoursAgo: Double, source: StrainRecordSource = .tempo, muscle: MuscleGroup = .legs) -> StrainWorkout {
+    let end = now.addingTimeInterval(-hoursAgo * 3_600)
+    let sets = (0..<4).map { _ in StrengthSet(muscle: muscle, repetitions: 8, loadKg: 80, rpe: 8) }
+    return StrainWorkout(id: id, startedAt: end.addingTimeInterval(-1_800), durationSeconds: 1_800, payload: .strength(StrengthMetrics(sets: sets)), source: source)
+}
+let muscleCalculator = MuscleRecoveryCalculator()
+let freshMuscles = muscleCalculator.summary([legSession("fresh", hoursAgo: 0)], now: now)
+check(freshMuscles.entries.first { $0.muscle == .legs }?.readinessPercent == 68, "4 zor set 32 puanlık model yükü taşır")
+check(freshMuscles.entries.first { $0.muscle == .chest }?.readinessPercent == nil, "Göğüs verisi yoksa yüzde uydurulmaz")
+check(muscleCalculator.summary([legSession("half", hoursAgo: 36)], now: now).entries.first { $0.muscle == .legs }?.readinessPercent == 84, "36 saatte model yükü yarıya iner")
+check(muscleCalculator.summary([legSession("rested", hoursAgo: 72)], now: now).entries.first { $0.muscle == .legs }?.readinessPercent == 100, "72 saat sınırında model yükü sıfır")
+check(!muscleCalculator.summary([], now: now).hasData, "Boş kayıtta tüm kaslar 100 gösterilmez")
+check(!muscleCalculator.summary([legSession("futureMuscle", hoursAgo: -1), legSession("remoteMuscle", hoursAgo: 1, source: .strava)], now: now).hasData, "Gelecek ve Strava kas haritasına girmez")
+let duplicateLeg = legSession("duplicateLeg", hoursAgo: 0)
+check(muscleCalculator.summary([duplicateLeg, duplicateLeg], now: now).entries.first { $0.muscle == .legs }?.readinessPercent == 68, "Aynı set kaydı iki kez sayılmaz")
+let fullBody = muscleCalculator.summary([legSession("fullBody", hoursAgo: 0, muscle: .fullBody)], now: now)
+check(fullBody.entries.first { $0.muscle == .fullBody }?.readinessPercent == 68 && fullBody.entries.first { $0.muscle == .legs }?.readinessPercent == nil, "Tüm vücut setleri her kasa çoğaltılmaz")
+let unknownMuscles = muscleCalculator.summary([legSession("unspecified", hoursAgo: 0, muscle: .unspecified)], now: now)
+check(unknownMuscles.unclassifiedRecentSets == 4 && !unknownMuscles.hasData, "Belirsiz kas grubu ayrıca raporlanır")
+
+let monthSessions = [2, 9, 16, 27].map { day in workout("month-\(day)", rpe: 7, end: now.addingTimeInterval(-Double(day) * 86_400)) }
+let monthLoad = engine.acwrSummary(monthSessions, now: now)
+check(abs((monthLoad.ratio ?? -1) - 1) < 0.00001 && monthLoad.status == .referenceRange, "Dört eşit haftalık seans 1,0 oranı verir")
+check(monthLoad.historyDays == 28 && monthLoad.scoredWorkouts == 4, "28 günlük görünür geçmiş")
+check(engine.acwrSummary([], now: now).ratio == nil, "Sıfır paydadan sonsuz oran üretilmez")
+let newHistory = engine.acwrSummary([workout("newHistory", rpe: 7)], now: now)
+check(newHistory.ratio == 4 && newHistory.status == .insufficientHistory, "Kısa geçmişin 4,0 oranı yüksek risk diye sınıflanmaz")
+let heavierMonth = engine.acwrSummary(monthSessions + [workout("extra1", rpe: 7), workout("extra2", rpe: 7)], now: now)
+check(heavierMonth.status == .highIncrease, "Belirgin artış bandı")
+check(ACWRStatus.band(for: 0.799) == .lowLoad && ACWRStatus.band(for: 0.8) == .referenceRange, "ACWR 0,8 sınırı dahil")
+check(ACWRStatus.band(for: 1.3) == .referenceRange && ACWRStatus.band(for: 1.301) == .increasedLoad, "ACWR 1,3 sınırı ve boşluk bandı")
+check(ACWRStatus.band(for: 1.5) == .increasedLoad && ACWRStatus.band(for: 1.501) == .highIncrease, "ACWR 1,5 üst sınırı")
+check(ACWRStatus.band(for: .nan) == .insufficientHistory, "Geçersiz oran sınıflanmaz")
+check(engine.acwrSummary(monthSessions + [monthSessions[0]], now: now).scoredWorkouts == 4, "ACWR kopya kayıtları dışlar")
+check(engine.acwrSummary([workout("stravaLoad", rpe: 8, source: .strava)], now: now).ratio == nil, "ACWR kaynak sınırını korur")
+let personalContext = builder.build(active: lower, workouts: [CrossSportWorkout(workout: legSession("coachLegs", hoursAgo: 0))], includeTraining: true, includeHealth: false, now: now)
+check(personalContext.muscleRecovery?.hasData == true && personalContext.acwr != nil, "Koç izinli toparlanma ve yük bağlamı alır")
+check(noConsent.muscleRecovery == nil && noConsent.acwr == nil, "Paylaşım kapalıyken yeni yüzdeler de gönderilmez")
+print("STRAIN_CORE_PASS checks=\(checked) swift6=true module3=true zones_recovery=true")

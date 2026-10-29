@@ -1025,6 +1025,18 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
     }
 
+    func ensureWorkoutHeartRateZones(workoutID: UUID) async {
+        guard healthSyncEnabled, let accountId = activeTempoAccountId,
+              let original = healthWorkouts.first(where: { $0.id == workoutID }),
+              original.sourceHeartRateZones == nil || original.sourceHeartRateZoneEvidence?.queryWasLimited == true else { return }
+        let generation = healthGeneration
+        guard let result = try? await healthStore.readHeartRateZones(workoutID: workoutID), !Task.isCancelled,
+              healthSyncEnabled, activeTempoAccountId == accountId, healthGeneration == generation,
+              let index = healthWorkouts.firstIndex(where: { $0.id == workoutID }) else { return }
+        healthWorkouts[index].sourceHeartRateZones = result.seconds
+        healthWorkouts[index].sourceHeartRateZoneEvidence = result.evidence
+    }
+
     func syncAppleHealth() async {
         guard healthSyncEnabled, healthStore.isAvailable,
               let accountId = activeTempoAccountId,

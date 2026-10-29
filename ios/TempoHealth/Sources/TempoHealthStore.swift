@@ -6,6 +6,7 @@ final class TempoHealthStore {
     private let store = HKHealthStore()
     private let pedometer = CMPedometer()
     private var observerQueries: [HKObserverQuery] = []
+    private let zoneCache = HeartRateZoneCache()
 
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
@@ -44,10 +45,11 @@ final class TempoHealthStore {
     func readRecentWorkouts(dayCount: Int = 365) async throws -> [TempoManualWorkout] {
         let now = Date()
         let start = Calendar.current.date(byAdding: .day, value: -min(max(dayCount, 1), 365), to: now) ?? now
-        let records: [TempoManualWorkout] = try await withCheckedThrowingContinuation { continuation in
+        let snapshot: HealthWorkoutReadSnapshot = try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: HKQuery.predicateForSamples(withStart: start, end: now, options: .strictStartDate), limit: HKObjectQueryNoLimit, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) { _, samples, error in
                 if let error { continuation.resume(throwing: error); return }
-                let records = ((samples as? [HKWorkout]) ?? []).filter { $0.endDate <= now && $0.duration > 0 }.map { workout in
+                let workouts = ((samples as? [HKWorkout]) ?? []).filter { $0.endDate <= now && $0.endDate > $0.startDate && $0.duration.isFinite && (1...604_800).contains($0.duration) }
+                let records = workouts.map { workout in
                     let choice: TempoSportChoice?
                     switch workout.workoutActivityType {
                     case .running: choice = .run
@@ -67,6 +69,7 @@ final class TempoHealthStore {
                     let title = choice?.title ?? "Diğer".tempoLocalized
                     var record = TempoManualWorkout(id: workout.uuid, sportId: choice?.rawValue ?? "other", sportTitle: title, title: title, startedAt: workout.startDate, durationMinutes: max(1, Int((workout.duration / 60).rounded())), notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: Int(workout.duration.rounded()), distanceKm: workout.totalDistance.map { $0.doubleValue(for: .meter()) / 1000 }, routeCoordinates: nil, recordSource: "apple-health", perceivedEffort: nil, enjoyment: nil)
                     record.originalHealthActivityType = workout.workoutActivityType.rawValue
+                    record.sourceEndedAt = workout.endDate
                     record.originalArchetype = SportMapper().map(healthKit: workout.workoutActivityType)?.rawValue
                     record.sourceEnergyKcal = workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie())
                     let heart = workout.statistics(for: HKQuantityType(.heartRate))
@@ -78,19 +81,118 @@ final class TempoHealthStore {
                     if workout.workoutActivityType == .cycling { record.sourceCadencePerMinute = workout.statistics(for: HKQuantityType(.cyclingCadence))?.averageQuantity()?.doubleValue(for: bpm) }
                     return record
                 }
-                continuation.resume(returning: records)
+                let windows = workouts.map { workout in
+                    HeartRateWorkoutWindow(id: workout.uuid, start: workout.startDate, end: workout.endDate, activeDurationSeconds: workout.duration, activeIntervals: Self.activeWorkoutIntervals(workout))
+                }
+                continuation.resume(returning: HealthWorkoutReadSnapshot(records: records, windows: windows))
             }
             store.execute(query)
         }
-        if #available(iOS 18.0, *), !records.isEmpty, !Task.isCancelled {
-            let efforts = await readWorkoutEfforts(ids: Set(records.map(\.id)))
-            return records.map { original in
-                var record = original
-                if let effort = efforts[record.id] { record.sourceWorkoutEffort = effort.value; record.sourceEffortIsEstimated = effort.estimated }
-                return record
+        guard !snapshot.records.isEmpty, !Task.isCancelled else { return snapshot.records }
+        async let effortRead = availableWorkoutEfforts(ids: Set(snapshot.records.map(\.id)))
+        // Açılışı hızlandırmak için yakın 90 gün topluca; eski kayıtlar ayrıntı açılınca okunur.
+        async let zoneRead = readWorkoutHeartRateZones(windows: snapshot.windows, now: now, querySince: now.addingTimeInterval(-90 * 86_400))
+        let (efforts, zones) = await (effortRead, zoneRead)
+        return snapshot.records.map { original in
+            var record = original
+            if let effort = efforts[record.id] { record.sourceWorkoutEffort = effort.value; record.sourceEffortIsEstimated = effort.estimated }
+            if let zones = zones[record.id] { record.sourceHeartRateZones = zones.seconds; record.sourceHeartRateZoneEvidence = zones.evidence }
+            return record
+        }
+    }
+
+    private func availableWorkoutEfforts(ids: Set<UUID>) async -> [UUID: HealthWorkoutEffort] {
+        if #available(iOS 18.0, *) { return await readWorkoutEfforts(ids: ids) }
+        return [:]
+    }
+
+    func readHeartRateZones(workoutID: UUID) async throws -> InferredHeartRateZones? {
+        let workout: HKWorkout? = try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: HKQuery.predicateForObject(with: workoutID), limit: 1, sortDescriptors: nil) { _, samples, error in
+                if let error { continuation.resume(throwing: error); return }
+                continuation.resume(returning: samples?.first as? HKWorkout)
+            }
+            store.execute(query)
+        }
+        guard let workout, workout.endDate <= Date(), workout.duration.isFinite, (1...604_800).contains(workout.duration), !Task.isCancelled else { return nil }
+        let window = HeartRateWorkoutWindow(id: workout.uuid, start: workout.startDate, end: workout.endDate, activeDurationSeconds: workout.duration, activeIntervals: Self.activeWorkoutIntervals(workout))
+        return await readWorkoutHeartRateZones(windows: [window], now: Date(), forceRefresh: true)[workoutID]
+    }
+
+    private static func activeWorkoutIntervals(_ workout: HKWorkout) -> [DateInterval] {
+        var result: [DateInterval] = [], cursor = workout.startDate
+        var paused = false
+        for event in (workout.workoutEvents ?? []).sorted(by: { $0.dateInterval.start < $1.dateInterval.start }) {
+            let at = min(workout.endDate, max(workout.startDate, event.dateInterval.start))
+            switch event.type {
+            case .pause, .motionPaused:
+                if !paused { if at > cursor { result.append(DateInterval(start: cursor, end: at)) }; paused = true }
+            case .resume, .motionResumed:
+                if paused { cursor = at; paused = false }
+            default: break
             }
         }
-        return records
+        if !paused, workout.endDate > cursor { result.append(DateInterval(start: cursor, end: workout.endDate)) }
+        return result
+    }
+
+    private func readWorkoutHeartRateZones(windows: [HeartRateWorkoutWindow], now: Date, forceRefresh: Bool = false, querySince: Date? = nil) async -> [UUID: InferredHeartRateZones] {
+        guard !windows.isEmpty, !Task.isCancelled else { return [:] }
+        let peak = await recentMaximumHeartRate(now: now)
+        let reference = peak.flatMap { $0.isFinite && (80...300).contains($0) ? $0 : nil } ?? 190
+        let source: MaximumHeartRateReference = peak == nil ? .fallback190 : .recorded90DayPeak
+        let cached = await zoneCache.lookup(windows, referenceBpm: reference, reference: source, now: now, force: forceRefresh || peak == nil)
+        let pending = cached.pending.filter { $0.end > (querySince ?? .distantPast) }
+        guard !pending.isEmpty else { return cached.values }
+        let samples = await workoutHeartRateReadings(windows: pending)
+        guard !Task.isCancelled else { return [:] }
+        let computed = HeartRateZoneInference().infer(windows: pending, readings: samples.readings, recordedPeakBpm: peak, queryWasLimited: samples.limited)
+        await zoneCache.save(computed, windows: pending, referenceBpm: reference, reference: source, now: now, generation: cached.generation)
+        return cached.values.merging(computed) { _, current in current }
+    }
+
+    private func recentMaximumHeartRate(now: Date) async -> Double? {
+        let healthStore = store, type = heartRateType, gate = HealthEffortReadGate()
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        let period = HKQuery.predicateForSamples(withStart: now.addingTimeInterval(-90 * 86_400), end: now, options: .strictStartDate)
+        let bounds = [HKQuery.predicateForQuantitySamples(with: .greaterThanOrEqualTo, quantity: HKQuantity(unit: unit, doubleValue: 80)), HKQuery.predicateForQuantitySamples(with: .lessThanOrEqualTo, quantity: HKQuantity(unit: unit, doubleValue: 300))]
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: NSCompoundPredicate(andPredicateWithSubpredicates: [period] + bounds), options: .discreteMax) { query, statistics, _ in
+                guard gate.claimCompletion() else { return }
+                healthStore.stop(query)
+                continuation.resume(returning: statistics?.maximumQuantity()?.doubleValue(for: unit))
+            }
+            healthStore.execute(query)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 4) {
+                guard gate.claimCompletion() else { return }; healthStore.stop(query); continuation.resume(returning: nil)
+            }
+        }
+    }
+
+    private func workoutHeartRateReadings(windows: [HeartRateWorkoutWindow]) async -> HeartRateQuerySnapshot {
+        let healthStore = store, type = heartRateType
+        let buffer = HeartRateQueryBuffer()
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        let predicates = windows.map { HKQuery.predicateForSamples(withStart: $0.start, end: $0.end, options: []) }
+        return await withCheckedContinuation { continuation in
+            // Tek toplu sorgu, sıkıştırılmış örneklerdeki gerçek zaman noktalarını da açar.
+            let query = HKQuantitySeriesSampleQuery(quantityType: type, predicate: NSCompoundPredicate(orPredicateWithSubpredicates: predicates)) { query, quantity, interval, _, done, error in
+                if error != nil {
+                    if buffer.finish(discard: true) != nil { healthStore.stop(query); continuation.resume(returning: HeartRateQuerySnapshot(readings: [], limited: true)) }
+                    return
+                }
+                var reachedLimit = false
+                if let quantity, let interval, quantity.is(compatibleWith: unit) {
+                    reachedLimit = buffer.append(TimedHeartRateReading(start: interval.start, end: interval.end, bpm: quantity.doubleValue(for: unit)))
+                }
+                if done || reachedLimit, let snapshot = buffer.finish(limited: reachedLimit) { healthStore.stop(query); continuation.resume(returning: snapshot) }
+            }
+            healthStore.execute(query)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 8) {
+                guard let snapshot = buffer.finish(limited: true) else { return }
+                healthStore.stop(query); continuation.resume(returning: snapshot)
+            }
+        }
     }
 
     @available(iOS 18.0, *)
@@ -303,6 +405,8 @@ final class TempoHealthStore {
 
     func disableBackgroundDelivery() {
         stopObservers()
+        let cache = zoneCache
+        Task { await cache.removeAll() }
         store.disableAllBackgroundDelivery { _, _ in }
     }
 
@@ -565,6 +669,29 @@ final class TempoHealthStore {
         NSError(domain: "TempoSimulatorHealthIntegration", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
     #endif
+}
+
+private struct HealthWorkoutReadSnapshot { let records: [TempoManualWorkout]; let windows: [HeartRateWorkoutWindow] }
+private struct HeartRateQuerySnapshot: Sendable { let readings: [TimedHeartRateReading]; let limited: Bool }
+
+private final class HeartRateQueryBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var readings: [TimedHeartRateReading] = []
+    private var completed = false
+    func append(_ reading: TimedHeartRateReading) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !completed else { return false }
+        if readings.count < 200_000 { readings.append(reading) }
+        return readings.count >= 200_000
+    }
+    func finish(limited: Bool = false, discard: Bool = false) -> HeartRateQuerySnapshot? {
+        lock.lock(); defer { lock.unlock() }
+        guard !completed else { return nil }
+        completed = true
+        let snapshot = HeartRateQuerySnapshot(readings: discard ? [] : readings, limited: limited)
+        readings = []
+        return snapshot
+    }
 }
 
 private struct HealthWorkoutEffort: Sendable { let value: Double; let estimated: Bool }

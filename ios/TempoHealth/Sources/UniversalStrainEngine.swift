@@ -11,9 +11,15 @@ struct StrainWorkout: Sendable, Identifiable {
     var isMindBody = false
     var userEntered = false
     var effortIsEstimated = false
-    var endedAt: Date { startedAt.addingTimeInterval(durationSeconds) }
+    var heartRateZoneEvidence: HeartRateZoneEvidence?
+    var sourceEndedAt: Date?
+    var endedAt: Date { sourceEndedAt ?? startedAt.addingTimeInterval(durationSeconds) }
     var isValid: Bool {
-        source != .strava && startedAt.timeIntervalSince1970.isFinite && durationSeconds.isFinite && (1...604_800).contains(durationSeconds) && payload.isValid && (payload.heartRateZones.map { $0.totalSeconds <= durationSeconds + 1 } ?? true) && (payload.loadInputs.explosiveSeconds.map { $0 <= durationSeconds } ?? true)
+        if let evidence = heartRateZoneEvidence {
+            guard let zones = payload.heartRateZones, zones.isValid,
+                  abs(zones.totalSeconds + evidence.belowZoneSeconds - evidence.observedSeconds) <= 1 else { return false }
+        }
+        return source != .strava && startedAt.timeIntervalSince1970.isFinite && endedAt.timeIntervalSince1970.isFinite && endedAt.timeIntervalSince(startedAt) >= durationSeconds - 1 && durationSeconds.isFinite && (1...604_800).contains(durationSeconds) && payload.isValid && (payload.heartRateZones.map { $0.totalSeconds <= durationSeconds + 1 } ?? true) && (payload.loadInputs.explosiveSeconds.map { $0 <= durationSeconds } ?? true) && (heartRateZoneEvidence.map { $0.isValid && $0.observedSeconds <= durationSeconds + 1 && (payload.heartRateZones?.totalSeconds ?? 0) <= $0.observedSeconds + 1 } ?? true)
     }
 }
 
@@ -48,7 +54,8 @@ struct UniversalStrainScore: Sendable, Identifiable {
     let userEntered: Bool
     let modelVersion: String
     var effortIsEstimated = false
-    var hasLimitedEvidence: Bool { effortIsEstimated || cardioLoad == nil || muscleLoad == nil || (cardioLoad != nil && zoneCoverage < 0.999) || (setCoverage.map { $0 < 0.999 } ?? false) }
+    var zonesAreEstimated = false
+    var hasLimitedEvidence: Bool { effortIsEstimated || zonesAreEstimated || cardioLoad == nil || muscleLoad == nil || (cardioLoad != nil && zoneCoverage < 0.999) || (setCoverage.map { $0 < 0.999 } ?? false) }
 }
 
 struct StrainWindowSummary: Sendable {
@@ -97,9 +104,10 @@ struct UniversalStrainEngine: UniversalStrainCalculating, Sendable {
     func score(for workout: StrainWorkout, history: [StrainWorkout] = []) -> UniversalStrainScore? {
         guard configuration.isValid, workout.isValid else { return nil }
         let zones = workout.payload.heartRateZones
-        let coverage = zones.map { min(1, $0.totalSeconds / workout.durationSeconds) } ?? 0
+        let observedSeconds = workout.heartRateZoneEvidence?.observedSeconds ?? zones?.totalSeconds ?? 0
+        let coverage = min(1, observedSeconds / workout.durationSeconds)
         let trimp = zones.flatMap { values -> Double? in
-            guard values.isValid, values.totalSeconds > 0 else { return nil }
+            guard values.isValid, observedSeconds > 0 else { return nil }
             // Edwards tipi TRIMP: Z1–Z5'teki dakikalar × 1–5.
             return values.seconds.enumerated().reduce(0) { $0 + (($1.element ?? 0) / 60) * Double($1.offset + 1) }
         }
@@ -142,7 +150,7 @@ struct UniversalStrainEngine: UniversalStrainCalculating, Sendable {
         if let muscleDose { weighted += muscleDose * weights.muscle; totalWeight += weights.muscle }
         guard totalWeight > 0 else { return nil }
         let combined = weighted / totalWeight
-        return UniversalStrainScore(id: workout.id, value: normalized(combined), cardioLoad: cardioDose.map(normalized), muscleLoad: muscleDose.map(normalized), cardioTRIMP: trimp, sessionRPELoadAU: sessionAU, recordedTonnageKg: tonnage, personalTonnageReferenceKg: tonnageReference, zoneCoverage: coverage, setCoverage: setCoverage, cardioDose: cardioDose, muscleDose: muscleDose, combinedDose: combined, userEntered: workout.userEntered, modelVersion: configuration.modelVersion, effortIsEstimated: workout.effortIsEstimated)
+        return UniversalStrainScore(id: workout.id, value: normalized(combined), cardioLoad: cardioDose.map(normalized), muscleLoad: muscleDose.map(normalized), cardioTRIMP: trimp, sessionRPELoadAU: sessionAU, recordedTonnageKg: tonnage, personalTonnageReferenceKg: tonnageReference, zoneCoverage: coverage, setCoverage: setCoverage, cardioDose: cardioDose, muscleDose: muscleDose, combinedDose: combined, userEntered: workout.userEntered, modelVersion: configuration.modelVersion, effortIsEstimated: workout.effortIsEstimated, zonesAreEstimated: workout.heartRateZoneEvidence != nil)
     }
 
     func summary(_ workouts: [StrainWorkout], since start: Date, until end: Date) -> StrainWindowSummary {
@@ -172,7 +180,7 @@ struct UniversalStrainEngine: UniversalStrainCalculating, Sendable {
             if workout.isMindBody { exposure[.mobility, default: 0] += seconds / 60; continue }
             let explicit = workout.payload.loadInputs.explosiveSeconds
             let zones = workout.payload.heartRateZones
-            let zoneCoverage = zones.map { $0.totalSeconds / workout.durationSeconds } ?? 0
+            let zoneCoverage = (workout.heartRateZoneEvidence?.observedSeconds ?? zones?.totalSeconds ?? 0) / workout.durationSeconds
             let high = zones.flatMap { $0.isValid ? (($0.seconds[3] ?? 0) + ($0.seconds[4] ?? 0)) : nil }
             let known = explicit != nil || zoneCoverage >= configuration.minimumZoneCoverage
             let explosive = min(workout.durationSeconds, max(explicit ?? 0, high ?? 0))
@@ -190,6 +198,10 @@ struct UniversalStrainEngine: UniversalStrainCalculating, Sendable {
             return HybridAxisScore(axis: axis, value: hasData ? Int((minutes / total * 100).rounded()) : nil, minutes: hasData ? minutes : nil)
         }
         return HybridAthleteBalance(axes: axes, workoutCount: records.count, intensityCoverage: coverage)
+    }
+
+    func acwrSummary(_ workouts: [StrainWorkout], now: Date = Date()) -> ACWRSummary {
+        AcuteChronicLoadCalculator(engine: self).summary(workouts, now: now)
     }
 
     private func archetypeWeights(_ archetype: SportArchetype, mindBody: Bool) -> (cardio: Double, muscle: Double) {

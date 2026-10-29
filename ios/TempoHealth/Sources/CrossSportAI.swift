@@ -47,16 +47,17 @@ struct InterferenceAnalyzer: InterferenceAnalyzing, Sendable {
             let workout = item.workout
             let hours = Int(now.timeIntervalSince(workout.endedAt) / 3_600)
             let zones = workout.payload.heartRateZones
-            let completeZones = (zones?.totalSeconds ?? 0) >= workout.durationSeconds * 0.8
+            let completeZones = (workout.heartRateZoneEvidence?.observedSeconds ?? zones?.totalSeconds ?? 0) >= workout.durationSeconds * 0.8
             let intenseSeconds = completeZones ? (zones?.seconds.suffix(2).compactMap { $0 }.reduce(0, +) ?? 0) : 0
             var reason: InterferenceReason?
             var limited = false
             switch workout.payload {
             case .teamCourt where item.hasLowerBodyImpact && workout.durationSeconds >= 1_200:
                 reason = .recentCourt
-                limited = workout.payload.loadInputs.sessionRPE == nil && !completeZones
+                limited = workout.effortIsEstimated || workout.heartRateZoneEvidence != nil || (workout.payload.loadInputs.sessionRPE == nil && !completeZones)
             case .endurance(let metrics) where [.running, .cycling, .walking, .rowing].contains(metrics.discipline) && intenseSeconds > 1_200:
                 reason = .intenseEndurance
+                limited = workout.heartRateZoneEvidence != nil
             case .strength(let metrics):
                 let legSets = metrics.sets.filter { [.legs, .fullBody].contains($0.muscle) }
                 let hardSets = legSets.filter { ($0.rpe ?? 0) >= 8 || ($0.rir.map { $0 <= 2 } ?? false) }.count
@@ -115,6 +116,8 @@ struct AthleticObservedMetrics: Codable, Sendable {
     var heartRateRecoveryBpm: Double?
     var userEntered: Bool
     var effortIsEstimated = false
+    var zoneReferenceMaxBpm: Double?
+    var zoneReferenceSource: MaximumHeartRateReference?
 }
 
 enum AthleticFocusMetric: String, Codable, Sendable {
@@ -135,6 +138,8 @@ struct AthleticAIContext: Codable, Sendable {
     let latestMetrics: AthleticObservedMetrics?
     let includesHealthWorkouts: Bool
     let modelVersion: String
+    var muscleRecovery: MuscleRecoverySummary?
+    var acwr: ACWRSummary?
 }
 
 protocol AIContextBuilding: Sendable {
@@ -159,7 +164,9 @@ struct AIContextBuilder: AIContextBuilding, Sendable {
             interference: includeTraining ? InterferenceAnalyzer().warning(for: active, workouts: allowed, now: now) : nil,
             balance7d: includeTraining ? AthleticBalanceContext(engine.hybridBalance(inputs, now: now)) : nil,
             latestMetrics: latest.map { observedMetrics($0, now: now) }, includesHealthWorkouts: includeTraining && includeHealth,
-            modelVersion: engine.configuration.modelVersion)
+            modelVersion: engine.configuration.modelVersion,
+            muscleRecovery: includeTraining ? MuscleRecoveryCalculator().summary(inputs, now: now) : nil,
+            acwr: includeTraining ? engine.acwrSummary(inputs, now: now) : nil)
     }
 
     func focusMetrics(for active: ActiveSportContext) -> [AthleticFocusMetric] {
@@ -177,7 +184,9 @@ struct AIContextBuilder: AIContextBuilding, Sendable {
 
     private func observedMetrics(_ workout: StrainWorkout, now: Date) -> AthleticObservedMetrics {
         var result = AthleticObservedMetrics(hoursSinceWorkout: max(0, Int(now.timeIntervalSince(workout.endedAt) / 3_600)), sessionRPE: workout.payload.loadInputs.sessionRPE, userEntered: workout.userEntered, effortIsEstimated: workout.effortIsEstimated)
-        if let zones = workout.payload.heartRateZones, zones.totalSeconds >= workout.durationSeconds * 0.8 {
+        result.zoneReferenceMaxBpm = workout.heartRateZoneEvidence?.maximumHeartRateBpm
+        result.zoneReferenceSource = workout.heartRateZoneEvidence?.reference
+        if let zones = workout.payload.heartRateZones, (workout.heartRateZoneEvidence?.observedSeconds ?? zones.totalSeconds) >= workout.durationSeconds * 0.8 {
             result.highZoneMinutes = zones.seconds.suffix(2).compactMap { $0 }.reduce(0, +) / 60
         }
         switch workout.payload {

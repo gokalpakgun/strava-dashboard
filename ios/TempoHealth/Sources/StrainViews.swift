@@ -14,7 +14,8 @@ extension HybridAxis {
 enum StrainInputAdapter {
     static func input(_ record: ArchetypeWorkoutRecord) -> StrainWorkout? {
         guard record.source != .strava, let payload = record.payload else { return nil }
-        return StrainWorkout(id: record.id, startedAt: record.date, durationSeconds: record.durationSeconds, payload: payload, source: record.source == .health ? .health : .tempo, isMindBody: record.isMindBody, userEntered: record.userEdited, effortIsEstimated: record.effortIsEstimated && payload.loadInputs.sessionRPE == record.automaticEffort)
+        let evidence = record.automaticZones.flatMap { seconds in payload.heartRateZones?.seconds == seconds.map(Optional.some) ? record.zoneEvidence : nil }
+        return StrainWorkout(id: record.id, startedAt: record.date, durationSeconds: record.durationSeconds, payload: payload, source: record.source == .health ? .health : .tempo, isMindBody: record.isMindBody, userEntered: record.userEdited, effortIsEstimated: record.effortIsEstimated && payload.loadInputs.sessionRPE == record.automaticEffort, heartRateZoneEvidence: evidence, sourceEndedAt: record.sourceEndedAt)
     }
 }
 
@@ -24,6 +25,8 @@ struct StrainDashboardState: Sendable {
     let recent: [ArchetypeWorkoutRecord]
     let scores: [String: UniversalStrainScore]
     let missingDailyRecords: Int
+    let muscleRecovery: MuscleRecoverySummary
+    let acwr: ACWRSummary
 }
 
 @MainActor
@@ -32,17 +35,17 @@ final class StrainDashboardViewModel: ObservableObject {
     func update(records: [ArchetypeWorkoutRecord], now: Date = Date()) {
         let engine = UniversalStrainEngine()
         var seen = Set<String>()
-        let local = records.filter { $0.source != .strava && $0.durationSeconds.isFinite && (1...604_800).contains($0.durationSeconds) && $0.date.timeIntervalSince1970.isFinite && $0.date.addingTimeInterval($0.durationSeconds) <= now && seen.insert($0.id).inserted }
+        let local = records.filter { $0.source != .strava && $0.durationSeconds.isFinite && (1...604_800).contains($0.durationSeconds) && $0.date.timeIntervalSince1970.isFinite && $0.endedAt <= now && seen.insert($0.id).inserted }
         let inputs = local.compactMap(StrainInputAdapter.input)
         let dailyStart = now.addingTimeInterval(-86_400)
         let summary = engine.summary(inputs, since: dailyStart, until: now)
-        let recent = Array(local.filter { $0.date.addingTimeInterval($0.durationSeconds) > now.addingTimeInterval(-7 * 86_400) }.sorted { $0.date > $1.date }.prefix(30))
+        let recent = Array(local.filter { $0.endedAt > now.addingTimeInterval(-7 * 86_400) }.sorted { $0.date > $1.date }.prefix(30))
         var scores: [String: UniversalStrainScore] = [:]
         for record in recent {
             if let input = StrainInputAdapter.input(record), let value = engine.score(for: input, history: inputs) { scores[record.id] = value }
         }
-        let dailyCount = local.filter { $0.date.addingTimeInterval($0.durationSeconds) > dailyStart }.count
-        state = StrainDashboardState(summary: summary, balance: engine.hybridBalance(inputs, now: now), recent: recent, scores: scores, missingDailyRecords: max(0, dailyCount - summary.workoutsWithScore))
+        let dailyCount = local.filter { $0.endedAt > dailyStart }.count
+        state = StrainDashboardState(summary: summary, balance: engine.hybridBalance(inputs, now: now), recent: recent, scores: scores, missingDailyRecords: max(0, dailyCount - summary.workoutsWithScore), muscleRecovery: MuscleRecoveryCalculator().summary(inputs, now: now), acwr: engine.acwrSummary(inputs, now: now))
     }
 }
 
@@ -66,6 +69,8 @@ struct StrainDashboardScreen: View {
                 NavigationLink(destination: PolymorphicWorkoutLibraryScreen()) {
                     Label("strain.addInputs".tempoLocalized, systemImage: "slider.horizontal.3").frame(maxWidth: .infinity)
                 }.buttonStyle(TempoSecondaryButtonStyle())
+                MuscleRecoveryCard(summary: state.muscleRecovery)
+                AcuteChronicLoadCard(summary: state.acwr)
                 TempoCard {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("strain.balanceTitle".tempoLocalized).font(.headline)
@@ -241,5 +246,93 @@ struct WorkoutStrainPreview: View {
                 Text("strain.muscleNote".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+@MainActor
+struct HeartRateZonesCard: View {
+    let record: ArchetypeWorkoutRecord
+    private var evidence: HeartRateZoneEvidence? {
+        guard let automatic = record.automaticZones, record.payload?.heartRateZones?.seconds == automatic.map(Optional.some) else { return nil }
+        return record.zoneEvidence
+    }
+    var body: some View {
+        if let zones = record.payload?.heartRateZones, zones.isValid {
+            TempoCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Label("zones.title".tempoLocalized, systemImage: "waveform.path.ecg").font(.headline)
+                    ForEach(0..<5, id: \.self) { index in
+                        HStack(spacing: 12) {
+                            Text("Z\(index + 1)").font(.caption.weight(.semibold)).frame(width: 24)
+                            ProgressView(value: min(1, (zones.seconds[index] ?? 0) / max(1, record.durationSeconds))).tint(index >= 3 ? TempoTheme.orange : TempoTheme.blue)
+                            Text(TempoFormat.duration(zones.seconds[index] ?? 0)).font(.caption.monospacedDigit()).frame(minWidth: 48, alignment: .trailing)
+                        }
+                    }
+                    if let evidence {
+                        Text((evidence.reference == .fallback190 ? "zones.fallback" : "zones.recordedPeak").tempoFormatted(Int(evidence.maximumHeartRateBpm.rounded()))).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        Text("zones.coverage".tempoFormatted(Int(min(100, evidence.observedSeconds / max(1, record.durationSeconds) * 100)))).font(.caption).foregroundStyle(TempoTheme.secondary)
+                        if evidence.belowZoneSeconds > 0 { Text("zones.below".tempoFormatted(TempoFormat.duration(evidence.belowZoneSeconds))).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                        if evidence.queryWasLimited { Text("zones.partial".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.orange) }
+                        Text("zones.method".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                    } else { Text("zones.manual".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                }
+            }
+        }
+    }
+}
+
+@MainActor
+struct MuscleRecoveryCard: View {
+    let summary: MuscleRecoverySummary
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("recovery.title".tempoLocalized, systemImage: "figure.strengthtraining.traditional").font(.headline)
+                Text("recovery.subtitle".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                if summary.hasData {
+                    TempoMetricGrid(columns: 2) {
+                        ForEach(summary.entries.filter { $0.readinessPercent != nil }) { entry in
+                            let value = entry.readinessPercent ?? 0
+                            VStack(alignment: .leading, spacing: 9) {
+                                Text(("archetype.muscle." + entry.muscle.rawValue).tempoLocalized).font(.subheadline.weight(.medium))
+                                Text("\(value)%").font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(value >= 75 ? TempoTheme.green : TempoTheme.orange)
+                                ProgressView(value: Double(value) / 100).tint(value >= 75 ? TempoTheme.green : TempoTheme.orange)
+                                Text("recovery.sets".tempoFormatted(entry.recentSets, entry.recentHighEffortSets)).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 17))
+                        }
+                    }
+                    let missing = summary.entries.filter { $0.readinessPercent == nil }.map { ("archetype.muscle." + $0.muscle.rawValue).tempoLocalized }
+                    if !missing.isEmpty { Text("recovery.missing".tempoFormatted(missing.joined(separator: ", "))).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                } else { Text("recovery.noData".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary) }
+                if summary.unclassifiedRecentSets > 0 { Text("recovery.unclassified".tempoFormatted(summary.unclassifiedRecentSets)).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                DisclosureGroup("recovery.how".tempoLocalized) { Text("recovery.explanation".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).padding(.top, 8) }.font(.subheadline)
+                Text("recovery.note".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            }
+        }.accessibilityIdentifier("strain.muscleRecovery")
+    }
+}
+
+@MainActor
+struct AcuteChronicLoadCard: View {
+    let summary: ACWRSummary
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("acwr.title".tempoLocalized, systemImage: "chart.bar.xaxis").font(.headline)
+                Text(summary.status == .insufficientHistory ? "—" : (summary.ratio.map { $0.formatted(.number.precision(.fractionLength(2))) + "×" } ?? "—")).font(.largeTitle.weight(.medium).monospacedDigit()).foregroundStyle(TempoTheme.blue)
+                Text(("acwr.status." + summary.status.rawValue).tempoLocalized).font(.subheadline.weight(.semibold))
+                Text("acwr.history".tempoFormatted(summary.historyDays, summary.scoredWorkouts, summary.unscoredWorkouts)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                if summary.limitedEvidence { Text("acwr.limited".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                DisclosureGroup("acwr.how".tempoLocalized) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("acwr.formula".tempoLocalized)
+                        if summary.status == .insufficientHistory, let ratio = summary.ratio { Text("acwr.provisional".tempoFormatted(ratio.formatted(.number.precision(.fractionLength(2))))) }
+                        Text("acwr.doses".tempoFormatted(summary.acuteDose.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "—", summary.chronicWeeklyAverageDose.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "—"))
+                        Text("acwr.bands".tempoLocalized)
+                    }.font(.caption).foregroundStyle(TempoTheme.secondary).padding(.top, 8)
+                }.font(.subheadline)
+                Text("acwr.note".tempoLocalized).font(.caption2).foregroundStyle(TempoTheme.secondary)
+            }
+        }.accessibilityIdentifier("strain.acwr")
     }
 }

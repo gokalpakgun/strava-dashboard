@@ -29,6 +29,10 @@ struct ArchetypeWorkoutRecord: Identifiable, Sendable {
     var peakHeartRateBpm: Double?
     var automaticEffort: Double?
     var effortIsEstimated = false
+    var automaticZones: [Double]?
+    var zoneEvidence: HeartRateZoneEvidence?
+    var sourceEndedAt: Date?
+    var endedAt: Date { sourceEndedAt ?? date.addingTimeInterval(durationSeconds) }
     var sourceTitle: String {
         sourceLabel
     }
@@ -49,8 +53,11 @@ enum WorkoutPayloadAdapter {
         if let effort = workout.sourceWorkoutEffort, effort.isFinite, (1...10).contains(effort), var value = payload {
             var input = value.loadInputs; input.sessionRPE = effort; value.loadInputs = input; payload = value
         }
+        if let seconds = workout.sourceHeartRateZones, HeartRateZones(seconds: seconds.map(Optional.some)).isValid, var value = payload {
+            value.heartRateZones = HeartRateZones(seconds: seconds.map(Optional.some)); payload = value
+        }
         // Mevcut 1–5 zorluk notu, farklı bir ölçek olan RPE 1–10'a dönüştürülmez.
-        return ArchetypeWorkoutRecord(id: "local-" + workout.id.uuidString, title: workout.title, date: workout.startedAt, durationSeconds: duration, source: workout.recordSource == "apple-health" ? .health : .tempo, sourceLabel: workout.sourceTitle, payload: payload, isMindBody: workout.sportId == "yoga" || SportMapper.isMindBody(healthKitRawValue: workout.originalHealthActivityType), sportID: workout.sportId, hasLowerBodyImpact: ["football", "basketball", "tennis", "volleyball", "padel", "badminton"].contains(workout.sportId) || SportMapper.hasLowerBodyImpact(healthKitRawValue: workout.originalHealthActivityType), averageHeartRateBpm: workout.sourceAverageHeartRateBpm, peakHeartRateBpm: workout.sourcePeakHeartRateBpm, automaticEffort: workout.sourceWorkoutEffort, effortIsEstimated: workout.sourceEffortIsEstimated == true)
+        return ArchetypeWorkoutRecord(id: "local-" + workout.id.uuidString, title: workout.title, date: workout.startedAt, durationSeconds: duration, source: workout.recordSource == "apple-health" ? .health : .tempo, sourceLabel: workout.sourceTitle, payload: payload, isMindBody: workout.sportId == "yoga" || SportMapper.isMindBody(healthKitRawValue: workout.originalHealthActivityType), sportID: workout.sportId, hasLowerBodyImpact: ["football", "basketball", "tennis", "volleyball", "padel", "badminton"].contains(workout.sportId) || SportMapper.hasLowerBodyImpact(healthKitRawValue: workout.originalHealthActivityType), averageHeartRateBpm: workout.sourceAverageHeartRateBpm, peakHeartRateBpm: workout.sourcePeakHeartRateBpm, automaticEffort: workout.sourceWorkoutEffort, effortIsEstimated: workout.sourceEffortIsEstimated == true, automaticZones: workout.sourceHeartRateZones, zoneEvidence: workout.sourceHeartRateZoneEvidence, sourceEndedAt: workout.sourceEndedAt)
     }
     static func record(_ activity: TempoActivity) -> ArchetypeWorkoutRecord? {
         guard let date = activity.date else { return nil }
@@ -321,12 +328,17 @@ struct PolymorphicWorkoutDetailScreen: View {
     let record: ArchetypeWorkoutRecord
     @ObservedObject var store: SportMetricsStore
     @State private var editing = false
-    private var current: ArchetypeWorkoutRecord { store.applying(to: record) }
+    private var sourceRecord: ArchetypeWorkoutRecord {
+        guard record.source != .strava, let live = model.activityWorkouts.first(where: { "local-" + $0.id.uuidString == record.id }) else { return record }
+        return WorkoutPayloadAdapter.record(live)
+    }
+    private var current: ArchetypeWorkoutRecord { store.applying(to: sourceRecord) }
     var body: some View {
         TempoPage {
             PolymorphicWorkoutCardView(record: current)
             if record.source != .strava {
                 WorkoutStrainPreview(record: current, history: model.activityWorkouts.map { store.applying(to: WorkoutPayloadAdapter.record($0)) })
+                if current.payload?.heartRateZones != nil { HeartRateZonesCard(record: current) }
             }
             if record.payload != nil, record.source != .strava {
                 Button { editing = true } label: { Label("archetype.edit".tempoLocalized, systemImage: "slider.horizontal.3").frame(maxWidth: .infinity) }
@@ -335,7 +347,10 @@ struct PolymorphicWorkoutDetailScreen: View {
             Text("archetype.editNote".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
         }.navigationTitle("archetype.details".tempoLocalized).navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
             .sheet(isPresented: $editing) {
-                if let payload = current.payload { WorkoutMetricsEditor(record: record, initial: payload, store: store) }
+                if let payload = current.payload { WorkoutMetricsEditor(record: sourceRecord, initial: payload, store: store) }
+            }
+            .task(id: record.id) {
+                if record.source == .health, let id = UUID(uuidString: String(record.id.dropFirst(6))) { await model.ensureWorkoutHeartRateZones(workoutID: id) }
             }
     }
 }

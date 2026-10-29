@@ -1,4 +1,5 @@
 import CoreLocation
+import Combine
 import Foundation
 import MapKit
 import SwiftUI
@@ -191,6 +192,17 @@ struct TempoMovementMenuScreen: View {
     @State private var energy: TempoMovementEnergy = .steady
     @State private var hasEquipment = false
     @State private var selectedSportID = "walking"
+    @StateObject private var recoveryMetrics = SportMetricsStore()
+    @State private var muscleRecovery: MuscleRecoverySummary?
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var hasMuscleLoadConcern: Bool {
+        let low = Set(muscleRecovery?.lowerReadinessGroups ?? [])
+        if selectedSport == .yoga { return false }
+        if selectedSport == .fitness { return !low.isEmpty }
+        if selectedSport == .swimming { return !low.isDisjoint(with: [.shoulders, .back, .arms, .fullBody]) }
+        return !low.isDisjoint(with: [.legs, .fullBody])
+    }
 
     private var selectedSport: TempoSportChoice {
         TempoSportChoice(rawValue: selectedSportID) ?? .walking
@@ -198,7 +210,7 @@ struct TempoMovementMenuScreen: View {
 
     private var adaptedSport: TempoSportChoice {
         let recentHardSession = model.manualWorkouts.sorted { $0.startedAt > $1.startedAt }.first?.perceivedEffort ?? 0
-        if isReturningAfterBreak || energy == .low || (model.tempoBalance?.value ?? 100) < 55 || recentHardSession >= 4 {
+        if hasMuscleLoadConcern || isReturningAfterBreak || energy == .low || (model.tempoBalance?.value ?? 100) < 55 || recentHardSession >= 4 {
             return profileSports.contains(.yoga) ? .yoga : .walking
         }
         let needsEquipment: Set<TempoSportChoice> = [.cycling, .swimming, .tennis, .basketball, .football, .volleyball, .padel, .badminton]
@@ -260,6 +272,7 @@ struct TempoMovementMenuScreen: View {
         return count
     }
     private var adjustmentNote: String {
+        if hasMuscleLoadConcern { return "recovery.movementNote".tempoLocalized }
         if isReturningAfterBreak, let daysSinceLastWorkout {
             return "Son antrenman kaydının üzerinden %d gün geçti. Kısa ve kolay başlayıp ritmini yeniden kurabilirsin.".tempoFormatted(daysSinceLastWorkout)
         }
@@ -276,9 +289,12 @@ struct TempoMovementMenuScreen: View {
         TempoPage {
             PageTitle(title: "Günün hareket menüsü", subtitle: "Bugün sana uyan seçeneği bul")
             readinessCard
+            if let muscleRecovery, muscleRecovery.hasData {
+                TempoDisclosureSection(title: "recovery.title", icon: "figure.strengthtraining.traditional") { MuscleRecoveryCard(summary: muscleRecovery) }
+            }
             activityChoices
             consistencyCard
-            NavigationLink(destination: CoachScreen()) {
+            NavigationLink(destination: CoachScreen(sportContext: .selected(selectedSportID))) {
                 Label("Tempo Koç’a danış", systemImage: "sparkles").frame(maxWidth: .infinity)
             }
             .buttonStyle(TempoSecondaryButtonStyle())
@@ -290,7 +306,19 @@ struct TempoMovementMenuScreen: View {
         .tempoGlassBackButton()
         .onAppear {
             if !profileSports.contains(selectedSport) { selectedSportID = profileSports.first?.rawValue ?? "walking" }
+            recoveryMetrics.reload(); refreshMuscleRecovery()
         }
+        .task(id: account.profile?.id) { recoveryMetrics.bind(account.profile?.id); refreshMuscleRecovery() }
+        .onChange(of: recoveryMetrics.revision) { _, _ in refreshMuscleRecovery() }
+        .onChange(of: model.activityWorkouts) { _, _ in refreshMuscleRecovery() }
+        .onChange(of: model.healthSyncEnabled) { _, _ in refreshMuscleRecovery() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { refreshMuscleRecovery() } }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in refreshMuscleRecovery() }
+    }
+
+    private func refreshMuscleRecovery() {
+        let inputs = CrossSportInputAdapter.workouts(model.activityWorkouts, store: recoveryMetrics, includeHealth: model.healthSyncEnabled).map(\.workout)
+        muscleRecovery = MuscleRecoveryCalculator().summary(inputs)
     }
 
     private var readinessCard: some View {

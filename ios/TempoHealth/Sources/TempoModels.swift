@@ -180,6 +180,9 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
     var sourceCadencePerMinute: Double? = nil
     var sourceWorkoutEffort: Double? = nil
     var sourceEffortIsEstimated: Bool? = nil
+    var sourceHeartRateZones: [Double]? = nil
+    var sourceHeartRateZoneEvidence: HeartRateZoneEvidence? = nil
+    var sourceEndedAt: Date? = nil
     let id: UUID
     let sportId: String
     let sportTitle: String

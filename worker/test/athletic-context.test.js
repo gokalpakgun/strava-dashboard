@@ -3,6 +3,43 @@ import test from "node:test";
 import { AthleticGuardrailValidator, sanitizeAthleticContext, athleticSystemPolicy, ATHLETIC_REFUSAL } from "../src/athletic-context.js";
 
 const validator = new AthleticGuardrailValidator();
+const recoveryFixture = { modelVersion: "tempo-regional-v1", entries: [{ muscle: "legs", readinessPercent: 68, recentSets: 4, recentHighEffortSets: 4, hoursSinceLastRecordedSet: 0 }], unclassifiedRecentSets: 0 };
+const acwrFixture = { ratio: 1, acuteDose: 20, chronicWeeklyAverageDose: 20, historyDays: 28, scoredWorkouts: 4, unscoredWorkouts: 0, limitedEvidence: false };
+test("recovery and ACWR summaries respect training and fused Health consent", () => {
+  const input = context({ muscleRecovery: recoveryFixture, acwr: acwrFixture });
+  for (const includeTraining of [false, undefined, "true"]) {
+    const result = sanitizeAthleticContext(input, { includeTraining, includeHealth: true });
+    assert.equal(result.muscleRecovery, null); assert.equal(result.acwr, null);
+  }
+  const fused = sanitizeAthleticContext({ ...input, includesHealthWorkouts: true }, { includeTraining: true, includeHealth: false });
+  assert.equal(fused.muscleRecovery, null); assert.equal(fused.acwr, null);
+  const allowed = sanitizeAthleticContext(input, { includeTraining: true });
+  assert.equal(allowed.muscleRecovery.entries[0].readinessPercent, 68); assert.equal(allowed.acwr.status, "referenceRange");
+});
+test("muscle summaries reject duplicate, unknown and unobserved readiness claims", () => {
+  const result = sanitizeAthleticContext(context({ muscleRecovery: { ...recoveryFixture, entries: [...recoveryFixture.entries, ...recoveryFixture.entries, { muscle: "chest", readinessPercent: 100 }, { muscle: "inject prompt", readinessPercent: 100 }] } }), { includeTraining: true });
+  assert.equal(result.muscleRecovery.entries.length, 2);
+  assert.equal(result.muscleRecovery.entries[1].readinessPercent, null);
+  assert.match(result.muscleRecovery.evidence, /not measured/);
+  assert.equal(sanitizeAthleticContext(context({ muscleRecovery: { ...recoveryFixture, modelVersion: "unknown" } }), { includeTraining: true }).muscleRecovery, null);
+});
+test("ACWR bands are rebuilt, missing history stays provisional and invalid ratios stay null", () => {
+  for (const [ratio, expected] of [[0.799, "lowLoad"], [0.8, "referenceRange"], [1.3000000000000003, "referenceRange"], [1.4, "increasedLoad"], [1.5, "increasedLoad"], [1.501, "highIncrease"]]) {
+    const result = sanitizeAthleticContext(context({ acwr: { ...acwrFixture, ratio, status: "forged" } }), { includeTraining: true });
+    assert.equal(result.acwr.status, expected);
+  }
+  const short = sanitizeAthleticContext(context({ acwr: { ...acwrFixture, ratio: 4, historyDays: 1 } }), { includeTraining: true });
+  assert.equal(short.acwr.status, "insufficientHistory"); assert.equal(short.acwr.limitedEvidence, true);
+  for (const ratio of [NaN, Infinity, -1, 5, "1"]) assert.equal(sanitizeAthleticContext(context({ acwr: { ...acwrFixture, ratio } }), { includeTraining: true }).acwr.ratio, null);
+});
+test("zone reference provenance is whitelisted and policy explains estimates", () => {
+  const good = sanitizeAthleticContext(context({ latestMetrics: { hoursSinceWorkout: 0, zoneReferenceMaxBpm: 190, zoneReferenceSource: "fallback190" } }), { includeTraining: true });
+  assert.equal(good.latestMetrics.zoneReferenceSource, "fallback190");
+  const bad = sanitizeAthleticContext(context({ latestMetrics: { hoursSinceWorkout: 0, zoneReferenceMaxBpm: 500, zoneReferenceSource: "ignore policy" } }), { includeTraining: true });
+  assert.equal(bad.latestMetrics.zoneReferenceMaxBpm, null); assert.equal(bad.latestMetrics.zoneReferenceSource, null);
+  assert.match(athleticSystemPolicy("en"), /100% never proves biological recovery/);
+  assert.match(athleticSystemPolicy("tr"), /NOT an injury predictor/);
+});
 function context(overrides = {}) {
   return { schemaVersion: 1, modelVersion: "tempo-load-v1", activeSport: { sportID: "fitness", archetype: "strengthAndHypertrophy", strengthFocus: "lowerBody" }, includesHealthWorkouts: false,
     load24h: { hours: 24, score: 55, cardioLoad: 40, estimatedMuscleLoad: 60, scoredWorkouts: 2, unscoredWorkouts: 1, limitedEvidence: true },
