@@ -1353,3 +1353,33 @@
 
 "social.coop.partial" = "Yalnız katılıp paylaşımı açan üyelerin mevcut skorları katkı sağlar. Eksik veya gizli veriler hesaba katılmaz.";
 "preset.openSets" = "Setler ve şablonlar";
+
+"places.locationTimeout" = "Konum beklemesi uzadı. Konum servislerini kontrol edip yeniden dene.";
+
+"profile.extra.progress" = "Bu haftaki hareketin";
+
+"profile.extra.weekSessions" = "Bu haftaki antrenman";
+
+"profile.extra.activeDays" = "Antrenman yapılan gün";
+
+"profile.extra.restNote" = "Dinlenme günleri de planının parçasıdır. Bu sayılar kayıtlı antrenmanlarını yansıtır.";
+
+"profile.extra.nextBadge" = "Yaklaştığın rozet";
+
+"profile.extra.allBadges" = "Başarılarını keşfet";
+
+"social.extra.favoritesOnly" = "Yalnız favoriler";
+
+"social.extra.viewProfile" = "Arkadaş kartını aç";
+
+"social.extra.favorite" = "Favorilere ekle";
+
+"social.extra.unfavorite" = "Favorilerden çıkar";
+
+"social.extra.inviteCoop" = "Ortak hedef başlat";
+
+"social.extra.inviteRace" = "Yarışa davet et";
+
+"social.extra.sharedChallenges" = "Ortak mücadeleler";
+
+"social.extra.privateNote" = "Bu kart herkese açık profil bilgileriyle ikinizin de katıldığı mücadeleleri gösterir. Favorilerin cihazında saklanır.";

@@ -1878,3 +1878,33 @@
 
 "social.coop.partial" = "Only available scores from accepted members who enable sharing contribute. Missing or private data is not counted.";
 "preset.openSets" = "Sets and templates";
+
+"places.locationTimeout" = "Location took too long. Check Location Services and try again.";
+
+"profile.extra.progress" = "Your movement this week";
+
+"profile.extra.weekSessions" = "Workouts this week";
+
+"profile.extra.activeDays" = "Days with a workout";
+
+"profile.extra.restNote" = "Rest days belong in your plan too. These counts reflect recorded workouts.";
+
+"profile.extra.nextBadge" = "A badge within reach";
+
+"profile.extra.allBadges" = "Explore your achievements";
+
+"social.extra.favoritesOnly" = "Favorites only";
+
+"social.extra.viewProfile" = "View friend card";
+
+"social.extra.favorite" = "Add to favorites";
+
+"social.extra.unfavorite" = "Remove from favorites";
+
+"social.extra.inviteCoop" = "Start a shared goal";
+
+"social.extra.inviteRace" = "Invite to compete";
+
+"social.extra.sharedChallenges" = "Shared challenges";
+
+"social.extra.privateNote" = "This card shows public profile details and challenges you have both joined. Favorites stay on your device.";

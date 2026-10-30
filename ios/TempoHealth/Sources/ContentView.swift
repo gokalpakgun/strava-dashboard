@@ -2326,6 +2326,12 @@ struct SocialScreen: View {
     @State private var showAddFriend = false
     @State private var showChallengeComposer = false
     @State private var friendQuery = ""
+    @State private var favoriteIDs: Set<String> = []
+    @State private var favoritesOwner: String?
+    @State private var favoritesOnly = false
+    @State private var friendProfile: TempoSocialProfile?
+    @State private var quickInvite: TempoSocialProfile?
+    @State private var quickInviteMode = "competitive"
     @State private var snapshot: TempoSocialSnapshot?
     @State private var username = ""
     @State private var title = ""
@@ -2358,7 +2364,11 @@ struct SocialScreen: View {
     private var friends: [TempoSocialProfile] { (snapshot?.friends ?? []).filter { !removedFriendIds.contains($0.id) } }
     private var filteredFriends: [TempoSocialProfile] {
         let query = friendQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        return query.isEmpty ? friends : friends.filter { $0.displayName.localizedStandardContains(query) || $0.username.localizedStandardContains(query) }
+        return friends.filter { (!favoritesOnly || favoriteIDs.contains($0.id)) && (query.isEmpty || $0.displayName.localizedStandardContains(query) || $0.username.localizedStandardContains(query)) }.sorted {
+            let left = favoriteIDs.contains($0.id), right = favoriteIDs.contains($1.id)
+            if left != right { return left }
+            return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        }
     }
     private var challenges: [TempoSocialChallenge] {
         var seen = Set<String>()
@@ -2407,6 +2417,12 @@ struct SocialScreen: View {
             }
         }
         .refreshable { await refresh() }
+        .sheet(item: $friendProfile, onDismiss: {
+            guard let friend = quickInvite else { return }; quickInvite = nil
+            guard friends.contains(where: { $0.id == friend.id }) else { return }
+            selectedFriends = [friend.id]; challengeMode = quickInviteMode; sharedTarget = ""
+            selectedSection = .challenges; showChallengeComposer = true
+        }) { friend in friendDetail(friend) }
         .sheet(isPresented: $showAddFriend) { friendComposer }
         .sheet(isPresented: $showChallengeComposer) { challengeSheet }
         .sheet(item: $pendingHealthChallenge) { challenge in healthConsentSheet(for: challenge) }
@@ -2420,10 +2436,14 @@ struct SocialScreen: View {
             Button("Vazgeç", role: .cancel) { pendingCancelChallenge = nil }
         } message: { Text("social.challenge.cancelDetail".tempoLocalized) }
         .navigationTitle("Sosyal").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
-        .task {
+        .task(id: account.profile?.id) {
 #if DEBUG
             guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
 #endif
+            favoritesOwner = account.profile?.id
+            favoriteIDs = favoritesOwner.map { TempoSocialFavorites.load(owner: $0) } ?? []
+            snapshot = nil; createdChallenges = []; removedFriendIds = []; cancelledChallengeIds = []; selectedFriends = []
+            friendProfile = nil; quickInvite = nil
             await refresh()
         }
         .alert("Mücadele", isPresented: Binding(get: { showChallengeFeedback && !showChallengeComposer }, set: { showChallengeFeedback = $0 })) { Button("Tamam") {} } message: { Text(notice) }
@@ -2434,6 +2454,44 @@ struct SocialScreen: View {
             Button("Vazgeç", role: .cancel) { pendingBlockProfile = nil }
         } message: {
             Text("Engellenen hesap arkadaş listesinden ve ortak yarışmalarından kaldırılır.")
+        }
+    }
+
+
+    private func toggleFavorite(_ friend: TempoSocialProfile) {
+        guard let owner = favoritesOwner, owner == account.profile?.id else { return }
+        if favoriteIDs.contains(friend.id) { favoriteIDs.remove(friend.id) } else { favoriteIDs.insert(friend.id) }
+        TempoSocialFavorites.save(favoriteIDs, owner: owner)
+    }
+    private func friendDetail(_ friend: TempoSocialProfile) -> some View {
+        NavigationStack {
+            TempoPage {
+                TempoCard {
+                    VStack(spacing: 14) {
+                        SocialAvatar(profile: friend, size: 88)
+                        Text(friend.displayName.isEmpty ? friend.username : friend.displayName).font(.title2.bold())
+                        Text("@" + friend.username).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        Button { toggleFavorite(friend) } label: {
+                            Label((favoriteIDs.contains(friend.id) ? "social.extra.unfavorite" : "social.extra.favorite").tempoLocalized, systemImage: favoriteIDs.contains(friend.id) ? "star.fill" : "star")
+                        }.buttonStyle(TempoSecondaryButtonStyle())
+                    }.frame(maxWidth: .infinity)
+                }
+                ForEach(["competitive", "coop"], id: \.self) { mode in
+                    Button { quickInvite = friend; quickInviteMode = mode; friendProfile = nil } label: {
+                        Label((mode == "coop" ? "social.extra.inviteCoop" : "social.extra.inviteRace").tempoLocalized, systemImage: mode == "coop" ? "person.2.fill" : "flag.checkered").frame(maxWidth: .infinity, minHeight: 44)
+                    }.buttonStyle(TempoPrimaryButtonStyle()).disabled(working || !friends.contains { $0.id == friend.id })
+                }
+                TempoCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("social.extra.sharedChallenges".tempoLocalized).font(.headline)
+                        let shared = challenges.filter { $0.myStatus == "accepted" && $0.participants.contains { $0.userId == friend.id && $0.status == "accepted" } }
+                        Text(shared.count.formatted()).font(.largeTitle.monospacedDigit())
+                        ForEach(shared.prefix(3)) { challenge in Text(challenge.title).font(.subheadline) }
+                        Text("social.extra.privateNote".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+                }
+            }.navigationTitle("social.extra.viewProfile".tempoLocalized).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Kapat".tempoLocalized) { friendProfile = nil } } }
         }
     }
 
@@ -2597,6 +2655,7 @@ struct SocialScreen: View {
                         TextField("Arkadaşlarında ara".tempoLocalized, text: $friendQuery)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                     }.padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 16))
+                    Toggle("social.extra.favoritesOnly".tempoLocalized, isOn: $favoritesOnly).font(.subheadline).tint(TempoTheme.green)
                     Text("Birlikte yarışmak için arkadaşlarını seç.".tempoLocalized)
                         .font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
@@ -2618,7 +2677,11 @@ struct SocialScreen: View {
                                 }.contentShape(Rectangle())
                             }.buttonStyle(.plain).disabled(working)
                                 .accessibilityAddTraits(selectedFriends.contains(friend.id) ? .isSelected : [])
-                            Menu { safetyMenu(for: friend) } label: {
+                            Menu {
+                                Button("social.extra.viewProfile".tempoLocalized, systemImage: "person.crop.rectangle") { friendProfile = friend }
+                                Button((favoriteIDs.contains(friend.id) ? "social.extra.unfavorite" : "social.extra.favorite").tempoLocalized, systemImage: favoriteIDs.contains(friend.id) ? "star.slash" : "star") { toggleFavorite(friend) }
+                                safetyMenu(for: friend)
+                            } label: {
                                 Image(systemName: "ellipsis").font(.headline).foregroundStyle(TempoTheme.secondary)
                                     .frame(width: 44, height: 44).contentShape(Rectangle())
                             }.disabled(working).accessibilityLabel("Kullanıcı seçenekleri".tempoLocalized)
@@ -2815,13 +2878,14 @@ struct SocialScreen: View {
     }
 
     private func refresh(clearNotice: Bool = true) async {
+        let expectedOwner = account.profile?.id
         let generation = UUID()
         refreshGeneration = generation
         loading = true
         defer { if refreshGeneration == generation { loading = false } }
         do {
             let updated = try await account.loadSocial()
-            guard !Task.isCancelled, refreshGeneration == generation else { return }
+            guard !Task.isCancelled, refreshGeneration == generation, account.profile?.id == expectedOwner else { return }
             snapshot = updated
             removedFriendIds.formIntersection(Set(updated.friends.map(\.id)))
             selectedFriends.formIntersection(Set(snapshot?.friends.map(\.id) ?? []))
@@ -2908,6 +2972,7 @@ struct SocialScreen: View {
             try await account.removeSocialFriend(userId: profile.id)
             removedFriendIds.insert(profile.id)
             selectedFriends.remove(profile.id)
+            if favoriteIDs.remove(profile.id) != nil, let owner = favoritesOwner, owner == account.profile?.id { TempoSocialFavorites.save(favoriteIDs, owner: owner) }
             pendingRemoveFriend = nil
             notice = "social.friend.removed".tempoLocalized
             await refresh(clearNotice: false)
@@ -2973,7 +3038,10 @@ struct SocialScreen: View {
         working = true; defer { working = false }
         do {
             try await account.setSocialBlock(userId: profile.id, blocked: blocked)
-            if blocked { createdChallenges.removeAll { $0.participants.contains(where: { $0.userId == profile.id }) } }
+            if blocked {
+                createdChallenges.removeAll { $0.participants.contains(where: { $0.userId == profile.id }) }
+                if favoriteIDs.remove(profile.id) != nil, let owner = favoritesOwner, owner == account.profile?.id { TempoSocialFavorites.save(favoriteIDs, owner: owner) }
+            }
             notice = (blocked ? "Kullanıcı engellendi." : "Engel kaldırıldı.").tempoLocalized
             pendingBlockProfile = nil
             await refresh(clearNotice: false)
@@ -3287,6 +3355,7 @@ private struct MoreScreen: View {
             TempoPage {
                 PageTitle(title: "Profil", subtitle: "Hesabın, araçların ve bağlantıların")
                 AccountProfileCard()
+                ProfileProgressSummary()
                 SectionHeading(title: "Hesabın", caption: "", padding: false)
                 TempoCard {
                     VStack(spacing: 0) {

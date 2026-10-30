@@ -729,6 +729,52 @@ struct AccountOnboardingView: View {
     }
 }
 
+struct ProfileProgressSummary: View {
+    @EnvironmentObject private var model: TempoAppModel
+    private var workouts: [TempoManualWorkout] { model.weekActivityWorkouts }
+    private var activeDays: Int { Set(workouts.map { Calendar.autoupdatingCurrent.startOfDay(for: $0.startedAt) }).count }
+    private var nextBadge: TempoBadge? {
+        model.tempoAchievement.badges.filter { !$0.unlocked && $0.progress > 0 && $0.progress.isFinite }.sorted {
+            $0.progress == $1.progress ? $0.id < $1.id : $0.progress > $1.progress
+        }.first
+    }
+    var body: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("profile.extra.progress".tempoLocalized, systemImage: "chart.bar.xaxis").font(.headline)
+                TempoMetricGrid(columns: 2) {
+                    metric("profile.extra.weekSessions", value: workouts.count.formatted(), symbol: "figure.mixed.cardio")
+                    metric("profile.extra.activeDays", value: activeDays.formatted(), symbol: "calendar")
+                }
+                Text("profile.extra.restNote".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                if let badge = nextBadge {
+                    Divider()
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: badge.symbol).font(.title2).foregroundStyle(badge.tempoColor)
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("profile.extra.nextBadge".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                            Text(badge.title.tempoLocalized).font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                            ProgressView(value: badge.safeProgress).tint(TempoTheme.green)
+                            Text(badge.current.formatted(.number.precision(.fractionLength(0...1))) + " / " + badge.target.formatted(.number.precision(.fractionLength(0...1))) + " " + badge.unit.tempoLocalized).font(.caption.monospacedDigit()).foregroundStyle(TempoTheme.secondary)
+                        }
+                    }
+                }
+                NavigationLink(destination: AchievementsScreen()) {
+                    Label("profile.extra.allBadges".tempoLocalized, systemImage: "arrow.up.right").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }.buttonStyle(.plain).foregroundStyle(TempoTheme.green)
+            }
+        }
+    }
+    private func metric(_ title: String, value: String, symbol: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: symbol).foregroundStyle(TempoTheme.green)
+            Text(value).font(.title2.monospacedDigit().weight(.semibold))
+            Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 20))
+            .accessibilityElement(children: .combine)
+    }
+}
+
 struct AccountProfileCard: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel

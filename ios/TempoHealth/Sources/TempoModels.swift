@@ -605,6 +605,20 @@ struct TempoSocialChallenge: Decodable, Identifiable {
     }
 }
 
+@MainActor
+enum TempoSocialFavorites {
+    private static func key(_ owner: String) -> String { "tempo.social-favorites.v1." + owner }
+    static func load(owner: String) -> Set<String> {
+        guard let values = UserDefaults.standard.stringArray(forKey: key(owner)) else { return [] }
+        return Set(values.prefix(1_000).filter { !$0.isEmpty && $0.count <= 128 })
+    }
+    static func save(_ ids: Set<String>, owner: String) {
+        guard !owner.isEmpty else { return }
+        UserDefaults.standard.set(Array(ids.sorted().prefix(1_000)), forKey: key(owner))
+    }
+    static func removeData(for owner: String) { UserDefaults.standard.removeObject(forKey: key(owner)) }
+}
+
 struct TempoSocialSnapshot: Decodable {
     let profile: TempoSocialProfile?
     let friends: [TempoSocialProfile]

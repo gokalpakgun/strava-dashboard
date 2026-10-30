@@ -1311,6 +1311,7 @@ struct NearbyFacilitiesScreen: View {
             selectedPlaceID = nil
             await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm)
         }
+        .onDisappear { searchModel.cancelSearch() }
         .onChange(of: searchModel.region?.center.latitude) { _, _ in updateCamera() }
         .onChange(of: searchModel.region?.center.longitude) { _, _ in updateCamera() }
         .onChange(of: searchModel.region?.span.latitudeDelta) { _, _ in updateCamera() }
@@ -1451,6 +1452,14 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     private var pendingRadiusKm = 25
     private var searchGeneration = 0
     private var resultCache: [String: CachedFacilitySearch] = [:]
+    private var locationDeadline: Task<Void, Never>?
+    private let providerSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 10
+        configuration.waitsForConnectivity = false
+        return URLSession(configuration: configuration)
+    }()
 
     override init() {
         super.init()
@@ -1465,6 +1474,13 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             manager.requestWhenInUseAuthorization()
         case .authorizedAlways, .authorizedWhenInUse:
             needsPermission = false
+            locationDeadline?.cancel()
+            locationDeadline = Task { [weak self] in
+                do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
+                guard let self, self.pendingSport != nil else { return }
+                self.pendingSport = nil; self.isSearching = false; self.searchFailed = true
+                self.message = "places.locationTimeout".tempoLocalized
+            }
             manager.requestLocation()
         case .denied, .restricted:
             invalidateLocationAccess()
@@ -1495,6 +1511,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
 
         searchGeneration += 1
         let generation = searchGeneration
+        defer { if generation == searchGeneration { isSearching = false } }
         isSearching = true
         searchFailed = false
         message = nil
@@ -1564,8 +1581,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
                     request.naturalLanguageQuery = query
                     request.region = searchRegion
                     request.resultTypes = .pointOfInterest
-                    guard !Task.isCancelled, let response = try? await MKLocalSearch(request: request).start() else { return FacilitySearchBatch(places: [], succeeded: false) }
-                    return FacilitySearchBatch(places: response.mapItems.filter { sport.matchesFacilityName($0.name ?? "") && CLLocationCoordinate2DIsValid($0.placemark.coordinate) }.prefix(35).map { NearbyPlace($0, origin: location) }, succeeded: !Task.isCancelled)
+                    return await FacilityAppleSearchOperation(request: request).run(sport: sport, location: location)
                 }
             }
             var results: [NearbyPlace] = []
@@ -1586,7 +1602,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         let selectors = sport.openStreetMapSelectors
             .map { "nwr(around:\(radiusMeters),\(latitude),\(longitude))\($0);" }
             .joined()
-        let query = "[out:json][timeout:18];(\(selectors));out center tags;"
+        let query = "[out:json][timeout:8];(\(selectors));out center tags;"
 
         let endpoints = [
             "https://overpass.kumi.systems/api/interpreter",
@@ -1600,11 +1616,11 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
-            request.timeoutInterval = 12
+            request.timeoutInterval = 8
             request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.setValue("Tempo/1.0 (https://apitempo.com)", forHTTPHeaderField: "User-Agent")
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await providerSession.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { continue }
                 let decoded = try JSONDecoder().decode(OpenStreetMapResponse.self, from: data)
                 return FacilitySearchBatch(places: decoded.elements.filter { sport.matchesFacilityTags($0.tags ?? [:]) }.prefix(160).compactMap {
@@ -1644,6 +1660,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     }
 
     private func invalidateLocationAccess() {
+        locationDeadline?.cancel()
         searchGeneration += 1
         isSearching = false
         searchFailed = false
@@ -1660,13 +1677,14 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
             needsPermission = false
-            manager.requestLocation()
+            requestLocation()
         } else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
             invalidateLocationAccess()
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        locationDeadline?.cancel()
         guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
         guard let value = locations.last(where: {
             CLLocationCoordinate2DIsValid($0.coordinate) && $0.horizontalAccuracy >= 0 && abs($0.timestamp.timeIntervalSinceNow) <= 120
@@ -1687,6 +1705,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        locationDeadline?.cancel()
         guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else {
             invalidateLocationAccess()
             return
@@ -1694,6 +1713,45 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         isSearching = false
         searchFailed = true
         message = "Konum alınamadı. Konum servislerini kontrol edip yeniden deneyebilirsin."
+    }
+
+    func cancelSearch() {
+        searchGeneration += 1; locationDeadline?.cancel(); pendingSport = nil; isSearching = false
+    }
+}
+
+// MapKit zaman aşımını veya iptali bildirmese bile bekleyen arayüz serbest bırakılır.
+@MainActor
+private final class FacilityAppleSearchOperation {
+    private let search: MKLocalSearch
+    private var continuation: CheckedContinuation<FacilitySearchBatch, Never>?
+    private var deadline: Task<Void, Never>?
+    private var finished = false
+    init(request: MKLocalSearch.Request) { search = MKLocalSearch(request: request) }
+    func run(sport: TempoSportChoice, location: CLLocation) async -> FacilitySearchBatch {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                if finished { self.continuation = nil; continuation.resume(returning: FacilitySearchBatch(places: [], succeeded: false)); return }
+                guard !Task.isCancelled else { finish(FacilitySearchBatch(places: [], succeeded: false)); return }
+                deadline = Task { [weak self] in
+                    do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
+                    self?.finish(FacilitySearchBatch(places: [], succeeded: false))
+                }
+                search.start { [weak self] response, error in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        let places = response?.mapItems.filter { sport.matchesFacilityName($0.name ?? "") && CLLocationCoordinate2DIsValid($0.placemark.coordinate) }.prefix(35).map { NearbyPlace($0, origin: location) } ?? []
+                        self.finish(FacilitySearchBatch(places: places, succeeded: error == nil && response != nil))
+                    }
+                }
+            }
+        } onCancel: { Task { @MainActor in self.finish(FacilitySearchBatch(places: [], succeeded: false)) } }
+    }
+    private func finish(_ batch: FacilitySearchBatch) {
+        guard !finished else { return }
+        finished = true; deadline?.cancel(); search.cancel()
+        continuation?.resume(returning: batch); continuation = nil
     }
 }
 
