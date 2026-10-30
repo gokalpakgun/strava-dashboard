@@ -32,6 +32,126 @@ struct TempoLaunchView: View {
     }
 }
 
+// Geçici kutlama: her kurulumda bir kez, yalnız giriş tamamlandıktan sonra görünür.
+struct TempoBirthdaySurpriseModifier: ViewModifier {
+    private static let seenKey = "tempo.surprise.metehan-birthday.2026-10-30.seen"
+    @State private var showing = false
+    func body(content: Content) -> some View {
+        content
+            .fullScreenCover(isPresented: $showing) {
+                TempoBirthdaySurpriseView {
+                    UserDefaults.standard.set(true, forKey: Self.seenKey)
+                }
+            }
+            .task {
+                guard !UserDefaults.standard.bool(forKey: Self.seenKey) else { return }
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                showing = true
+            }
+    }
+}
+
+private struct TempoBirthdaySurpriseView: View {
+    let onShown: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+    @State private var confettiRunning = true
+    @State private var startedAt = Date()
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [TempoTheme.background, TempoTheme.green.opacity(0.16), TempoTheme.blue.opacity(0.12), TempoTheme.background], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
+            HStack {
+                birthdayBalloon(TempoTheme.green).rotationEffect(.degrees(-12)).offset(x: -15, y: -90)
+                Spacer()
+                birthdayBalloon(TempoTheme.blue).rotationEffect(.degrees(12)).offset(x: 15, y: 55)
+            }.opacity(0.45).allowsHitTesting(false).accessibilityHidden(true)
+            ScrollView {
+                VStack(spacing: 24) {
+                    HStack {
+                        TempoBrandMark(size: 42).accessibilityHidden(true)
+                        Spacer()
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark").font(.headline).foregroundStyle(TempoTheme.primary)
+                                .frame(width: 44, height: 44).background(.thinMaterial, in: Circle())
+                        }.accessibilityLabel("birthday.close".tempoLocalized)
+                    }
+                    Spacer(minLength: 20)
+                    Label("birthday.today".tempoLocalized, systemImage: "sparkles")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                        .padding(.horizontal, 18).padding(.vertical, 10)
+                        .background(TempoTheme.green.opacity(0.10), in: Capsule())
+                    ZStack {
+                        Circle().fill(TempoTheme.green.opacity(0.10)).frame(width: 168, height: 168)
+                        Circle().strokeBorder(TempoTheme.blue.opacity(0.20), style: StrokeStyle(lineWidth: 1, dash: [3, 7])).frame(width: 190, height: 190)
+                        Text("🎂").font(.system(size: 92)).accessibilityHidden(true)
+                            .scaleEffect(appeared || reduceMotion ? 1 : 0.8)
+                    }.frame(height: 200)
+                    VStack(spacing: 10) {
+                        Text("birthday.title".tempoLocalized).font(.system(.title, design: .rounded).weight(.semibold))
+                        Text("Metehan!").font(.system(.largeTitle, design: .rounded).weight(.heavy))
+                            .foregroundStyle(LinearGradient(colors: [TempoTheme.green, TempoTheme.blue], startPoint: .leading, endPoint: .trailing))
+                    }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+                    Text("birthday.message".tempoLocalized).font(.body).foregroundStyle(TempoTheme.secondary)
+                        .lineSpacing(5).frame(maxWidth: 360)
+                    HStack(spacing: 10) {
+                        Image(systemName: "heart.fill").foregroundStyle(.pink)
+                        Text("birthday.from".tempoLocalized).font(.subheadline.weight(.medium))
+                    }.padding(16).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24))
+                    Spacer(minLength: 20)
+                    Button { dismiss() } label: {
+                        Label("birthday.continue".tempoLocalized, systemImage: "party.popper.fill")
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }.buttonStyle(TempoPrimaryButtonStyle())
+                }
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 26).padding(.top, 12).padding(.bottom, 24)
+                .frame(maxWidth: 520).frame(maxWidth: .infinity)
+                .opacity(appeared || reduceMotion ? 1 : 0)
+            }
+            birthdayConfetti.allowsHitTesting(false).accessibilityHidden(true)
+        }
+        .task {
+            onShown(); startedAt = Date()
+            withAnimation(reduceMotion ? nil : .spring(response: 0.65, dampingFraction: 0.78)) { appeared = true }
+            do { try await Task.sleep(nanoseconds: 6_000_000_000) } catch { return }
+            confettiRunning = false
+        }
+        .accessibilityIdentifier("birthday.metehan")
+    }
+    private func birthdayBalloon(_ color: Color) -> some View {
+        VStack(spacing: 0) {
+            Ellipse().fill(LinearGradient(colors: [color.opacity(0.55), color], startPoint: .topLeading, endPoint: .bottomTrailing)).frame(width: 62, height: 80)
+            Path { path in
+                path.move(to: CGPoint(x: 31, y: 0))
+                path.addCurve(to: CGPoint(x: 31, y: 130), control1: CGPoint(x: 4, y: 35), control2: CGPoint(x: 58, y: 75))
+            }.stroke(color.opacity(0.7), lineWidth: 1).frame(width: 62, height: 130)
+        }
+    }
+    private var birthdayConfetti: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !confettiRunning || reduceMotion)) { context in
+            Canvas { canvas, size in
+                guard confettiRunning, !reduceMotion else { return }
+                let elapsed = max(0, context.date.timeIntervalSince(startedAt))
+                let colors: [Color] = [TempoTheme.green, TempoTheme.blue, .pink, .orange, TempoTheme.purple]
+                for index in 0..<64 {
+                    let speed = 110 + Double(index % 7) * 24
+                    let x = size.width * CGFloat((index * 71) % 101) / 100 + CGFloat(sin(elapsed * 2 + Double(index)) * 18)
+                    let y = CGFloat(elapsed * speed - Double(index % 9) * 55 - 30)
+                    guard y >= -20, y <= size.height + 20 else { continue }
+                    var particle = canvas
+                    particle.translateBy(x: x, y: y)
+                    particle.rotate(by: .radians(elapsed * 2 + Double(index)))
+                    particle.opacity = min(1, max(0, 6 - elapsed))
+                    let rect = CGRect(x: -3, y: -5, width: 6, height: index % 2 == 0 ? 10 : 6)
+                    particle.fill(Path(roundedRect: rect, cornerRadius: 2), with: .color(colors[index % colors.count]))
+                }
+            }
+        }.ignoresSafeArea()
+    }
+}
+
 private struct TempoLaunchMotion {
     var opacity = 0.0
     var scale: CGFloat = 0.90

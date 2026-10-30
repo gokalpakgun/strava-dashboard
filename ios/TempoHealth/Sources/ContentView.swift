@@ -137,6 +137,7 @@ struct ContentView: View {
                 AccountOnboardingView()
             } else {
                 TempoMainShell(selectedTab: $selectedTab)
+                    .modifier(TempoBirthdaySurpriseModifier())
             }
         }
         .background(TempoTheme.background.ignoresSafeArea())
