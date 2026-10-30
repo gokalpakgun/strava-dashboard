@@ -1352,3 +1352,4 @@
 "social.coop.progress" = "Birlikte %@ / %@ %@";
 
 "social.coop.partial" = "Yalnız katılıp paylaşımı açan üyelerin mevcut skorları katkı sağlar. Eksik veya gizli veriler hesaba katılmaz.";
+"preset.openSets" = "Setler ve şablonlar";

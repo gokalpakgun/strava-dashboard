@@ -1167,6 +1167,7 @@ private struct ManualWorkoutRow: View {
                 if !workout.notes.isEmpty {
                     Text(workout.notes).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
                 }
+                SportArchetypeSection(workout: workout, compact: true)
             }
             Spacer(minLength: 0)
             if (workout.routeCoordinates?.count ?? 0) >= 2 {
@@ -3460,6 +3461,9 @@ private struct HealthScreen: View {
         }
         .navigationTitle("Sağlık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
         .onAppear { selectLatestHealthDayIfNeeded(); wellness.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: TempoWellnessStore.didChange)) { note in
+            if note.object as? String == wellness.ownerID { wellness.reload() }
+        }
         .onChange(of: model.healthDays) { _, _ in selectLatestHealthDayIfNeeded() }
         .task(id: account.profile?.id) { wellness.bind(account.profile?.id) }
     }
@@ -4182,6 +4186,9 @@ private struct TempoBalanceDetailCard: View {
         }
         .task(id: account.profile?.id) { wellness.bind(account.profile?.id) }
         .onAppear { wellness.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: TempoWellnessStore.didChange)) { note in
+            if note.object as? String == wellness.ownerID { wellness.reload() }
+        }
         .onChange(of: scenePhase) { _, phase in if phase == .active { wellness.reload() } }
     }
 }

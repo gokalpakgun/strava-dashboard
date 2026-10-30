@@ -61,6 +61,7 @@ private struct TempoWellnessData: Codable {
 
 @MainActor
 final class TempoWellnessStore: ObservableObject {
+    static let didChange = Notification.Name("tempo.wellness.didChange")
     @Published private var data = TempoWellnessData()
     @Published private(set) var ownerID: String?
     @Published private(set) var storageError: String?
@@ -93,6 +94,7 @@ final class TempoWellnessStore: ObservableObject {
         var next = data; change(&next)
         guard let encoded = try? JSONEncoder().encode(next) else { return }
         UserDefaults.standard.set(encoded, forKey: Self.key(ownerID)); data = next
+        NotificationCenter.default.post(name: Self.didChange, object: ownerID)
     }
 
     func toggleFavorite(_ kind: TempoWellnessKind) {

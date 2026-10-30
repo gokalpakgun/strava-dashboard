@@ -1877,3 +1877,4 @@
 "social.coop.progress" = "%@ / %@ %@ together";
 
 "social.coop.partial" = "Only available scores from accepted members who enable sharing contribute. Missing or private data is not counted.";
+"preset.openSets" = "Sets and templates";

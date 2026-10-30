@@ -313,6 +313,9 @@ struct TempoMovementMenuScreen: View {
         }
         .task(id: account.profile?.id) { recoveryMetrics.bind(account.profile?.id); wellness.bind(account.profile?.id); refreshMuscleRecovery() }
         .onAppear { wellness.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: TempoWellnessStore.didChange)) { note in
+            if note.object as? String == wellness.ownerID { wellness.reload() }
+        }
         .onChange(of: recoveryMetrics.revision) { _, _ in refreshMuscleRecovery() }
         .onChange(of: model.activityWorkouts) { _, _ in refreshMuscleRecovery() }
         .onChange(of: model.healthSyncEnabled) { _, _ in refreshMuscleRecovery() }

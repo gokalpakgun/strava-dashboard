@@ -351,11 +351,18 @@ struct PolymorphicWorkoutLibraryScreen: View {
 @MainActor
 struct SportArchetypeSection: View {
     let workout: TempoManualWorkout
+    var compact = false
     @EnvironmentObject private var account: TempoAccountStore
     @StateObject private var store = SportMetricsStore()
     private var record: ArchetypeWorkoutRecord { store.applying(to: WorkoutPayloadAdapter.record(workout)) }
     var body: some View {
-        NavigationLink(destination: PolymorphicWorkoutDetailScreen(record: record, store: store)) { PolymorphicWorkoutCardView(record: record, showsDisclosure: true) }
+        NavigationLink(destination: PolymorphicWorkoutDetailScreen(record: record, store: store)) {
+            if compact {
+                Label((record.payload?.archetype == .strengthAndHypertrophy ? "preset.openSets" : "archetype.details").tempoLocalized, systemImage: "slider.horizontal.3")
+                    .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.blue)
+                    .frame(minHeight: 44).fixedSize(horizontal: false, vertical: true)
+            } else { PolymorphicWorkoutCardView(record: record, showsDisclosure: true) }
+        }
             .buttonStyle(.plain).task(id: account.profile?.id) { store.bind(account.profile?.id) }
             .onAppear { store.reload() }
     }

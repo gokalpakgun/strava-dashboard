@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" fill="none">
   <defs>
     <linearGradient id="blue" x1="450" y1="1010" x2="900" y2="410" gradientUnits="userSpaceOnUse"><stop stop-color="#248FEA"/><stop offset="0.6" stop-color="#69CEF1"/><stop offset="1" stop-color="#44ADEB"/></linearGradient>
-    <linearGradient id="green" x1="330" y1="900" x2="1010" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#66C58F"/><stop offset="0.55" stop-color="#6EC491"/><stop offset="1" stop-color="#8ADCA5"/></linearGradient>
+    <linearGradient id="green" x1="420" y1="1005" x2="1000" y2="245" gradientUnits="userSpaceOnUse"><stop stop-color="#48B97B"/><stop offset="0.55" stop-color="#7AD69A"/><stop offset="1" stop-color="#B1EAB5"/></linearGradient>
     <path id="silhouette" d="M240 516Q232 516 233 507C243 403 322 325 441 325H846C926 325 977 298 1000 250Q1008 239 1016 248C1050 376 1008 488 863 518H850C729 518 649 590 602 711C647 640 698 592 757 576L706 850C685 953 610 1010 505 1010H335C420 984 469 933 499 847C515 799 539 635 557 516Z"/>
     <clipPath id="markClip"><use href="#silhouette"/></clipPath>
     <filter id="seamShadow" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feDropShadow dx="3" dy="5" stdDeviation="7" flood-color="#12394F" flood-opacity="0.22"/></filter>
