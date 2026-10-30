@@ -356,15 +356,17 @@ struct SportArchetypeSection: View {
     @StateObject private var store = SportMetricsStore()
     private var record: ArchetypeWorkoutRecord { store.applying(to: WorkoutPayloadAdapter.record(workout)) }
     var body: some View {
-        NavigationLink(destination: PolymorphicWorkoutDetailScreen(record: record, store: store)) {
+        NavigationLink(destination: PolymorphicWorkoutDetailScreen(record: record, store: store)
+            .task(id: account.profile?.id) { store.bind(account.profile?.id) }
+            .onAppear { store.reload() }) {
             if compact {
                 Label((record.payload?.archetype == .strengthAndHypertrophy ? "preset.openSets" : "archetype.details").tempoLocalized, systemImage: "slider.horizontal.3")
                     .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.blue)
                     .frame(minHeight: 44).fixedSize(horizontal: false, vertical: true)
             } else { PolymorphicWorkoutCardView(record: record, showsDisclosure: true) }
         }
-            .buttonStyle(.plain).task(id: account.profile?.id) { store.bind(account.profile?.id) }
-            .onAppear { store.reload() }
+            .buttonStyle(.plain).task(id: account.profile?.id) { if !compact { store.bind(account.profile?.id) } }
+            .onAppear { if !compact { store.reload() } }
     }
 }
 
