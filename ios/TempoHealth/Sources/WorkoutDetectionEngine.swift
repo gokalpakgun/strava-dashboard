@@ -18,7 +18,7 @@ struct DetectedWorkout: Codable, Identifiable, Equatable, Sendable {
     var seconds: Double { end.timeIntervalSince(start) }
 }
 
-struct DetectionInterval: Codable, Equatable, Sendable {
+struct DetectionInterval: Codable, Hashable, Sendable {
     let start: Date
     let end: Date
 }
@@ -52,7 +52,7 @@ enum WorkoutDetectionEngine {
         var current: MotionWindow?
         func flush() { if let value = current { output.append(value) }; current = nil }
         for slice in slices.sorted(by: { $0.start < $1.start }) {
-            guard slice.end > slice.start else { continue }
+            guard slice.start.timeIntervalSince1970.isFinite, slice.end.timeIntervalSince1970.isFinite, slice.end > slice.start else { continue }
             let active = slice.reliable && (slice.kind == .walking || slice.kind == .running)
             if !active {
                 if slice.kind == .vehicle || !slice.reliable || slice.end.timeIntervalSince(slice.start) > 120 { flush() }
@@ -108,6 +108,9 @@ enum WorkoutDetectionEngine {
             result.append(DetectedWorkout(id: UUID(), start: first.start, end: end, origin: .health, suggestedSport: "fitness", steps: Int(measured.reduce(0) { $0 + $1.steps }), averageHeartRate: average, activeEnergy: measured.reduce(0) { $0 + $1.energyKcal }))
         }
         for bin in bins.sorted(by: { $0.start < $1.start }) {
+            guard bin.start.timeIntervalSince1970.isFinite, bin.energyKcal.isFinite, (0...250).contains(bin.energyKcal),
+                  bin.steps.isFinite, (0...2000).contains(bin.steps), bin.exerciseSeconds.isFinite, (0...300).contains(bin.exerciseSeconds),
+                  bin.heartRateCount >= 0, bin.heartRate.map({ $0.isFinite }) ?? true else { flush(); continue }
             if let last = session.last, bin.start.timeIntervalSince(last.start) > 301 { flush() }
             if qualifies(bin) { session.append(bin) }
             else if !session.isEmpty, session.last.map(qualifies) == true { session.append(bin) }

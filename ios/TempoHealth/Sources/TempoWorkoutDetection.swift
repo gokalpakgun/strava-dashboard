@@ -163,7 +163,7 @@ final class TempoWorkoutDetection: ObservableObject {
         }
         guard generation == token, !Task.isCancelled else { return }
         // Yeni Sağlık kaydı sonradan geldiyse bekleyen öneri sessizce kaldırılır.
-        state.known = known.filter { $0.end > now.addingTimeInterval(-3 * 86400) }
+        state.known = Array(Set(known.filter { $0.end > now.addingTimeInterval(-3 * 86400) }).sorted { $0.start > $1.start }.prefix(500))
         removeCoveredCandidates()
         let live = liveRecordingStart.map { [DetectionInterval(start: $0, end: now)] } ?? []
         let fresh = WorkoutDetectionEngine.fresh(found, existing: known + live, history: state.records, now: now)
@@ -334,7 +334,8 @@ final class TempoWorkoutDetection: ObservableObject {
             guard let value = sample as? HKQuantitySample else { return nil }
             let number = value.quantity.doubleValue(for: unit)
             guard number.isFinite, number >= 0 else { return nil }
-            return Quantity(start: sample.startDate, end: sample.endDate, value: number, source: sample.sourceRevision.source.bundleIdentifier)
+            let source = sample.sourceRevision.source.bundleIdentifier + "|" + (sample.sourceRevision.productType ?? sample.device?.model ?? "") + "|" + (sample.device?.localIdentifier ?? "")
+            return Quantity(start: sample.startDate, end: sample.endDate, value: number, source: source)
         }
     }
     private static func bins(start: Date, end: Date, rates: [Quantity], energy: [Quantity], steps: [Quantity], exercise: [Quantity]) -> [WorkoutDetectionEngine.HealthBin] {

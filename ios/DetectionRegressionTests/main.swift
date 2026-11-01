@@ -41,6 +41,8 @@ expect(Engine.healthCandidates([bin(0, samples: 1), bin(5, samples: 1), bin(10, 
 expect(Engine.healthCandidates([bin(0, hr: nil), bin(5, hr: nil), bin(10, hr: nil)], restingHeartRate: nil).isEmpty, "energy alone never invents HR")
 expect(Engine.healthCandidates([bin(0, hr: 85), bin(5, hr: 85), bin(10, hr: 85)], restingHeartRate: 60).isEmpty, "ordinary resting physiology rejected")
 expect(Engine.healthCandidates([bin(0), bin(25), bin(50)], restingHeartRate: 60).isEmpty, "large sample gaps are not bridged")
+expect(Engine.healthCandidates([bin(0, steps: .infinity), bin(5, steps: .infinity), bin(10, steps: .infinity)], restingHeartRate: 60).isEmpty, "malformed telemetry cannot crash or create workouts")
+expect(Engine.healthCandidates([bin(0, energy: .nan), bin(5, energy: .nan), bin(10, energy: .nan)], restingHeartRate: 60).isEmpty, "NaN energy is rejected")
 let trailing = Engine.healthCandidates(lifting + [bin(20, hr: 75, energy: 50)], restingHeartRate: 65)
 expect(trailing[0].activeEnergy == 120, "trailing recovery outside inferred window excluded from calories")
 let phone = Engine.phoneCandidate(walk[0], steps: 1800, distance: 1500)!
