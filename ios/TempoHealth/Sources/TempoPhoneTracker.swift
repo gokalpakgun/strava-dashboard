@@ -183,8 +183,6 @@ struct TempoPhoneTrackerScreen: View {
     @StateObject private var recorder = TempoLocationRecorder()
     @State private var selectedSport = "run"
     @State private var notes = ""
-    @State private var perceivedEffort: Int?
-    @State private var enjoyment: Int?
     @State private var workoutSessionID: UUID?
     @State private var isSaving = false
     @State private var showCloseConfirmation = false
@@ -225,7 +223,6 @@ struct TempoPhoneTrackerScreen: View {
                         TextField("Nasıl geçti? Kısa not (isteğe bağlı)", text: $notes, axis: .vertical)
                             .lineLimit(2...4)
                             .padding(13).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 15))
-                        compactRatings
                         if recorder.route.count < 2 {
                             Text("GPS rotası yok; yalnızca süre kaydedilecek.").font(.caption).foregroundStyle(TempoTheme.secondary)
                         }
@@ -330,27 +327,6 @@ struct TempoPhoneTrackerScreen: View {
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
-    private var compactRatings: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ratingRow(title: "Zorluk", selection: $perceivedEffort)
-            ratingRow(title: "Keyif", selection: $enjoyment)
-        }
-        .padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-    }
-
-    private func ratingRow(title: String, selection: Binding<Int?>) -> some View {
-        HStack {
-            Text(title.tempoLocalized).font(.caption.weight(.semibold)).frame(width: 55, alignment: .leading)
-            ForEach(1...5, id: \.self) { value in
-                Button("\(value)") { selection.wrappedValue = selection.wrappedValue == value ? nil : value }
-                    .font(.caption.bold()).frame(maxWidth: .infinity).padding(.vertical, 8)
-                    .foregroundStyle(selection.wrappedValue == value ? TempoTheme.onAccent : TempoTheme.secondary)
-                    .background(selection.wrappedValue == value ? TempoTheme.green : TempoTheme.raised, in: Capsule())
-                    .buttonStyle(.plain)
-            }
-        }
-    }
-
     @ViewBuilder
     private var recorderControls: some View {
         if recorder.isRecording {
@@ -413,8 +389,8 @@ struct TempoPhoneTrackerScreen: View {
                 distanceKm: recorder.distanceMeters / 1_000,
                 routeCoordinates: recorder.coordinates,
                 notes: notes,
-                perceivedEffort: perceivedEffort,
-                enjoyment: enjoyment
+                perceivedEffort: nil,
+                enjoyment: nil
             )
             dismiss()
         } catch {
