@@ -3,14 +3,14 @@ import UIKit
 
 struct WorkoutDetectionHomeCard: View {
     @ObservedObject private var detector = TempoWorkoutDetection.shared
+    @Environment(\.dynamicTypeSize) private var textSize
     var body: some View {
         NavigationLink(destination: WorkoutDetectionScreen()) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
-                    Image(systemName: "waveform.path").font(.title2.weight(.semibold))
-                        .frame(width: 52, height: 52).background(TempoTheme.green.opacity(0.14), in: RoundedRectangle(cornerRadius: 18))
+                    TempoIconBadge(symbol: "waveform.path", color: TempoTheme.green, size: 48)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("detection.title".tempoLocalized).font(.headline)
+                        Text("detection.title".tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
                         Text((detector.enabled ? "detection.enabled" : "detection.optional").tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
                     Spacer(minLength: 4)
@@ -18,18 +18,17 @@ struct WorkoutDetectionHomeCard: View {
                 }
                 Text((detector.pending.isEmpty ? "detection.homeHint" : "detection.pendingCount").tempoFormatted(detector.pending.count))
                     .font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 8) {
+                let sourceLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))
+                sourceLayout {
                     Label("detection.phone".tempoLocalized, systemImage: "iphone")
-                    Text("·")
                     Label("detection.watch".tempoLocalized, systemImage: "applewatch")
-                    Spacer()
+                    if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
                     if detector.scanning { ProgressView().tint(TempoTheme.green) }
                     else if !detector.pending.isEmpty { Text(detector.pending.count.formatted()).font(.subheadline.bold()).padding(8).background(TempoTheme.green.opacity(0.14), in: Circle()) }
                 }.font(.caption.weight(.medium))
-            }.foregroundStyle(TempoTheme.green).padding(20)
-                .background(LinearGradient(colors: [TempoTheme.card, TempoTheme.green.opacity(0.07)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 26))
-                .overlay(RoundedRectangle(cornerRadius: 26).stroke(TempoTheme.green.opacity(0.20), lineWidth: 1))
-        }.buttonStyle(.plain).accessibilityIdentifier("activity.detection")
+            }.foregroundStyle(TempoTheme.green).padding(22)
+                .modifier(TempoSurface(glass: true))
+        }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("activity.detection")
     }
 }
 

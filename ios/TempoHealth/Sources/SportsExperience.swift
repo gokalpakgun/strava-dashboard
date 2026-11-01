@@ -1355,8 +1355,10 @@ struct NearbyFacilitiesScreen: View {
     @State private var camera: MapCameraPosition = .automatic
 
     private var availableSports: [TempoSportChoice] {
-        let preferred = account.profile?.sports.compactMap(TempoSportChoice.init(rawValue:)).filter { $0.facilitySearchQuery != nil } ?? []
-        return preferred + TempoSportChoice.allCases.filter { $0.facilitySearchQuery != nil && !preferred.contains($0) }
+        // Harita yalnız genel saha, kort ve tesis aramalarını sunar; profil branşları korunur.
+        let facilitySports: [TempoSportChoice] = [.basketball, .football, .tennis, .volleyball, .swimming, .fitness, .run, .walking, .cycling]
+        let preferred = facilitySports.filter { account.profile?.sports.contains($0.rawValue) == true }
+        return preferred + facilitySports.filter { !preferred.contains($0) }
     }
     private var searchIdentity: String { "\(selectedSport?.rawValue ?? ""):\(searchRadiusKm)" }
 

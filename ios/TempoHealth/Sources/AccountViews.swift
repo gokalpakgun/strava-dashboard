@@ -891,14 +891,16 @@ struct ProfileProgressSummary: View {
 struct AccountProfileCard: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
+    @Environment(\.dynamicTypeSize) private var textSize
 
     private var achievement: TempoAchievement { model.tempoAchievement }
 
     var body: some View {
         if let profile = account.profile {
             NavigationLink(destination: AccountSettingsScreen()) {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 20) {
+                    let identityLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(spacing: 16))
+                    identityLayout {
                         ZStack(alignment: .bottomTrailing) {
                             AccountAvatarView(data: profile.avatarData, size: 76)
                             Text("\(achievement.level)")
@@ -909,22 +911,24 @@ struct AccountProfileCard: View {
                                 .overlay(Circle().stroke(TempoTheme.card, lineWidth: 3))
                         }
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(profile.displayName.isEmpty ? profile.username : profile.displayName).font(.title2.bold())
+                            Text(profile.displayName.isEmpty ? profile.username : profile.displayName).font(.title2.weight(.semibold))
                             Text("@\(profile.username)").font(.subheadline).foregroundStyle(TempoTheme.green)
                             Text(profile.sports.compactMap(TempoSportChoice.init(rawValue:)).map(\.title).prefix(3).joined(separator: " · "))
-                                .font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(1)
+                                .font(.footnote).foregroundStyle(TempoTheme.secondary)
+                        }.fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        if !textSize.isAccessibilitySize {
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary).accessibilityHidden(true)
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
                     }
 
                     Divider().overlay(TempoTheme.primary.opacity(0.08))
 
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
+                        let levelLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout())
+                        levelLayout {
                             Text("Seviye %d · %@".tempoFormatted(achievement.level, achievement.title.tempoLocalized))
                                 .font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
-                            Spacer()
+                            if !textSize.isAccessibilitySize { Spacer(minLength: 8) }
                             Text(achievement.nextLevelXp > 0 ? "\(achievement.currentLevelXp) / \(achievement.nextLevelXp) XP" : "MAKSİMUM".tempoSentenceCased)
                                 .font(.caption2).foregroundStyle(TempoTheme.secondary)
                         }
@@ -935,30 +939,24 @@ struct AccountProfileCard: View {
                     }
 
                     if !achievement.unlockedBadges.isEmpty {
-                        HStack(spacing: 8) {
+                        LazyVGrid(columns: textSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.adaptive(minimum: 130), alignment: .leading)], alignment: .leading, spacing: 8) {
                             ForEach(Array(achievement.unlockedBadges.reversed().prefix(3))) { badge in
                                 HStack(spacing: 6) {
                                     Image(systemName: badge.symbol).foregroundStyle(badge.tempoColor)
-                                    Text(badge.title.tempoLocalized).lineLimit(1).minimumScaleFactor(0.7)
+                                    Text(badge.title.tempoLocalized).fixedSize(horizontal: false, vertical: true)
                                 }
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 9).padding(.vertical, 7)
-                                .background(badge.tempoColor.opacity(0.12), in: Capsule())
+                                .font(.caption.weight(.medium))
+                                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(badge.tempoColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
-                            Spacer(minLength: 0)
                         }
                     }
                 }
                 .foregroundStyle(TempoTheme.primary)
-                .padding(18)
-                .background {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(LinearGradient(colors: [TempoTheme.green.opacity(0.10), TempoTheme.card, TempoTheme.blue.opacity(0.055)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                }
-                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(TempoTheme.primary.opacity(0.085), lineWidth: 1))
-                .shadow(color: .black.opacity(0.16), radius: 18, y: 9)
+                .padding(22)
+                .modifier(TempoSurface(glass: true, radius: 28))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(TempoSoftPressStyle())
             .accessibilityHint("Hesap ayarlarını aç".tempoLocalized)
         }
     }

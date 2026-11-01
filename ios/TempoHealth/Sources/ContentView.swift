@@ -39,7 +39,7 @@ enum TempoAppearance: String, CaseIterable, Identifiable {
 // Ortak yüzey dili: içerik okunaklı kalır, cam yalnız vurgulanan katmanlarda kullanılır.
 struct TempoSurface: ViewModifier {
     var glass = false
-    var radius: CGFloat = 24
+    var radius: CGFloat = 26
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
@@ -47,12 +47,26 @@ struct TempoSurface: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         content
             .background {
-                if glass && !reduceTransparency {
-                    shape.fill(.ultraThinMaterial).background(shape.fill(TempoTheme.card.opacity(0.86)))
+                if glass && !reduceTransparency && contrast != .increased {
+                    shape.fill(.ultraThinMaterial).background(shape.fill(TempoTheme.card.opacity(0.72)))
                 } else { shape.fill(TempoTheme.card) }
             }
             .overlay(shape.strokeBorder(TempoTheme.primary.opacity(contrast == .increased ? 0.28 : 0.08), lineWidth: 1))
-            .shadow(color: .black.opacity(scheme == .dark ? 0.12 : 0.045), radius: 16, x: 0, y: 6)
+            .shadow(color: .black.opacity(scheme == .dark ? 0.10 : 0.035), radius: 18, x: 0, y: 7)
+    }
+}
+
+/// Ortak simge zemini; dekoratif simgeler VoiceOver metnini tekrarlamaz.
+struct TempoIconBadge: View {
+    let symbol: String
+    let color: Color
+    var size: CGFloat = 44
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.42, weight: .medium)).foregroundStyle(color)
+            .frame(width: size, height: size)
+            .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
@@ -107,14 +121,13 @@ private struct TempoMenuRow: View {
     let icon: String
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: icon).font(.system(size: 17, weight: .medium)).foregroundStyle(TempoTheme.green)
-                .frame(width: 38, height: 38).background(TempoTheme.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+            TempoIconBadge(symbol: icon, color: TempoTheme.green, size: 40)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title.tempoLocalized).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
-                Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text(subtitle.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
             }.fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right").font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary).accessibilityHidden(true)
-        }.padding(.vertical, 14).frame(maxWidth: .infinity, minHeight: 68, alignment: .leading).contentShape(Rectangle()).multilineTextAlignment(.leading)
+        }.padding(.vertical, 16).frame(maxWidth: .infinity, minHeight: 72, alignment: .leading).contentShape(Rectangle()).multilineTextAlignment(.leading)
             .accessibilityElement(children: .combine)
     }
 }
@@ -610,7 +623,7 @@ private struct HomeScreen: View {
                             .buttonStyle(.plain).foregroundStyle(TempoTheme.secondary)
                             .accessibilityLabel("Antrenman geçmişi".tempoLocalized)
                         }
-                        TempoCard { ManualWorkoutRow(workout: workout) }
+                        ManualWorkoutRow(workout: workout)
                     }
                 }
                 TempoDisclosureSection(title: "Strava araçları", icon: "link") {
@@ -654,12 +667,12 @@ private struct HomeScreen: View {
                 .foregroundStyle(TempoTheme.primary)
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-                .background(TempoTheme.raised.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(TempoTheme.raised.opacity(0.55), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .buttonStyle(.plain).accessibilityIdentifier("home.monthly")
         }
-        .padding(16)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(TempoSurface(glass: true))
     }
@@ -688,8 +701,6 @@ private struct HomeScreen: View {
                 HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
                 HomeQuickAction(title: "Sosyal", icon: "person.2", color: TempoTheme.green, destination: AnyView(SocialScreen()))
             }
-            .padding(12)
-            .modifier(TempoSurface())
         }
     }
 
@@ -702,16 +713,17 @@ private struct HomeWeekMetric: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 10) {
+            Capsule().fill(color.opacity(0.65)).frame(width: 20, height: 3).accessibilityHidden(true)
             Text(value).font(.title3.weight(.semibold).monospacedDigit())
                 .foregroundStyle(color).fixedSize(horizontal: false, vertical: true)
             Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-        .background(TempoTheme.raised.opacity(0.42), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(color.opacity(0.24), lineWidth: 1))
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+        .background(TempoTheme.raised.opacity(0.35), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(color.opacity(0.18), lineWidth: 1))
     }
 }
 
@@ -801,60 +813,39 @@ private struct AppleHealthHomeCard: View {
     @EnvironmentObject private var model: TempoAppModel
     @EnvironmentObject private var account: TempoAccountStore
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var textSize
     @StateObject private var metrics = SportMetricsStore()
     @State private var currentStrain: Int?
 
     var body: some View {
         NavigationLink(destination: HealthScreen()) {
-            VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 13) {
-                Image(systemName: "heart.text.square.fill")
-                    .font(.system(size: 21, weight: .semibold))
-                    .foregroundStyle(.pink)
-                    .frame(width: 48, height: 48)
-                    .background(.pink.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text((connected ? "Günlük hazırlık" : "Apple Sağlık").tempoSentenceCased)
-                        .font(.caption2.weight(.bold))
-                        .tracking(1)
-                        .foregroundStyle(.pink.opacity(0.95))
-                    Text((connected ? "Tempo Dengesi" : "Uyku, hareket ve toparlanma verilerini bağla").tempoLocalized)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(TempoTheme.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    if connected, let balance {
-                        Text(balance.state.tempoLocalized + " · " + balance.confidence.tempoLocalized)
-                            .font(.caption)
-                            .foregroundStyle(TempoTheme.secondary)
-                        if let note = balance.dataNote {
-                            Text(note).font(.caption2).foregroundStyle(TempoTheme.secondary)
-                        }
-                    } else if !connected {
-                        Text("Strava gerekmez".tempoLocalized)
-                            .font(.caption)
-                            .foregroundStyle(TempoTheme.secondary)
-                    }
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(spacing: 8) {
+                    Label((connected ? "Günlük hazırlık" : "Apple Sağlık").tempoLocalized, systemImage: "heart.fill")
+                        .font(.footnote.weight(.medium)).foregroundStyle(TempoTheme.secondary)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                        .foregroundStyle(TempoTheme.secondary).accessibilityHidden(true)
                 }
-                Spacer(minLength: 2)
+                if textSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 16) { summary; readiness }
+                } else {
+                    HStack(spacing: 20) { summary; Spacer(minLength: 0); readiness }
+                }
                 if connected, let balance {
-                    TempoReadinessRing(value: balance.value, size: 66)
+                    if let note = balance.dataNote {
+                        Text(note).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Divider().overlay(TempoTheme.primary.opacity(0.04))
+                    DailyStrainTargetView(balance: balance, current: currentStrain)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(TempoTheme.secondary)
             }
-            if connected, let balance { DailyStrainTargetView(balance: balance, current: currentStrain) }
-            }
-            .padding(14)
+            .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(colors: [TempoTheme.purple.opacity(0.11), TempoTheme.card], startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 21, style: .continuous)
-            )
-            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
+            .modifier(TempoSurface(glass: true, radius: 28))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
         .task(id: account.profile?.id) { metrics.bind(account.profile?.id); refreshStrain() }
         .onAppear { metrics.reload(); refreshStrain() }
         .onChange(of: metrics.revision) { _, _ in refreshStrain() }
@@ -863,12 +854,30 @@ private struct AppleHealthHomeCard: View {
         .onChange(of: scenePhase) { _, phase in if phase == .active { metrics.reload(); refreshStrain() } }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in refreshStrain() }
     }
+    private var summary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text((connected ? "Tempo Dengesi" : "Uyku, hareket ve toparlanma verilerini bağla").tempoLocalized)
+                .font(.title3.weight(.semibold)).foregroundStyle(TempoTheme.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            if connected, let balance {
+                Text(balance.state.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.primary)
+                Text(balance.confidence.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+            } else if !connected {
+                Text("Strava gerekmez".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    @ViewBuilder private var readiness: some View {
+        if connected, let balance { TempoReadinessRing(value: balance.value, size: 88) }
+        else { TempoIconBadge(symbol: "heart.text.square.fill", color: TempoTheme.green, size: 60) }
+    }
     private func refreshStrain() { currentStrain = model.dailyStrainSummary(using: metrics).value }
 }
 
 private struct TempoReadinessRing: View {
     let value: Int
     var size: CGFloat = 68
+    @ScaledMetric(relativeTo: .title2) private var valueSize: CGFloat = 25
 
     var body: some View {
         ZStack {
@@ -881,8 +890,8 @@ private struct TempoReadinessRing: View {
                 )
                 .rotationEffect(.degrees(-90))
             VStack(spacing: -2) {
-                Text("\(value)").font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
-                Text("/100").font(.system(size: 8, weight: .semibold)).foregroundStyle(TempoTheme.secondary)
+                Text("\(value)").font(.system(size: min(valueSize, size * 0.4), weight: .semibold, design: .rounded).monospacedDigit())
+                Text("/100").font(.caption2).foregroundStyle(TempoTheme.secondary)
             }
         }
         .frame(width: size, height: size)
@@ -900,21 +909,16 @@ private struct HomeQuickAction: View {
     var body: some View {
         NavigationLink(destination: destination) {
             HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium)).foregroundStyle(color)
-                    .frame(width: 32, height: 32)
-                    .background(color.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-                    .accessibilityHidden(true)
+                TempoIconBadge(symbol: icon, color: color, size: 36)
                 Text(title.tempoLocalized)
                     .font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.primary.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
             .contentShape(Rectangle())
-            .background(color.opacity(0.045), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(color.opacity(0.12)))
+            .modifier(TempoSurface(radius: 22))
         }
         .buttonStyle(TempoSoftPressStyle())
     }
@@ -1127,11 +1131,16 @@ private struct WorkoutEntryActionCard: View {
     let color: Color
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: icon).font(.title2.weight(.medium)).foregroundStyle(color)
+            HStack {
+                TempoIconBadge(symbol: icon, color: color)
+                Spacer(minLength: 4)
+                Image(systemName: "arrow.up.right").font(.caption.weight(.semibold))
+                    .foregroundStyle(TempoTheme.secondary).accessibilityHidden(true)
+            }
             Text(title.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
             Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
-        }.frame(maxWidth: .infinity, minHeight: 105, alignment: .leading).padding(15)
-            .background(color.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }.frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading).padding(16)
+            .background(color.opacity(0.055), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(color.opacity(0.14)))
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
@@ -1151,6 +1160,7 @@ private struct TempoWorkoutHistoryScreen: View {
 
 private struct ManualWorkoutRow: View {
     @EnvironmentObject private var model: TempoAppModel
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var isShowingPhotoEvidence = false
     @State private var isShowingRoute = false
     let workout: TempoManualWorkout
@@ -1160,14 +1170,11 @@ private struct ManualWorkoutRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: sportChoice?.symbol ?? "figure.mixed.cardio")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(TempoTheme.green)
-                .frame(width: 42, height: 42)
-                .background(TempoTheme.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        let rowLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+        rowLayout {
+            TempoIconBadge(symbol: sportChoice?.symbol ?? "figure.mixed.cardio", color: TempoTheme.green, size: 42)
             VStack(alignment: .leading, spacing: 6) {
-                Text(workout.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary).lineLimit(2)
+                Text(workout.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary).fixedSize(horizontal: false, vertical: true)
                 Text("%@ · %@".tempoFormatted(workout.sportTitle, TempoFormat.duration(Double(workout.durationSeconds ?? workout.durationMinutes * 60))))
                     .font(.caption).foregroundStyle(TempoTheme.secondary)
                 Text(workout.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(TempoTheme.secondary)
@@ -1198,12 +1205,12 @@ private struct ManualWorkoutRow: View {
                 }
                 SportArchetypeSection(workout: workout, compact: true)
             }
-            Spacer(minLength: 0)
+            if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
             if (workout.routeCoordinates?.count ?? 0) >= 2 {
                 Button { isShowingRoute = true } label: {
                     Image(systemName: "map.fill")
                         .foregroundStyle(TempoTheme.blue)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .background(TempoTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -1219,10 +1226,9 @@ private struct ManualWorkoutRow: View {
                 Image(systemName: "photo").foregroundStyle(TempoTheme.secondary).frame(width: 40, height: 40)
             }
         }
-        .padding(14)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(TempoTheme.primary.opacity(0.07), lineWidth: 1))
+        .modifier(TempoSurface())
         .sheet(isPresented: $isShowingPhotoEvidence) {
             if let url = model.manualWorkoutPhotoURL(for: workout), let image = UIImage(contentsOfFile: url.path) {
                 NavigationStack {
@@ -3356,43 +3362,58 @@ struct HealthScreen: View {
     private var wellnessHero: some View {
         TempoCard {
             VStack(spacing: 16) {
-                HStack {
-                    Label("wellness.daily".tempoLocalized, systemImage: "heart.text.square").font(.caption).foregroundStyle(TempoTheme.secondary)
-                    Spacer()
-                    Text(Date.now.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        Label("wellness.daily".tempoLocalized, systemImage: "heart.text.square")
+                        Spacer(minLength: 12)
+                        Text(Date.now.formatted(date: .abbreviated, time: .omitted))
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("wellness.daily".tempoLocalized, systemImage: "heart.text.square")
+                        Text(Date.now.formatted(date: .abbreviated, time: .omitted))
+                    }.frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .font(.footnote).foregroundStyle(TempoTheme.secondary)
+                balanceVisualization
+                if let balance = model.tempoBalance {
+                    Text(balance.state.tempoLocalized).font(.title3.weight(.semibold)).foregroundStyle(TempoTheme.green)
+                    Text(balance.confidence.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                    if let note = balance.dataNote { Text(note).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center) }
+                    NavigationLink(destination: TempoPage { TempoBalanceDetailCard(balance: balance) }.navigationTitle("Tempo Dengesi").tempoGlassBackButton()) {
+                        Label("wellness.scoreDetails".tempoLocalized, systemImage: "arrow.up.right")
+                            .font(.subheadline.weight(.medium)).padding(.horizontal, 18).padding(.vertical, 12)
+                            .frame(minHeight: 44).background(TempoTheme.green.opacity(0.09), in: Capsule())
+                    }.buttonStyle(TempoSoftPressStyle()).foregroundStyle(TempoTheme.green)
+                } else {
+                    Text("Tempo Dengesi için henüz yeterli ölçüm yok. Apple Sağlık verileri geldikçe puanın oluşacak.").font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+                }
+            }.frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Büyük erişilebilirlik yazılarında etiketler sabit çaplı halkanın dışına taşınır.
+    private var balanceVisualization: some View {
+        VStack(spacing: 14) {
+            Text("Tempo Dengesi".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
                 ZStack {
-                    Circle().stroke(TempoTheme.primary.opacity(0.06), lineWidth: 12)
+                    Circle().stroke(TempoTheme.primary.opacity(0.06), lineWidth: 10)
                     if let balance = model.tempoBalance {
                         Circle().trim(from: 0, to: CGFloat(min(100, max(0, balance.value))) / 100)
-                            .stroke(AngularGradient(colors: [TempoTheme.blue, TempoTheme.green], center: .center), style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                            .stroke(AngularGradient(colors: [TempoTheme.blue, TempoTheme.green], center: .center), style: StrokeStyle(lineWidth: 10, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                     }
                     VStack(spacing: 8) {
-                        Text("Tempo Dengesi".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
                         if let balance = model.tempoBalance {
                             Text("\(balance.value)").font(.system(size: 48, weight: .medium, design: .rounded).monospacedDigit())
                             Text("/ 100").font(.subheadline).foregroundStyle(TempoTheme.secondary)
                         } else {
                             Text("—").font(.system(size: 48, weight: .light))
-                            Text("wellness.waitingData".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
                         }
                     }.padding(20)
-                }.frame(width: 224, height: 224).padding(.vertical, 8)
+                }.frame(width: textSize.isAccessibilitySize ? 190 : 212, height: textSize.isAccessibilitySize ? 190 : 212).padding(8)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Tempo Dengesi".tempoLocalized)
                     .accessibilityValue(model.tempoBalance.map { "\($0.value) / 100" } ?? "wellness.waitingData".tempoLocalized)
-                if let balance = model.tempoBalance {
-                    Text(balance.state.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.green)
-                    Text(balance.confidence.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
-                    if let note = balance.dataNote { Text(note).font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center) }
-                    NavigationLink(destination: TempoPage { TempoBalanceDetailCard(balance: balance) }.navigationTitle("Tempo Dengesi").tempoGlassBackButton()) {
-                        Label("wellness.scoreDetails".tempoLocalized, systemImage: "arrow.up.right").font(.subheadline.weight(.medium)).frame(minHeight: 44)
-                    }.buttonStyle(.plain).foregroundStyle(TempoTheme.green)
-                } else {
-                    Text("Tempo Dengesi için henüz yeterli ölçüm yok. Apple Sağlık verileri geldikçe puanın oluşacak.").font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
-                }
-            }.frame(maxWidth: .infinity)
         }
     }
 
@@ -3518,20 +3539,24 @@ private struct HealthSummaryRing: View {
     let symbol: String
     let color: Color
     let progress: Double?
+    @Environment(\.dynamicTypeSize) private var textSize
     var body: some View {
-        VStack(spacing: 8) {
-            Text(title.tempoLocalized).font(.caption.weight(.medium)).foregroundStyle(TempoTheme.secondary)
+        VStack(alignment: .leading, spacing: 12) {
             ZStack {
-                Circle().stroke(color.opacity(0.13), lineWidth: 5)
-                Circle().trim(from: 0, to: CGFloat(min(1, max(0, progress ?? (value == "—" ? 0 : 1)))))
-                    .stroke(color.opacity(progress == nil ? 0.55 : 1), style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
-                VStack(spacing: 3) {
-                    Image(systemName: symbol).font(.caption).foregroundStyle(color)
-                    Text(value).font(.subheadline.weight(.semibold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
-                    Text(caption.tempoLocalized).font(.system(size: 9)).foregroundStyle(TempoTheme.secondary)
-                }.padding(9)
-            }.frame(maxWidth: 110).aspectRatio(1, contentMode: .fit)
-        }.padding(10).frame(maxWidth: .infinity).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
+                if let progress {
+                    Circle().stroke(color.opacity(0.13), lineWidth: 4)
+                    Circle().trim(from: 0, to: CGFloat(min(1, max(0, progress))))
+                        .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round)).rotationEffect(.degrees(-90))
+                } else { Circle().fill(color.opacity(0.09)) }
+                Image(systemName: symbol).font(.title3).foregroundStyle(color)
+            }.frame(width: 42, height: 42).accessibilityHidden(true)
+            Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value).font(.title3.weight(.semibold).monospacedDigit())
+                Text(caption.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+            }.fixedSize(horizontal: false, vertical: true)
+        }.padding(textSize.isAccessibilitySize ? 18 : 14).frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(TempoSurface(radius: 22))
             .accessibilityElement(children: .ignore).accessibilityLabel(title.tempoLocalized).accessibilityValue(value + " " + caption.tempoLocalized)
     }
 }
@@ -4506,13 +4531,13 @@ struct TempoCard<Content: View>: View {
 struct MetricCard: View {
     let value: String; let label: String; let icon: String; let color: Color
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Image(systemName: icon).font(.subheadline).foregroundStyle(color)
+        VStack(alignment: .leading, spacing: 12) {
+            TempoIconBadge(symbol: icon, color: color, size: 36)
             Text(value).font(.title3.monospacedDigit().weight(.semibold)).fixedSize(horizontal: false, vertical: true)
             Text(label.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(13)
-        .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 136, alignment: .topLeading)
         .modifier(TempoSurface(radius: 22))
         .accessibilityElement(children: .combine)
     }
