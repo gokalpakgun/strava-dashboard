@@ -1384,17 +1384,11 @@
 
 "social.extra.privateNote" = "Bu kart herkese açık profil bilgileriyle ikinizin de katıldığı mücadeleleri gösterir. Favorilerin cihazında saklanır.";
 
-"birthday.close" = "Kutlamayı kapat";
 
-"birthday.today" = "Bugün senin günün";
 
-"birthday.title" = "İyi ki doğdun,";
 
-"birthday.message" = "Yeni yaşın sağlık, mutluluk ve güzel anılarla dolsun. Birlikte daha nice güzel yıllara!";
 
-"birthday.from" = "Kardeşinden, kocaman sevgilerle";
 
-"birthday.continue" = "Tempo’ya geç";
 
 "detection.title" = "Akıllı algılama";
 
@@ -1595,3 +1589,5 @@
 "permissions.notifications.detail" = "Arkadaşlık ve mücadele davetlerini, seçtiğin hatırlatmaları gör. Günlük hatırlatmalar otomatik açılmaz; bildirim tercihlerini ayrıca seçebilirsin.";
 "permissions.photos.title" = "Fotoğraflar’a kaydet";
 "permissions.photos.detail" = "Ürettiğin profil kartını galerine kaydet. Yalnız yeni görsel ekleme izni istenir; arşivindeki diğer fotoğraflar okunmaz. Profil fotoğrafını sistem seçicisiyle ayrıca seçersin.";
+
+"Verileri şimdi eşitle" = "Verileri şimdi eşitle";

@@ -1909,17 +1909,11 @@
 
 "social.extra.privateNote" = "This card shows public profile details and challenges you have both joined. Favorites stay on your device.";
 
-"birthday.close" = "Close celebration";
 
-"birthday.today" = "Today is your day";
 
-"birthday.title" = "Happy birthday,";
 
-"birthday.message" = "May your new year be filled with health, happiness and wonderful memories. Here’s to many more beautiful years together!";
 
-"birthday.from" = "With lots of love from your sibling";
 
-"birthday.continue" = "Continue to Tempo";
 
 "detection.title" = "Smart detection";
 
@@ -2120,3 +2114,5 @@
 "permissions.notifications.detail" = "See friend requests, challenge invitations and reminders you choose. Daily reminders are not enabled automatically; choose them separately in notification preferences.";
 "permissions.photos.title" = "Save to Photos";
 "permissions.photos.detail" = "Save your generated profile card to your gallery. Only permission to add new images is requested; other photos in your library are not read. Select a profile photo separately with the system picker.";
+
+"Verileri şimdi eşitle" = "Sync data now";

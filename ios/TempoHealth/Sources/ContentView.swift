@@ -151,7 +151,6 @@ struct ContentView: View {
             } else {
                 TempoStartupPermissionGate {
                     TempoMainShell(selectedTab: $selectedTab)
-                        .modifier(TempoBirthdaySurpriseModifier())
                 }
             }
         }
@@ -3318,44 +3317,13 @@ struct HealthScreen: View {
                     }
                 }
             }
-            TempoDisclosureSection(title: "wellness.connection", icon: "heart.text.square") {
-                VStack(alignment: .leading, spacing: 14) {
-                    if let sync = model.healthLastSync {
-                        Text("wellness.lastSync".tempoFormatted(sync.formatted(date: .abbreviated, time: .shortened))).font(.caption).foregroundStyle(TempoTheme.secondary)
-                    }
-                    if let error = model.healthError {
-                        Text(error.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if let error = model.healthWorkoutError {
-                        Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
-                    if model.healthSyncEnabled {
-                        HStack(spacing: 10) {
-                            Button { Task { await model.syncAppleHealth() } } label: {
-                                Label(model.isHealthSyncing ? "Eşitleniyor…" : "Şimdi eşitle", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(TempoSecondaryButtonStyle())
-                            .disabled(model.isHealthSyncing)
-                            Button(role: .destructive, action: model.disconnectAppleHealth) {
-                                Image(systemName: "link.badge.minus").frame(width: 26)
-                            }
-                            .buttonStyle(TempoSecondaryButtonStyle())
-                        }
-                        Button(action: model.connectAppleHealth) {
-                            Label("Sağlık izinlerini yeniden iste", systemImage: "hand.raised.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(TempoPrimaryButtonStyle())
-                        .disabled(model.isHealthSyncing)
-                        Text("Tempo yalnızca verdiğin Apple Sağlık izinlerindeki ölçüleri okur. Apple, reddedilen okuma izinlerini uygulamaya açıklamaz; eksik ölçüler boş görünür.")
-                            .font(.caption).foregroundStyle(TempoTheme.secondary).lineSpacing(3)
-                    }
-
-                }
+            Button { Task { await model.syncAppleHealth() } } label: {
+                Label((model.isHealthSyncing ? "Eşitleniyor…" : "Verileri şimdi eşitle").tempoLocalized, systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(TempoSecondaryButtonStyle())
+            .disabled(model.isHealthSyncing || !model.healthSyncEnabled || !model.healthAvailable)
+            .accessibilityIdentifier("health.syncNow")
         }
         .navigationTitle("Sağlık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton(showsBackButton)
         .onAppear { selectLatestHealthDayIfNeeded(); wellness.reload() }
