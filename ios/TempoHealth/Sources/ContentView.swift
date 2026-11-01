@@ -185,36 +185,35 @@ private struct TempoChatTabBarPreference: PreferenceKey {
 
 private struct TempoMainShell: View {
     @Binding var selectedTab: Int
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var notifications = TempoNotifications.shared
     @State private var presentedRoute: NotificationRoute?
     @State private var hidesTabBarForChat = false
     private struct NotificationRoute: Identifiable { let id: String }
 
-    @ViewBuilder
-    private var selectedScreen: some View {
-        switch selectedTab {
-        case 0:
-            HomeScreen()
-        case 1:
-            ActivitiesScreen()
-        case 2:
-            SportsHubScreen()
-        case 3:
-            NavigationStack { HealthScreen(showsBackButton: false) }
-        default:
-            MoreScreen()
+    private var mainTabs: some View {
+        TabView(selection: $selectedTab) {
+            tab(HomeScreen(), id: 0)
+            tab(ActivitiesScreen(), id: 1)
+            tab(SportsHubScreen(), id: 2)
+            tab(NavigationStack { HealthScreen(showsBackButton: false).toolbar(.hidden, for: .navigationBar) }, id: 3)
+            tab(MoreScreen(), id: 4)
         }
+    }
+
+    private func tab<Screen: View>(_ screen: Screen, id: Int) -> some View {
+        screen.tag(id)
+            .toolbar(.hidden, for: .tabBar)
+            .transformPreference(TempoChatTabBarPreference.self) { value in
+                // Saklanan, fakat görünmeyen Koç sekmesi diğer ekranların menüsünü gizlememeli.
+                if selectedTab != id { value = false }
+            }
     }
 
     var body: some View {
         ZStack {
             // Full-bleed background stays outside the tab animation.
             TempoAmbientBackground()
-            selectedScreen
-                .id(selectedTab)
-                .transition(reduceMotion ? .identity : .opacity)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: selectedTab)
+            mainTabs
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -4364,20 +4363,19 @@ struct TempoPage<Content: View>: View {
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         GeometryReader { geometry in
-        ZStack {
-            TempoAmbientBackground()
             ScrollView(.vertical) {
-                VStack(spacing: 16) { content }
+                LazyVStack(spacing: 16) { content }
                     .frame(width: max(0, geometry.size.width - 32))
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, TempoTheme.scrollBottomClearance)
             }
             .scrollDismissesKeyboard(.interactively)
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
-        .frame(width: geometry.size.width, height: geometry.size.height)
-        .clipped()
-        }
+        // Yalnız içerik kırpılır; arka plan durum çubuğu ve home indicator altına uzanır.
+        .background { TempoAmbientBackground() }
         .multilineTextAlignment(.leading)
     }
 }

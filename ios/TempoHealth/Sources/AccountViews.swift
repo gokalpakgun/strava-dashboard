@@ -184,16 +184,9 @@ struct TempoAmbientBackground: View {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-                Circle()
-                    .fill(TempoTheme.green.opacity(0.035))
-                    .frame(width: proxy.size.width * 0.92)
-                    .blur(radius: 125)
-                    .offset(x: proxy.size.width * 0.48, y: -proxy.size.height * 0.40)
-                Circle()
-                    .fill(TempoTheme.blue.opacity(0.025))
-                    .frame(width: proxy.size.width * 0.78)
-                    .blur(radius: 120)
-                    .offset(x: -proxy.size.width * 0.48, y: proxy.size.height * 0.38)
+                // Büyük blur katmanları yerine aynı yumuşak renk geçişi doğrudan çizilir.
+                RadialGradient(colors: [TempoTheme.green.opacity(0.035), .clear], center: .topTrailing, startRadius: 0, endRadius: max(1, proxy.size.width * 0.95))
+                RadialGradient(colors: [TempoTheme.blue.opacity(0.025), .clear], center: .bottomLeading, startRadius: 0, endRadius: max(1, proxy.size.width * 0.85))
             }
         }
         .ignoresSafeArea()

@@ -16,9 +16,9 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var healthSyncEnabled = false
     @Published private(set) var isHealthSyncing = false
     @Published private(set) var healthDays: [String: TempoHealthMetrics] = [:]
-    @Published private(set) var healthWorkouts: [TempoManualWorkout] = []
+    @Published private(set) var healthWorkouts: [TempoManualWorkout] = [] { didSet { activityLedgerCache = nil } }
     @Published private(set) var healthWorkoutError: String?
-    @Published private(set) var manualWorkouts: [TempoManualWorkout] = []
+    @Published private(set) var manualWorkouts: [TempoManualWorkout] = [] { didSet { activityLedgerCache = nil } }
     @Published private(set) var manualWorkoutError: String?
     @Published private(set) var activitySessionID = UUID()
     @Published private(set) var healthLastSync: Date?
@@ -43,6 +43,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     private var accountAccessToken: String?
     private var activeTempoAccountId: String?
     private var lastManualWorkoutAccountId: String?
+    private var activityLedgerCache: (createdAt: Date, workouts: [TempoManualWorkout])?
     private var lastDashboardRefresh: Date?
     private var coachGeneration = UUID()
     private var dashboardGeneration = UUID()
@@ -282,11 +283,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     var activityAccountID: String? { activeTempoAccountId }
 
     var activityWorkouts: [TempoManualWorkout] {
+        let now = Date()
+        if let cached = activityLedgerCache, (0..<60).contains(now.timeIntervalSince(cached.createdAt)) { return cached.workouts }
         let all = manualWorkouts + healthWorkouts
         let records = all.map { TempoWorkoutLedger.Record(id: $0.id, sportID: $0.sportId, startedAt: $0.startedAt, seconds: Double($0.durationSeconds ?? $0.durationMinutes * 60), distanceKm: $0.distanceKm, source: $0.recordSource ?? "manual") }
         var byID: [UUID: TempoManualWorkout] = [:]
         for workout in all where byID[workout.id] == nil { byID[workout.id] = workout }
-        return TempoWorkoutLedger.merge(records).compactMap { byID[$0.id] }
+        let merged = TempoWorkoutLedger.merge(records, now: now).compactMap { byID[$0.id] }
+        activityLedgerCache = (now, merged)
+        return merged
     }
 
     var weekActivityWorkouts: [TempoManualWorkout] {
