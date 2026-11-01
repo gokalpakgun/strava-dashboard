@@ -262,7 +262,8 @@ struct TempoPhoneTrackerScreen: View {
             .interactiveDismissDisabled(recorder.hasStarted || isSaving)
             .onAppear { if workoutSessionID == nil { workoutSessionID = model.activitySessionID; selectedSport = initialSportID == "walking" ? "walking" : "run" } }
             .onChange(of: model.activitySessionID) { _, _ in recorder.cancel(); dismiss() }
-            .onDisappear { recorder.cancel() }
+            .onDisappear { recorder.cancel(); TempoWorkoutDetection.shared.setLiveRecording(start: nil) }
+            .onChange(of: recorder.hasStarted) { _, started in TempoWorkoutDetection.shared.setLiveRecording(start: started ? recorder.sessionStartedAt : nil) }
             .onChange(of: recorder.route.count) { _, _ in updateRegion() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { recorder.cancelPendingStart() }

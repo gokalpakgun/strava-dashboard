@@ -3242,7 +3242,7 @@ private struct MoreScreen: View {
     }
 }
 
-private struct HealthScreen: View {
+struct HealthScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     @EnvironmentObject private var account: TempoAccountStore
     @StateObject private var wellness = TempoWellnessStore()
@@ -4490,7 +4490,7 @@ struct TempoCard<Content: View>: View {
     }
 }
 
-private struct MetricCard: View {
+struct MetricCard: View {
     let value: String; let label: String; let icon: String; let color: Color
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {

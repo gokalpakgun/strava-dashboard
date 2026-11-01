@@ -415,7 +415,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         }
         let hasRoute = cleanRoute.count >= 2 && distanceKm > 0
 
-        let workout = TempoManualWorkout(
+        var workout = TempoManualWorkout(
             id: UUID(),
             sportId: sportId,
             sportTitle: sportTitle,
@@ -432,6 +432,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             perceivedEffort: perceivedEffort.map { min(max($0, 1), 5) },
             enjoyment: enjoyment.map { min(max($0, 1), 5) }
         )
+        workout.sourceEndedAt = Date()
         var updated = manualWorkouts
         updated.insert(workout, at: 0)
         try Self.saveManualWorkouts(updated, accountId: accountId)

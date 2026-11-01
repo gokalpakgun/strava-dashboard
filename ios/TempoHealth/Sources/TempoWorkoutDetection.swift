@@ -23,6 +23,7 @@ final class TempoWorkoutDetection: ObservableObject {
     private var observers: [HKObserverQuery] = []
     private var generation = UUID()
     private var scanTask: Task<Void, Never>?
+    private var liveRecordingStart: Date?
     private var state = State()
     private let center = UNUserNotificationCenter.current()
     private var bootstrapped = false
@@ -62,6 +63,7 @@ final class TempoWorkoutDetection: ObservableObject {
     func bind(owner next: String?, healthEnabled: Bool, known: [DetectionInterval]) {
         if owner != next {
             stopRuntime()
+            liveRecordingStart = nil
             owner = nil; state = State(); candidates = []; enabled = false; message = ""; lastScan = nil
             if let next { load(owner: next) }
         }
@@ -102,6 +104,7 @@ final class TempoWorkoutDetection: ObservableObject {
         state.enabled = false; enabled = false
         stopRuntime(); persist()
     }
+    func setLiveRecording(start: Date?) { liveRecordingStart = start }
 
     func removeAccount(_ accountID: String) {
         if owner == accountID { disable(); owner = nil; candidates = []; state = State(); UserDefaults.standard.removeObject(forKey: "tempo.detection.activeOwner") }
@@ -135,7 +138,7 @@ final class TempoWorkoutDetection: ObservableObject {
             do {
                 let slices = try await motionHistory(from: start, to: now)
                 let windows = WorkoutDetectionEngine.motionWindows(slices)
-                for window in windows.suffix(12) {
+                for window in windows.filter({ $0.end <= now.addingTimeInterval(-120) }).suffix(12) {
                     guard generation == token, !Task.isCancelled else { return }
                     let data = try await steps(from: window.start, to: window.end)
                     if let candidate = WorkoutDetectionEngine.phoneCandidate(window, steps: data.0, distance: data.1) { found.append(candidate) }
@@ -155,14 +158,15 @@ final class TempoWorkoutDetection: ObservableObject {
                 let values = try await (rates, energy, count, exercise)
                 let resting = try await quantities(.restingHeartRate, from: now.addingTimeInterval(-7 * 86400), to: now, unit: HKUnit.count().unitDivided(by: .minute()))
                 let bins = Self.bins(start: start, end: now, rates: values.0, energy: values.1, steps: values.2, exercise: values.3)
-                found += WorkoutDetectionEngine.healthCandidates(bins, restingHeartRate: resting.last?.value)
+                found += WorkoutDetectionEngine.healthCandidates(bins, restingHeartRate: resting.last?.value).filter { $0.end <= now.addingTimeInterval(-300) }
             } catch { failed = true }
         }
         guard generation == token, !Task.isCancelled else { return }
         // Yeni Sağlık kaydı sonradan geldiyse bekleyen öneri sessizce kaldırılır.
-        state.known = known
+        state.known = known.filter { $0.end > now.addingTimeInterval(-3 * 86400) }
         removeCoveredCandidates()
-        let fresh = WorkoutDetectionEngine.fresh(found, existing: known, history: state.records, now: now)
+        let live = liveRecordingStart.map { [DetectionInterval(start: $0, end: now)] } ?? []
+        let fresh = WorkoutDetectionEngine.fresh(found, existing: known + live, history: state.records, now: now)
         state.records += fresh
         state.records = Array(state.records.filter { $0.end > now.addingTimeInterval(-7 * 86400) }.sorted { $0.start > $1.start }.prefix(100))
         state.lastScan = now; lastScan = now
@@ -226,7 +230,11 @@ final class TempoWorkoutDetection: ObservableObject {
     }
     private func notifyIfNeeded(generation token: UUID) async {
         guard enabled, let owner, state.lastNotification.map({ Date().timeIntervalSince($0) >= 6 * 3600 }) ?? true,
-              let candidate = pending.first(where: { !$0.notified && $0.end > Date().addingTimeInterval(-6 * 3600) }) else { return }
+              let candidate = pending.first(where: { candidate in
+                  guard !candidate.notified, candidate.end > Date().addingTimeInterval(-6 * 3600) else { return false }
+                  if let liveRecordingStart { return !WorkoutDetectionEngine.overlaps(candidate.start, candidate.end, DetectionInterval(start: liveRecordingStart, end: Date())) }
+                  return true
+              }) else { return }
         let settings = await center.notificationSettings()
         guard generation == token, enabled, [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus) else { return }
         let content = UNMutableNotificationContent()
@@ -253,6 +261,7 @@ final class TempoWorkoutDetection: ObservableObject {
     private func load(owner: String) {
         self.owner = owner
         if let data = try? Data(contentsOf: fileURL(owner: owner)), let saved = try? JSONDecoder().decode(State.self, from: data) { state = saved }
+        state.records.removeAll { $0.end < Date().addingTimeInterval(-7 * 86400) }
         enabled = state.enabled; candidates = state.records; lastScan = state.lastScan
         motionAuthorized = CMMotionActivityManager.authorizationStatus() == .authorized
     }

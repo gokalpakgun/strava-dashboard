@@ -1,7 +1,7 @@
 import Foundation
 
 var checks = 0
-func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+@MainActor func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     checks += 1
     if !condition() { fatalError("DETECTION_FAIL: " + message) }
 }

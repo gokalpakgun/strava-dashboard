@@ -164,6 +164,7 @@ private struct DetectedWorkoutReview: View {
     @State private var sportID = ""
     @State private var error = ""
     @State private var saving = false
+    @State private var sessionID: UUID?
     var body: some View {
         NavigationStack {
             TempoPage {
@@ -180,7 +181,7 @@ private struct DetectedWorkoutReview: View {
                 }
                 if !error.isEmpty { Text(error).font(.footnote).foregroundStyle(TempoTheme.orange) }
                 Button {
-                    guard !saving else { return }; saving = true; error = ""
+                    guard sessionID == model.activitySessionID, !saving else { return }; saving = true; error = ""
                     Task {
                         await detector.scan(force: true)
                         do {
@@ -197,7 +198,8 @@ private struct DetectedWorkoutReview: View {
             .navigationTitle("detection.reviewAction".tempoLocalized).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Vazgeç".tempoLocalized) { dismiss() }.disabled(saving) } }
             .interactiveDismissDisabled(saving)
-            .onAppear { if candidate.origin == .phone { sportID = candidate.suggestedSport } }
+            .onAppear { sessionID = model.activitySessionID; if candidate.origin == .phone { sportID = candidate.suggestedSport } }
+            .onChange(of: model.activitySessionID) { _, _ in dismiss() }
         }
     }
 }
@@ -213,6 +215,7 @@ struct TempoLiveSessionScreen: View {
     @State private var error = ""
     @State private var confirmDiscard = false
     @State private var saving = false
+    @State private var sessionID: UUID?
     private func seconds(at date: Date) -> Double { completedSeconds + (runningSince.map { max(0, date.timeIntervalSince($0)) } ?? 0) }
     var body: some View {
         NavigationStack {
@@ -239,16 +242,20 @@ struct TempoLiveSessionScreen: View {
                 }
                 if !error.isEmpty { Text(error).font(.footnote).foregroundStyle(TempoTheme.orange) }
             }.navigationTitle("detection.liveSession".tempoLocalized).navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Kapat".tempoLocalized) { if startedAt == nil { dismiss() } else { confirmDiscard = true } } } }
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Kapat".tempoLocalized) { if startedAt == nil { dismiss() } else { confirmDiscard = true } }.accessibilityIdentifier("activity.live.close") } }
                 .interactiveDismissDisabled(startedAt != nil)
+                .onAppear { sessionID = model.activitySessionID }
+                .onChange(of: model.activitySessionID) { _, _ in dismiss() }
+                .onChange(of: startedAt) { _, start in TempoWorkoutDetection.shared.setLiveRecording(start: start) }
+                .onDisappear { TempoWorkoutDetection.shared.setLiveRecording(start: nil) }
                 .confirmationDialog("detection.discardTitle".tempoLocalized, isPresented: $confirmDiscard) {
                     Button("detection.discard".tempoLocalized, role: .destructive) { dismiss() }
                     Button("Vazgeç".tempoLocalized, role: .cancel) { }
                 }
-        }
+        }.accessibilityIdentifier("activity.live.form")
     }
     private func save() {
-        guard let startedAt, let sport = TempoSportChoice(rawValue: sportID), !saving else { return }
+        guard sessionID == model.activitySessionID, let startedAt, let sport = TempoSportChoice(rawValue: sportID), !saving else { return }
         let duration = seconds(at: Date())
         guard duration >= 60 else { error = "detection.tooShort".tempoLocalized; return }
         saving = true

@@ -120,14 +120,14 @@ final class TempoHealthUserFlowTests: XCTestCase {
             capture(app, named: screenID)
 
             if tabID == "tab.1" {
-                let addManualWorkout = element("activity.manual.add", in: app)
-                XCTAssertTrue(addManualWorkout.waitForExistence(timeout: 5), "Activity screen should offer manual workout entry")
-                addManualWorkout.tap()
-                let manualForm = element("activity.manual.form", in: app)
-                XCTAssertTrue(manualForm.waitForExistence(timeout: 5) || app.navigationBars["Antrenman ekle"].exists, "Manual workout form should open")
-                capture(app, named: "Manual workout form")
-                element("activity.manual.cancel", in: app).tap()
-                XCTAssertTrue(screen.waitForExistence(timeout: 5), "Canceling manual entry should return to Activities")
+                let startSession = element("activity.live.start", in: app)
+                for _ in 0..<3 where !startSession.isHittable { app.swipeUp() }
+                XCTAssertTrue(startSession.waitForExistence(timeout: 5), "Activity screen should offer a live workout timer")
+                startSession.tap()
+                XCTAssertTrue(element("activity.live.form", in: app).waitForExistence(timeout: 5), "Live session should open")
+                capture(app, named: "Live workout timer")
+                element("activity.live.close", in: app).tap()
+                XCTAssertTrue(screen.waitForExistence(timeout: 5), "Closing an unstarted session should return to Activities")
             }
         }
 
