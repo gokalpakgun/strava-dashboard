@@ -209,6 +209,8 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
         case "apple-health": return "Apple Sağlık".tempoLocalized
         case "phone-gps": return "iPhone GPS kaydı".tempoLocalized
         case "phone-timer": return "Telefonla süre kaydı · rota yok".tempoLocalized
+        case "detected-motion": return "detection.sourcePhone".tempoLocalized
+        case "detected-health": return "detection.sourceHealth".tempoLocalized
         case "manual": return "Elle eklendi · doğrulanmadı".tempoLocalized
         default: return healthSignal == nil ? "Elle eklendi".tempoLocalized : "Elle eklendi · Sağlık sinyali".tempoLocalized
         }

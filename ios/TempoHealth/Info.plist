@@ -40,7 +40,11 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Tempo, uygulamada eklediğin su miktarını Apple Sağlık hesabına kaydeder.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Tempo, Apple Watch olmadan iPhone’un adım sayısını antrenman saat aralığında kontrol ederek manuel antrenman kaydına destek olmak için hareket verisini kullanır.</string>
+	<string>Tempo, izninle iPhone hareket ve adım geçmişini inceleyerek onaylayabileceğin olası antrenmanlar önermek için hareket verilerini kullanır.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array><string>com.apitempo.tempohealth.detect-workouts</string></array>
+	<key>UIBackgroundModes</key>
+	<array><string>fetch</string></array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -23,6 +23,7 @@ final class TempoNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNo
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo["tempo"] as? [String: String]
         Task { @MainActor in
+            if info?["destination"] == "detection", info?["owner"] != TempoWorkoutDetection.shared.owner { return }
             TempoNotifications.shared.open(destination: info?["destination"] ?? "notifications")
             await TempoNotifications.shared.refresh()
         }
@@ -250,7 +251,7 @@ final class TempoNotifications: ObservableObject {
         }
     }
     func open(destination: String) {
-        route = ["social", "sports", "achievements", "summary", "notifications"].contains(destination) ? destination : "notifications"
+        route = ["social", "sports", "achievements", "summary", "notifications", "detection"].contains(destination) ? destination : "notifications"
     }
     func detach(eraseAccountData: Bool = false) {
         sessionGeneration = UUID()

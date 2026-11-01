@@ -1395,3 +1395,139 @@
 "birthday.from" = "Kardeşinden, kocaman sevgilerle";
 
 "birthday.continue" = "Tempo’ya geç";
+
+"detection.title" = "Akıllı algılama";
+
+"detection.enabled" = "Algılama açık";
+
+"detection.optional" = "İsteğe bağlı · karar sende";
+
+"detection.homeHint" = "Uzun süreli hareketin antrenman önerisine dönüşsün. Onaylamadan hiçbir kayıt eklenmez.";
+
+"detection.pendingCount" = "İncelenecek %d olası antrenman";
+
+"detection.phone" = "iPhone hareketi";
+
+"detection.watch" = "Sağlık sinyalleri";
+
+"detection.introTitle" = "Hareketin fark edilsin.";
+
+"detection.intro" = "Tempo uzun süren hareketi fark edip antrenman olup olmadığını sana sorar. Branşı sen seçer, kaydı sen onaylarsın.";
+
+"detection.consent" = "Etkinleştirdiğinde son 24 saate kadar iPhone hareketi ve Sağlık bağlıysa paylaştığın nabız/aktivite verileri kontrol edilir. Varsayılan olarak kapalıdır.";
+
+"detection.enable" = "Akıllı algılamayı aç";
+
+"detection.lastChecked" = "Son kontrol: %@";
+
+"detection.scan" = "Son hareketleri kontrol et";
+
+"detection.notifications" = "Önerileri bildirim olarak al";
+
+"detection.review" = "Senin onayını bekliyor";
+
+"detection.emptyTitle" = "Henüz yeni öneri yok";
+
+"detection.empty" = "Tempo en az 15 dakika süren hareketi arar. Kısa yürüyüşler, eksik sinyaller ve zaten kayıtlı antrenmanlar için öneri oluşmayabilir.";
+
+"detection.reviewAction" = "Öneriyi incele";
+
+"detection.dismiss" = "Bu bir antrenman değildi";
+
+"detection.how" = "Algılama nasıl çalışır?";
+
+"detection.phoneDetail" = "iPhone: yürüme/koşma sınıflandırması, süreklilik ve adım temposuyla birleştirilir. Araç ve düşük güvenli hareket sınıfları elenir. Algılama için GPS kullanılmaz.";
+
+"detection.healthDetail" = "Sağlık: tekrarlayan yüksek nabız; aktif enerji ve hareket/egzersiz sinyalleriyle desteklenmelidir. Tek nabız sıçraması yeterli değildir. Seyrek saat verileri kaçabilir.";
+
+"detection.limits" = "Bu bir tahmindir, antrenman kanıtı değildir. İşe yürümek spor gibi görünebilir. Masadaki telefon ağırlık çalışmanı algılayamaz. Arka plan kontrollerini iOS planlar; öneri geç gelebilir veya Tempo yeniden açıldığında görünebilir.";
+
+"detection.privacy" = "Sinyaller ve öneriler bu cihazda işlenir, Tempo hesabına göre ayrılır. Algılama ham sensör verilerini yüklemez. Öneriler 7 gün sonra silinir; yinelenen ve reddedilen aralıklar tekrar önerilmez.";
+
+"detection.connectHealth" = "Saat sinyalleri için Sağlık’ı bağla";
+
+"detection.disable" = "Algılamayı kapat";
+
+"detection.disableDetail" = "Arka plan kontrolleri ve algılama bildirimleri durur. Kaydettiğin antrenmanlar korunur.";
+
+"detection.possible" = "Olası antrenman";
+
+"detection.steps" = "Ölçülen adım";
+
+"detection.averageHR" = "Gözlenen ortalama nabız";
+
+"detection.energy" = "Aktif enerji";
+
+"detection.phoneEvidence" = "iPhone hareket sınıfı ve adım sayısından önerildi. Amacını ve branşı yine sen doğrulamalısın.";
+
+"detection.healthEvidence" = "Uzun süreli nabız ve aktif enerjiden önerildi. Bu sinyaller tek başına belirli bir branşı tanıyamaz.";
+
+"detection.whichSport" = "Hangi sporu yaptın?";
+
+"detection.confirmHint" = "Algılanan zaman aralığı tahminidir. Yalnız gerçekten yaptığın antrenmanla örtüşüyorsa kaydet.";
+
+"detection.chooseSport" = "Branş seç";
+
+"detection.confirm" = "Evet, antrenmanı kaydet";
+
+"detection.recordNote" = "Sensörle algılandı, senin onayınla kaydedildi olarak etiketlenir. Rota, set, ağırlık veya mesafe uydurulmaz.";
+
+"detection.permissionNeeded" = "iPhone Ayarları’ndan Hareket ve Fitness iznini aç veya paylaşılan saat sinyalleri için Sağlık’ı bağla.";
+
+"detection.notificationDenied" = "Bildirimler kapalı. Önerileri burada inceleyebilir veya iPhone Ayarları’ndan bildirim iznini açabilirsin.";
+
+"detection.notificationsReady" = "Bildirim tercihin güncellendi. Öneriler burada da görünmeye devam eder.";
+
+"detection.partial" = "Bazı sinyaller okunamadı. Mevcut öneriler korundu; Hareket ve Fitness ile Sağlık izinlerini kontrol et.";
+
+"detection.storageError" = "Öneriler bu cihaza kaydedilemedi. Boş depolama alanını kontrol edip tekrar dene.";
+
+"detection.notificationTitle" = "Antrenman mı yaptın?";
+
+"detection.notificationBody" = "Tempo uzun süren hareket fark etti. Antrenman yaptıysan inceleyip kaydetmek için dokun.";
+
+"detection.noLongerAvailable" = "Bu öneri artık bu hesapta kullanılamıyor. Önerileri yenile.";
+
+"detection.alreadyRecorded" = "Bu zaman aralığında zaten antrenman var. İkinci bir kayıt eklenmedi.";
+
+"detection.sourcePhone" = "iPhone algıladı · sen onayladın";
+
+"detection.sourceHealth" = "Sağlık sinyalleri · sen onayladın";
+
+"detection.automaticMetrics" = "Mevcut ölçümler otomatik okunur. Eksik set, ağırlık, nabız bölgesi ve diğer metrikler boş bırakılır. Önceki girişlerin korunur.";
+
+"detection.startHint" = "Kendin başlatmak istersen rotanı kaydet veya antrenman süreni tut.";
+
+"detection.liveSession" = "Antrenman başlat";
+
+"detection.liveSessionHint" = "Kuvvet, kort sporları ve diğerleri · canlı süre";
+
+"detection.timerHint" = "Yalnız geçen aktif süre kaydedilir. Set, kalori veya efor tahmin edilmez. Uygulama beklenmedik şekilde kapanırsa kaydedilmemiş süre kaybolur.";
+
+"detection.pause" = "Duraklat";
+
+"detection.start" = "Başlat / devam et";
+
+"detection.finish" = "Bitir ve kaydet";
+
+"detection.discardTitle" = "Bu antrenman silinsin mi?";
+
+"detection.discard" = "Kaydedilmemiş antrenmanı sil";
+
+"detection.tooShort" = "Kaydetmeden önce en az bir dakika süre tut.";
+
+"social.hub.invitations" = "Antrenman davetlerin var";
+
+"social.hub.invitationCount" = "%d davet yanıtını bekliyor";
+
+"social.hub.favorites" = "Yakın çevren";
+
+"social.hub.connect" = "Tempo’da birbirinizi bulun";
+
+"social.hub.connectDetail" = "Arkadaşının sana istek gönderebilmesi için kullanıcı adını paylaş.";
+
+"social.hub.yourUsername" = "Tempo kullanıcı adın";
+
+"social.hub.shareMessage" = "Tempo’da beni bul: @%@";
+
+"social.hub.shareUsername" = "Kullanıcı adımı paylaş";

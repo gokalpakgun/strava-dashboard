@@ -32,5 +32,11 @@ jobs:
           while IFS= read -r -d '' FILE; do SOURCES+=("$FILE"); done < <(find ios/TempoHealth/Sources -maxdepth 1 -name '*.swift' -print0)
           xcrun swiftc -typecheck -parse-as-library -swift-version 5 -module-name TempoHealth -sdk "$SDK" -target arm64-apple-ios17.0-simulator "${SOURCES[@]}"
           plutil -lint ios/TempoHealth/TempoHealth.xcodeproj/project.pbxproj ios/TempoHealth/Sources/en.lproj/Localizable.strings ios/TempoHealth/Sources/tr.lproj/Localizable.strings
+      - name: Otomatik antrenman algılama senaryoları
+        run: |
+          set -euo pipefail
+          swiftc -swift-version 6 ios/TempoHealth/Sources/WorkoutDetectionEngine.swift ios/TempoHealth/Sources/TempoWorkoutLedger.swift ios/DetectionRegressionTests/main.swift -o "$RUNNER_TEMP/tempo-detection-checks"
+          "$RUNNER_TEMP/tempo-detection-checks"
+          plutil -lint ios/TempoHealth/Info.plist ios/TempoHealth/Sources/en.lproj/InfoPlist.strings ios/TempoHealth/Sources/tr.lproj/InfoPlist.strings
       - name: Koç bağlamı ve izin kontrolleri
         run: node --test worker/test/coach-social.test.js worker/test/athletic-context.test.js

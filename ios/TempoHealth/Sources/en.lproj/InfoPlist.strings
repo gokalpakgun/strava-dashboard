@@ -4,4 +4,4 @@
 "NSPhotoLibraryAddUsageDescription" = "Tempo saves profile cards you create to your Photos library.";
 "NSHealthShareUsageDescription" = "Tempo reads the Health data you choose to share and can check heart rate, steps or a saved workout around the workout time as supporting signals.";
 "NSHealthUpdateUsageDescription" = "Tempo saves water entries you add in the app to Apple Health.";
-"NSMotionUsageDescription" = "Tempo uses iPhone motion data to check phone step counts during manual workout times, so an Apple Watch isn’t required.";
+"NSMotionUsageDescription" = "With your permission, Tempo checks sustained activity in iPhone motion and step history to suggest possible workouts for you to review and confirm.";

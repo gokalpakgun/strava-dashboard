@@ -34,6 +34,9 @@
 		A10000000000000000000014 /* TempoPhoneTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* TempoPhoneTracker.swift */; };
 		B10000000000000000000001 /* TempoHealthUserFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* TempoHealthUserFlowTests.swift */; };
 		B10000000000000000000002 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* XCTest.framework */; };
+		F1000000000000000000000A /* WorkoutDetectionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000A /* WorkoutDetectionEngine.swift */; };
+		F1000000000000000000000B /* TempoWorkoutDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000B /* TempoWorkoutDetection.swift */; };
+		F1000000000000000000000C /* WorkoutDetectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000C /* WorkoutDetectionViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -71,6 +74,9 @@
 		B20000000000000000000001 /* TempoHealthUserFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoHealthUserFlowTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		B20000000000000000000003 /* TempoHealthUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TempoHealthUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F2000000000000000000000A /* WorkoutDetectionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetectionEngine.swift; sourceTree = "<group>"; };
+		F2000000000000000000000B /* TempoWorkoutDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoWorkoutDetection.swift; sourceTree = "<group>"; };
+		F2000000000000000000000C /* WorkoutDetectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetectionViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,6 +120,9 @@
                 F20000000000000000000007 /* CrossSportViews.swift */,
                 F20000000000000000000008 /* HeartRateZoneInference.swift */,
                 F20000000000000000000009 /* RecoveryLoadAnalysis.swift */,
+                F2000000000000000000000C /* WorkoutDetectionViews.swift */,
+                F2000000000000000000000B /* TempoWorkoutDetection.swift */,
+                F2000000000000000000000A /* WorkoutDetectionEngine.swift */,
 				A20000000000000000000018 /* PrivacyInfo.xcprivacy */,
 				A40000000000000000000004 /* Localizable.strings */,
 				A40000000000000000000005 /* InfoPlist.strings */,
@@ -229,6 +238,9 @@
             F10000000000000000000007 /* CrossSportViews.swift in Sources */,
             F10000000000000000000008 /* HeartRateZoneInference.swift in Sources */,
             F10000000000000000000009 /* RecoveryLoadAnalysis.swift in Sources */,
+            F1000000000000000000000C /* WorkoutDetectionViews.swift in Sources */,
+            F1000000000000000000000B /* TempoWorkoutDetection.swift in Sources */,
+            F1000000000000000000000A /* WorkoutDetectionEngine.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		B80000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B10000000000000000000001 /* TempoHealthUserFlowTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */

@@ -12,10 +12,10 @@ enum TempoWorkoutLedger {
         let source: String
     }
     static func merge(_ records: [Record], now: Date = Date()) -> [Record] {
-        let valid = records.filter { $0.seconds.isFinite && $0.seconds > 0 && ["manual", "phone-gps", "phone-timer", "health-supported-manual", "apple-health"].contains($0.source) && $0.startedAt.timeIntervalSince1970.isFinite && $0.startedAt <= now && ($0.distanceKm == nil || ($0.distanceKm!.isFinite && $0.distanceKm! >= 0)) }
+        let valid = records.filter { $0.seconds.isFinite && $0.seconds > 0 && ["manual", "phone-gps", "phone-timer", "health-supported-manual", "apple-health", "detected-motion", "detected-health"].contains($0.source) && $0.startedAt.timeIntervalSince1970.isFinite && $0.startedAt <= now && ($0.distanceKm == nil || ($0.distanceKm!.isFinite && $0.distanceKm! >= 0)) }
         let preferred = valid.sorted {
-            let a = $0.source == "apple-health" ? 1 : 0
-            let b = $1.source == "apple-health" ? 1 : 0
+            let a = $0.source.hasPrefix("detected-") ? 2 : ($0.source == "apple-health" ? 1 : 0)
+            let b = $1.source.hasPrefix("detected-") ? 2 : ($1.source == "apple-health" ? 1 : 0)
             if a != b { return a < b }
             if $0.startedAt != $1.startedAt { return $0.startedAt > $1.startedAt }
             return $0.id.uuidString < $1.id.uuidString
@@ -25,6 +25,14 @@ enum TempoWorkoutLedger {
         for record in preferred {
             guard seen.insert(record.id).inserted else { continue }
             let duplicate = result.contains { previous in
+                // Algılanan pencere bir saat kaydından daha geniş olabilir; sonradan gelen gerçek antrenmanla çifte toplam üretme.
+                let detected = record.source.hasPrefix("detected-") || previous.source.hasPrefix("detected-")
+                if detected, record.source == "apple-health" || previous.source == "apple-health" {
+                    let end = record.startedAt.addingTimeInterval(record.seconds)
+                    let otherEnd = previous.startedAt.addingTimeInterval(previous.seconds)
+                    let overlap = min(end, otherEnd).timeIntervalSince(max(record.startedAt, previous.startedAt))
+                    if overlap > 0 && overlap / min(record.seconds, previous.seconds) >= 0.5 { return true }
+                }
                 // Keep separate local sets; match external copies conservatively.
                 guard record.source == "apple-health" || previous.source == "apple-health",
                       previous.sportID == record.sportID,

@@ -438,6 +438,30 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         manualWorkouts = updated
     }
 
+    func addDetectedWorkout(_ candidate: DetectedWorkout, sportID: String) throws {
+        let detector = TempoWorkoutDetection.shared
+        guard detector.enabled, let accountId = activeTempoAccountId, detector.owner == accountId,
+              let saved = detector.pending.first(where: { $0.id == candidate.id }), saved.start == candidate.start, saved.end == candidate.end, saved.origin == candidate.origin,
+              let sport = TempoSportChoice(rawValue: sportID), candidate.seconds >= 900,
+              candidate.seconds <= 4 * 3600, candidate.end <= Date() else {
+            throw APIError.server("detection.noLongerAvailable".tempoLocalized)
+        }
+        try ensureManualWorkoutsLoaded(accountId: accountId)
+        let overlap = (manualWorkouts + healthWorkouts).contains {
+            WorkoutDetectionEngine.overlaps(candidate.start, candidate.end, DetectionInterval(start: $0.startedAt, end: $0.sourceEndedAt ?? $0.endedAt))
+        }
+        guard !overlap else { detector.decide(candidate, accepted: false); throw APIError.server("detection.alreadyRecorded".tempoLocalized) }
+        let seconds = Int(candidate.seconds.rounded())
+        var workout = TempoManualWorkout(id: candidate.id, sportId: sportID, sportTitle: sport.title, title: sport.title, startedAt: candidate.start, durationMinutes: max(1, seconds / 60), notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: seconds, distanceKm: TempoSport(rawValue: sportID).supportsDistance ? candidate.distanceMeters.map { $0 / 1000 } : nil, routeCoordinates: nil, recordSource: candidate.origin == .phone ? "detected-motion" : "detected-health", perceivedEffort: nil, enjoyment: nil)
+        workout.sourceAverageHeartRateBpm = candidate.averageHeartRate
+        workout.sourceEnergyKcal = candidate.activeEnergy
+        workout.sourceEndedAt = candidate.end
+        let updated = [workout] + manualWorkouts
+        try Self.saveManualWorkouts(updated, accountId: accountId)
+        manualWorkouts = updated
+        detector.decide(candidate, accepted: true)
+    }
+
     func deleteManualWorkout(_ workout: TempoManualWorkout) throws {
         guard let accountId = activeTempoAccountId else {
             throw APIError.server("Antrenmanı kaydetmek için Tempo hesabına giriş yap.")
@@ -1311,6 +1335,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             Self.clearCachedDashboard(accountId: accountId)
             Self.clearCachedHealthDays(accountId: accountId)
             if deleteManualWorkouts {
+                TempoWorkoutDetection.shared.removeAccount(accountId)
                 TempoWellnessStore.removeData(for: accountId)
                 SportMetricsStore.removeData(for: accountId)
                 TempoSocialFavorites.removeData(for: accountId)
@@ -1319,6 +1344,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             }
         }
         activeTempoAccountId = nil
+        TempoWorkoutDetection.shared.bind(owner: nil, healthEnabled: false, known: [])
         activitySessionID = UUID()
         lastManualWorkoutAccountId = nil
         manualWorkoutError = nil

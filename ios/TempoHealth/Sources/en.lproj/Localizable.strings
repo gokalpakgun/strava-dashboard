@@ -1920,3 +1920,139 @@
 "birthday.from" = "With lots of love from your sibling";
 
 "birthday.continue" = "Continue to Tempo";
+
+"detection.title" = "Smart detection";
+
+"detection.enabled" = "Detection is on";
+
+"detection.optional" = "Optional · you stay in control";
+
+"detection.homeHint" = "Sustained movement can become a workout suggestion. Nothing is saved until you confirm.";
+
+"detection.pendingCount" = "%d possible workouts to review";
+
+"detection.phone" = "iPhone motion";
+
+"detection.watch" = "Health signals";
+
+"detection.introTitle" = "Your movement, noticed.";
+
+"detection.intro" = "Tempo looks for sustained activity and asks whether it was a workout. You choose the sport and confirm the record.";
+
+"detection.consent" = "Enable to check up to the last 24 hours of iPhone motion and, if Health is connected, shared heart rate and activity signals. This is off by default.";
+
+"detection.enable" = "Enable smart detection";
+
+"detection.lastChecked" = "Last checked: %@";
+
+"detection.scan" = "Check recent movement";
+
+"detection.notifications" = "Allow workout suggestions as notifications";
+
+"detection.review" = "Waiting for your review";
+
+"detection.emptyTitle" = "No new suggestions yet";
+
+"detection.empty" = "Tempo looks for at least 15 minutes of sustained activity. Short walks, missing signals and existing workouts may not produce suggestions.";
+
+"detection.reviewAction" = "Review suggestion";
+
+"detection.dismiss" = "This was not a workout";
+
+"detection.how" = "How detection works";
+
+"detection.phoneDetail" = "iPhone: walking/running classification is combined with sustained step cadence. Vehicle classifications and low-confidence movement are excluded. No GPS is used for detection.";
+
+"detection.healthDetail" = "Health: repeated elevated heart rate must be supported by active energy and movement or exercise signals. A single heart rate spike is not enough. Sparse watch data may be missed.";
+
+"detection.limits" = "This is an estimate, not proof of exercise. A commute can look like a workout. A phone on a table cannot detect your lifting. iOS schedules background checks; suggestions can arrive late or when you reopen Tempo.";
+
+"detection.privacy" = "Signals and suggestions are processed on this device and separated by Tempo account. Detection does not upload raw sensor data. Suggestions expire after 7 days; duplicate and dismissed intervals are suppressed.";
+
+"detection.connectHealth" = "Connect Health for watch signals";
+
+"detection.disable" = "Turn off detection";
+
+"detection.disableDetail" = "Background checks and detection notifications stop. Your saved workouts stay.";
+
+"detection.possible" = "Possible workout";
+
+"detection.steps" = "Measured steps";
+
+"detection.averageHR" = "Observed average HR";
+
+"detection.energy" = "Active energy";
+
+"detection.phoneEvidence" = "Suggested from iPhone movement classification and step count. Purpose and sport still need your confirmation.";
+
+"detection.healthEvidence" = "Suggested from sustained heart rate and active energy. These signals cannot identify a specific sport.";
+
+"detection.whichSport" = "Which sport was it?";
+
+"detection.confirmHint" = "The detected time window is an estimate. Save only if it matches a workout you actually completed.";
+
+"detection.chooseSport" = "Choose a sport";
+
+"detection.confirm" = "Yes, save this workout";
+
+"detection.recordNote" = "Saved as sensor-detected, confirmed by you. No route, sets, weight or distance is invented.";
+
+"detection.permissionNeeded" = "Allow Motion & Fitness in iPhone Settings, or connect Health to use shared watch signals.";
+
+"detection.notificationDenied" = "Notifications are off. You can still review suggestions here or enable notifications in iPhone Settings.";
+
+"detection.notificationsReady" = "Notification preferences updated. Suggestions remain available here too.";
+
+"detection.partial" = "Some signals could not be read. Available suggestions are kept; check your Motion & Fitness and Health permissions.";
+
+"detection.storageError" = "Suggestions could not be saved on this device. Check available storage and try again.";
+
+"detection.notificationTitle" = "Was that a workout?";
+
+"detection.notificationBody" = "Tempo noticed sustained activity. Tap to review and save it if it was a workout.";
+
+"detection.noLongerAvailable" = "This suggestion is no longer available for this account. Refresh the suggestions.";
+
+"detection.alreadyRecorded" = "A workout already covers this time. A duplicate was not added.";
+
+"detection.sourcePhone" = "iPhone detected · confirmed by you";
+
+"detection.sourceHealth" = "Health signals · confirmed by you";
+
+"detection.automaticMetrics" = "Available measurements are read automatically. Missing sets, weights, zones and other metrics are left blank. Previous entries are preserved.";
+
+"detection.startHint" = "Prefer to start yourself? Record a route or time your session.";
+
+"detection.liveSession" = "Start a session";
+
+"detection.liveSessionHint" = "Strength, court sports and more · live timer";
+
+"detection.timerHint" = "This records elapsed active time only. It does not estimate sets, calories or effort. Keep Tempo installed; an unsaved timer is lost if the app closes unexpectedly.";
+
+"detection.pause" = "Pause";
+
+"detection.start" = "Start / resume";
+
+"detection.finish" = "Finish and save";
+
+"detection.discardTitle" = "Discard this session?";
+
+"detection.discard" = "Discard unsaved session";
+
+"detection.tooShort" = "Record at least one minute before saving.";
+
+"social.hub.invitations" = "You have workout invites";
+
+"social.hub.invitationCount" = "%d invitations waiting for you";
+
+"social.hub.favorites" = "Your close circle";
+
+"social.hub.connect" = "Find each other on Tempo";
+
+"social.hub.connectDetail" = "Share your username so a friend can send you a request.";
+
+"social.hub.yourUsername" = "Your Tempo username";
+
+"social.hub.shareMessage" = "Find me on Tempo: @%@";
+
+"social.hub.shareUsername" = "Share my username";
