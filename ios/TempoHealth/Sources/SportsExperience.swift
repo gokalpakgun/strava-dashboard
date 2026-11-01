@@ -1702,6 +1702,7 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
             anySucceeded = anySucceeded || batch.succeeded
             results += batch.places
             merge(batch.places, meters: radiusMeters, generation: generation)
+            if !batch.succeeded { break }
         }
         return FacilitySearchBatch(places: Self.deduplicated(results), succeeded: anySucceeded)
     }
