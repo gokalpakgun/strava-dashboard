@@ -2092,3 +2092,31 @@
 "sport.progress.tapSession" = "Tap a bar to see the session and its available measurements.";
 
 "sport.progress.sourceNote" = "Tempo and Apple Health workouts are included. Missing measurements stay blank; Strava is shown separately in the overview.";
+
+"permissions.title" = "Access preferences";
+"permissions.subtitle" = "Set up Tempo your way. Every permission is optional.";
+"permissions.menuDetail" = "Health, location, motion, notifications and Photos";
+"permissions.step" = "Step %d of %d";
+"permissions.choice" = "You can allow or decline access in the iOS prompt.";
+"permissions.waiting" = "Waiting for the system response…";
+"permissions.openPrompt" = "Open iOS permission prompt";
+"permissions.skip" = "Not now";
+"permissions.next" = "Continue";
+"permissions.finish" = "Start using Tempo";
+"permissions.settings" = "Open iPhone Settings";
+"permissions.later" = "This setup appears once. Review your choices later in Profile → Access preferences.";
+"permissions.allowed" = "This access is enabled. You can change your choice in iPhone Settings.";
+"permissions.denied" = "This access is disabled or restricted by the system. You can keep using Tempo and change it in iPhone Settings if you wish.";
+"permissions.unavailable" = "The request could not finish or this feature is unavailable on your device. You can continue to the other steps.";
+"permissions.health.title" = "Apple Health";
+"permissions.health.detail" = "Bring sleep, heart rate, movement and workouts together. Only the measurements you select are read; you separately choose write access for water entries. Challenge sharing is a separate choice.";
+"permissions.health.result" = "The Health permission screen is complete. Apple does not tell Tempo which read permissions were allowed or denied. Shared data appears when available; missing measurements remain empty.";
+"permissions.health.already" = "Health sync is already enabled. Review shared measurements in Apple Health → your profile → Apps → Tempo. Enabled sync does not mean all read permissions were granted.";
+"permissions.location.title" = "Location";
+"permissions.location.detail" = "Find nearby sports places and record a run or walk route when you start one. Only access while using the app is requested; granting it does not start a recording.";
+"permissions.motion.title" = "Motion & Fitness";
+"permissions.motion.detail" = "Use phone movement for possible workout suggestions. This step only requests system access; enable automatic detection separately in Activities.";
+"permissions.notifications.title" = "Notifications";
+"permissions.notifications.detail" = "See friend requests, challenge invitations and reminders you choose. Daily reminders are not enabled automatically; choose them separately in notification preferences.";
+"permissions.photos.title" = "Save to Photos";
+"permissions.photos.detail" = "Save your generated profile card to your gallery. Only permission to add new images is requested; other photos in your library are not read. Select a profile photo separately with the system picker.";

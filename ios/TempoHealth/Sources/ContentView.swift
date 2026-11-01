@@ -149,8 +149,10 @@ struct ContentView: View {
             } else if account.profile?.onboardingComplete != true {
                 AccountOnboardingView()
             } else {
-                TempoMainShell(selectedTab: $selectedTab)
-                    .modifier(TempoBirthdaySurpriseModifier())
+                TempoStartupPermissionGate {
+                    TempoMainShell(selectedTab: $selectedTab)
+                        .modifier(TempoBirthdaySurpriseModifier())
+                }
             }
         }
         .background(TempoTheme.background.ignoresSafeArea())
@@ -2071,6 +2073,8 @@ struct SocialScreen: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Namespace private var socialSelection
     @State private var showAddFriend = false
     @State private var showChallengeComposer = false
     @State private var friendQuery = ""
@@ -2139,8 +2143,7 @@ struct SocialScreen: View {
             HStack(alignment: .center, spacing: 12) {
                 PageTitle(title: "Sosyal", subtitle: "Arkadaşlarınla hareket et")
                 Button { selectedSection = .friends; showAddFriend = true } label: {
-                    Image(systemName: "person.badge.plus").font(.system(size: 18, weight: .medium))
-                        .frame(width: 48, height: 48).background(TempoTheme.green.opacity(0.12), in: Circle())
+                    TempoIconBadge(symbol: "person.badge.plus", color: TempoTheme.green, size: 48)
                 }.buttonStyle(.plain).foregroundStyle(TempoTheme.green).disabled(working)
                     .accessibilityLabel("Arkadaş ekle".tempoLocalized)
             }
@@ -2266,7 +2269,8 @@ struct SocialScreen: View {
     }
 
     private var sectionSelector: some View {
-        HStack(spacing: 4) {
+        let selectorLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 4))
+        return selectorLayout {
             ForEach(SocialSection.allCases) { section in
                 Button { selectedSection = section } label: {
                     HStack(spacing: 5) {
@@ -2281,12 +2285,17 @@ struct SocialScreen: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.horizontal, 6)
                         .foregroundStyle(selectedSection == section ? TempoTheme.primary : TempoTheme.secondary)
-                        .background(selectedSection == section ? TempoTheme.raised : Color.clear, in: Capsule())
+                        .background {
+                            if selectedSection == section {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous).fill(TempoTheme.raised)
+                                    .matchedGeometryEffect(id: "social.selection", in: socialSelection)
+                            }
+                        }
                 }.buttonStyle(.plain)
                     .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
                     .accessibilityIdentifier("social.section.\(section.rawValue)")
             }
-        }.padding(5).background(TempoTheme.card, in: Capsule())
+        }.padding(6).modifier(TempoSurface(glass: true))
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selectedSection)
             .accessibilityIdentifier("social.sections")
     }
@@ -2300,24 +2309,20 @@ struct SocialScreen: View {
                     Text("Arkadaş bul, yarış başlat, ilerlemeni paylaş.".tempoLocalized)
                         .font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "person.2.fill").font(.system(size: 26, weight: .medium))
-                    .foregroundStyle(TempoTheme.green).frame(width: 58, height: 58)
-                    .background(TempoTheme.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 20))
-                    .accessibilityHidden(true)
+                if !textSize.isAccessibilitySize { TempoIconBadge(symbol: "person.2.fill", color: TempoTheme.green, size: 56) }
             }
             TempoMetricGrid {
                 SocialStatTile(title: "Arkadaş", value: friends.count, icon: "person.2", color: TempoTheme.green)
                 SocialStatTile(title: "Yarış", value: challenges.filter { $0.myStatus == "accepted" || $0.myStatus == "invited" }.count, icon: "trophy", color: TempoTheme.orange)
                 SocialStatTile(title: "Gelen istek", value: snapshot?.incoming.count ?? 0, icon: "person.badge.plus", color: TempoTheme.blue)
             }
-            HStack(spacing: 10) {
-                Button { selectedSection = .friends; showAddFriend = true } label: { Label("Arkadaş ekle", systemImage: "plus") }
+            TempoMetricGrid(columns: 2) {
+                Button { selectedSection = .friends; showAddFriend = true } label: { Label("Arkadaş ekle", systemImage: "plus").frame(maxWidth: .infinity) }
                     .buttonStyle(TempoPrimaryButtonStyle()).disabled(working)
-                Button { selectedSection = .challenges; showChallengeComposer = true } label: { Label("Yarış oluştur", systemImage: "flag") }
+                Button { selectedSection = .challenges; showChallengeComposer = true } label: { Label("Yarış oluştur", systemImage: "flag").frame(maxWidth: .infinity) }
                     .buttonStyle(TempoSecondaryButtonStyle()).disabled(working)
             }
-        }.padding(18).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(TempoTheme.green.opacity(0.12), lineWidth: 1))
+        }.padding(22).modifier(TempoSurface())
     }
 
     private var overviewSection: some View {
@@ -2484,8 +2489,8 @@ struct SocialScreen: View {
                                     .frame(width: 44, height: 44).contentShape(Rectangle())
                             }.disabled(working).accessibilityLabel("Kullanıcı seçenekleri".tempoLocalized)
                         }
-                        .padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
-                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(selectedFriends.contains(friend.id) ? TempoTheme.green.opacity(0.45) : TempoTheme.primary.opacity(0.07), lineWidth: 1))
+                        .padding(18).modifier(TempoSurface())
+                        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(selectedFriends.contains(friend.id) ? TempoTheme.green : .clear, lineWidth: 1.5))
                         .contextMenu { safetyMenu(for: friend) }
                     }
                 }
@@ -2955,14 +2960,16 @@ private struct SocialAvatar: View {
 private struct SocialPersonRow: View {
     let profile: TempoSocialProfile
     let detail: String
+    @Environment(\.dynamicTypeSize) private var textSize
     var body: some View {
-        HStack(spacing: 12) {
-            SocialAvatar(profile: profile)
+        let personLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 14))
+        return personLayout {
+            SocialAvatar(profile: profile, size: 48)
             VStack(alignment: .leading, spacing: 4) {
                 Text(profile.displayName.isEmpty ? profile.username : profile.displayName)
                     .font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(detail).font(.caption).foregroundStyle(TempoTheme.secondary)
+                Text(detail).font(.footnote).foregroundStyle(TempoTheme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
@@ -2977,26 +2984,19 @@ private struct SocialStatTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(color)
-                    .frame(width: 29, height: 29)
-                    .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Spacer(minLength: 2)
+                TempoIconBadge(symbol: icon, color: color, size: 32)
                 Text(value.formatted())
-                    .font(.title3.weight(.bold).monospacedDigit())
+                    .font(.title2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(TempoTheme.primary)
-            }
             Text(title.tempoLocalized)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(TempoTheme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(11)
-        .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(color.opacity(0.18), lineWidth: 1))
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
+        .background(TempoTheme.raised.opacity(0.45), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -3081,6 +3081,7 @@ private struct SocialParticipantRow: View {
 }
 
 private struct SocialChallengeCard: View {
+    @Environment(\.dynamicTypeSize) private var textSize
     let challenge: TempoSocialChallenge
     let isWorking: Bool
     let onAction: (String) -> Void
@@ -3098,10 +3099,10 @@ private struct SocialChallengeCard: View {
     private var leaderScore: Int { sortedParticipants.compactMap(\.score).max() ?? 0 }
     var body: some View {
         TempoCard {
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(challenge.title).font(.headline)
+                        Text(challenge.title).font(.title3.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                         Label("7 günlük · %@".tempoFormatted(metric.title), systemImage: metric.symbol).font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
                     Spacer()
@@ -3113,9 +3114,11 @@ private struct SocialChallengeCard: View {
                             Button("Uygunsuz içerik", systemImage: "exclamationmark.bubble") { onReport("inappropriate") }
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(TempoTheme.secondary)
+                        Image(systemName: "ellipsis").font(.headline).foregroundStyle(TempoTheme.secondary).frame(width: 44, height: 44).contentShape(Rectangle())
+                    }.accessibilityLabel("Kullanıcı seçenekleri".tempoLocalized)
+                    if !textSize.isAccessibilitySize {
+                        TempoIconBadge(symbol: challenge.isCooperative ? "person.2.fill" : "trophy.fill", color: TempoTheme.orange, size: 40)
                     }
-                    Image(systemName: challenge.isCooperative ? "person.2.fill" : "trophy.fill").foregroundStyle(TempoTheme.orange)
                 }
                 if let starts = TempoFormat.date(from: challenge.startsAt) {
                     Text("Başlangıç: %@".tempoFormatted(starts.formatted(date: .abbreviated, time: .shortened)))
@@ -3126,7 +3129,7 @@ private struct SocialChallengeCard: View {
                 }
                 if challenge.myStatus == "invited" {
                     Text("Bir arkadaşın seni bu haftalık yarışmaya çağırdı.").font(.caption).foregroundStyle(TempoTheme.secondary)
-                    HStack {
+                    TempoMetricGrid(columns: 2) {
                         Button("Katıl") { onAction("accept") }.buttonStyle(TempoPrimaryButtonStyle()).disabled(isWorking)
                         Button("Reddet") { onAction("decline") }.buttonStyle(TempoSecondaryButtonStyle()).disabled(isWorking)
                     }
@@ -3178,6 +3181,10 @@ private struct MoreScreen: View {
                 AccountProfileCard()
                 ProfileProgressSummary()
                 SectionHeading(title: "Hesabın", caption: "", padding: false)
+                NavigationLink(destination: TempoPermissionSetupScreen(onFinish: {})) {
+                    TempoMenuRow(title: "permissions.title", subtitle: "permissions.menuDetail", icon: "hand.raised.fill")
+                        .padding(.horizontal, 20).modifier(TempoSurface())
+                }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("more.permissions")
                 TempoCard {
                     VStack(spacing: 0) {
                         item("Hesap ayarları", "Profilini, sporlarını ve güvenliği düzenle", "gearshape", destination: AccountSettingsScreen()).accessibilityIdentifier("more.accountSettings")

@@ -1025,41 +1025,48 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func connectAppleHealth() {
+        Task { await connectAppleHealthForSetup() }
+    }
+
+    /// Kurulum, sistem izin ekranı kapanınca ilerler; veri eşitlemesi arka planda sürer.
+    @discardableResult
+    func connectAppleHealthForSetup() async -> Bool {
         guard let accountId = activeTempoAccountId,
               let accountToken = accountAccessToken,
               !accountToken.isEmpty else {
             healthError = "Apple Sağlık eşitlemesi için önce Tempo hesabına giriş yap."
-            return
+            return false
         }
         guard healthStore.isAvailable else {
             healthError = "Apple Sağlık bu cihazda kullanılamıyor."
-            return
+            return false
         }
-        guard !isHealthSyncing else { return }
+        guard !isHealthSyncing else { return false }
         isHealthSyncing = true
         let generation = UUID()
         healthGeneration = generation
         healthError = nil
         status = "Apple Sağlık izni bekleniyor…"
-        Task {
-            do {
-                await healthDisconnectTask?.value
-                guard healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken != nil else { return }
-                try await healthStore.requestAuthorization()
-                guard healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken != nil else {
-                    throw APIError.server("Tempo hesabı değişti. Apple Sağlık eşitlemesi başlatılmadı.")
-                }
-                healthSyncEnabled = true
-                UserDefaults.standard.set(true, forKey: Self.healthSyncKey(accountId: accountId))
-                startHealthObservers()
-                isHealthSyncing = false
-                await syncAppleHealth()
-            } catch {
-                guard healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken != nil else { return }
-                isHealthSyncing = false
-                healthError = error.localizedDescription.tempoLocalized
-                status = "Apple Sağlık bağlanamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
+        defer { if healthGeneration == generation { isHealthSyncing = false } }
+        do {
+            await healthDisconnectTask?.value
+            guard !Task.isCancelled, healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken != nil else { return false }
+            try await healthStore.requestAuthorization()
+            guard !Task.isCancelled, healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken != nil else {
+                throw APIError.server("Tempo hesabı değişti. Apple Sağlık eşitlemesi başlatılmadı.")
             }
+            healthSyncEnabled = true
+            UserDefaults.standard.set(true, forKey: Self.healthSyncKey(accountId: accountId))
+            startHealthObservers()
+            isHealthSyncing = false
+            Task { await syncAppleHealth() }
+            return true
+        } catch {
+            guard healthGeneration == generation, activeTempoAccountId == accountId, accountAccessToken != nil else { return false }
+            isHealthSyncing = false
+            healthError = error.localizedDescription.tempoLocalized
+            status = "Apple Sağlık bağlanamadı: %@".tempoFormatted(error.localizedDescription.tempoLocalized)
+            return false
         }
     }
 

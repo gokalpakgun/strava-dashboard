@@ -1567,3 +1567,31 @@
 "sport.progress.tapSession" = "Antrenmanı ve mevcut ölçümlerini görmek için bir çubuğa dokun.";
 
 "sport.progress.sourceNote" = "Tempo ve Apple Sağlık antrenmanları kullanılır. Eksik ölçümler boş kalır; Strava özet bölümünde ayrı gösterilir.";
+
+"permissions.title" = "Erişim tercihlerin";
+"permissions.subtitle" = "Tempo’yu sana göre hazırla. Her izin isteğe bağlıdır.";
+"permissions.menuDetail" = "Sağlık, konum, hareket, bildirim ve Fotoğraflar";
+"permissions.step" = "%d / %d. adım";
+"permissions.choice" = "iOS ekranında izin verebilir veya reddedebilirsin.";
+"permissions.waiting" = "Sistem yanıtı bekleniyor…";
+"permissions.openPrompt" = "iOS izin ekranını aç";
+"permissions.skip" = "Şimdi değil";
+"permissions.next" = "Devam et";
+"permissions.finish" = "Tempo’ya başla";
+"permissions.settings" = "iPhone Ayarları’nı aç";
+"permissions.later" = "Bu kurulum tek sefer gösterilir. Tercihlerini Profil → Erişim tercihlerin bölümünden yeniden gözden geçirebilirsin.";
+"permissions.allowed" = "Bu erişim açık. Tercihini iPhone Ayarları’ndan değiştirebilirsin.";
+"permissions.denied" = "Bu erişim kapalı veya sistem tarafından sınırlandırılmış. Tempo’yu kullanmaya devam edebilirsin; istersen iPhone Ayarları’ndan değiştirebilirsin.";
+"permissions.unavailable" = "İzin talebi tamamlanamadı veya bu özellik cihazında kullanılamıyor. Diğer adımlara devam edebilirsin.";
+"permissions.health.title" = "Apple Sağlık";
+"permissions.health.detail" = "Uyku, nabız, hareket ve antrenmanlarını birlikte değerlendir. Yalnız seçtiğin ölçüler okunur; su kaydı için yazma iznini ayrıca seçersin. Yarışlarda paylaşım bu izinden ayrıdır.";
+"permissions.health.result" = "Sağlık izin ekranı tamamlandı. Apple, okuma izni verilen veya reddedilen ölçüleri Tempo’ya açıklamaz. Paylaştığın veriler geldikçe görünür; eksik ölçüler boş kalır.";
+"permissions.health.already" = "Sağlık eşitlemesi zaten açık. Hangi ölçüleri paylaştığını Apple Sağlık → profilin → Uygulamalar → Tempo bölümünden kontrol edebilirsin. Eşitlemenin açık olması tüm okuma izinlerinin verildiği anlamına gelmez.";
+"permissions.location.title" = "Konum";
+"permissions.location.detail" = "Yakınındaki spor alanlarını bul ve sen başlattığında koşu/yürüyüş rotanı kaydet. Yalnız uygulamayı kullanırken erişim istenir; izin vermen kayıt başlatmaz.";
+"permissions.motion.title" = "Hareket ve fitness";
+"permissions.motion.detail" = "Telefon hareketlerini olası antrenman önerilerinde kullanabilirsin. Bu adım yalnız sistem iznini ister; otomatik algılamayı Aktiviteler’den ayrıca açarsın.";
+"permissions.notifications.title" = "Bildirimler";
+"permissions.notifications.detail" = "Arkadaşlık ve mücadele davetlerini, seçtiğin hatırlatmaları gör. Günlük hatırlatmalar otomatik açılmaz; bildirim tercihlerini ayrıca seçebilirsin.";
+"permissions.photos.title" = "Fotoğraflar’a kaydet";
+"permissions.photos.detail" = "Ürettiğin profil kartını galerine kaydet. Yalnız yeni görsel ekleme izni istenir; arşivindeki diğer fotoğraflar okunmaz. Profil fotoğrafını sistem seçicisiyle ayrıca seçersin.";

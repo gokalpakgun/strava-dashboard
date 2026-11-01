@@ -18,51 +18,45 @@ struct SportsHubScreen: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                TempoTheme.background.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        sportsHeader
-                        NavigationLink(destination: StrainDashboardScreen()) {
-                            ToolCard(title: "strain.title", subtitle: "strain.subtitle", icon: "gauge.with.dots.needle.33percent", color: TempoTheme.purple)
-                        }.buttonStyle(.plain).accessibilityIdentifier("sports.strain")
-                        NavigationLink(destination: PolymorphicWorkoutLibraryScreen()) {
-                            ToolCard(title: "archetype.library", subtitle: "archetype.librarySubtitle", icon: "chart.bar.xaxis", color: TempoTheme.blue)
-                        }.buttonStyle(.plain).accessibilityIdentifier("sports.archetypeLibrary")
+            TempoPage {
+                sportsHeader
+                NavigationLink(destination: StrainDashboardScreen()) {
+                    ToolCard(title: "strain.title", subtitle: "strain.subtitle", icon: "gauge.with.dots.needle.33percent", color: TempoTheme.purple)
+                }.buttonStyle(.plain).accessibilityIdentifier("sports.strain")
+                NavigationLink(destination: PolymorphicWorkoutLibraryScreen()) {
+                    ToolCard(title: "archetype.library", subtitle: "archetype.librarySubtitle", icon: "chart.bar.xaxis", color: TempoTheme.blue)
+                }.buttonStyle(.plain).accessibilityIdentifier("sports.archetypeLibrary")
 
-                        if let error = model.manualWorkoutError {
-                            Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                if let error = model.manualWorkoutError {
+                    Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
+                }
 
-                        if let error = model.healthWorkoutError {
-                            Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                if let error = model.healthWorkoutError {
+                    Text(error).font(.footnote).foregroundStyle(TempoTheme.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
-                        if selectedSports.isEmpty {
-                            Text("Profilinden ilgilendiğin sporları seçerek bu alanı kişiselleştirebilirsin.")
-                                .padding(20).frame(maxWidth: .infinity)
-                                .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        } else {
-                            ForEach(selectedSports) { sport in
-                                NavigationLink(destination: SportDetailScreen(sport: sport)) {
-                                    SportSummaryCard(sport: sport, manualWorkouts: model.activityWorkouts)
-                                }
-                                .buttonStyle(.plain)
-                                .simultaneousGesture(TapGesture().onEnded { TempoHaptics.selection() })
-                                .accessibilityIdentifier("sport.open.\(sport.id)")
-                            }
+                if selectedSports.isEmpty {
+                    Text("Profilinden ilgilendiğin sporları seçerek bu alanı kişiselleştirebilirsin.")
+                        .padding(20).frame(maxWidth: .infinity)
+                        .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                } else {
+                    ForEach(selectedSports) { sport in
+                        NavigationLink(destination: SportDetailScreen(sport: sport)) {
+                            SportSummaryCard(sport: sport, manualWorkouts: model.activityWorkouts)
                         }
-
-                        TempoDisclosureSection(title: "Spor araçları", icon: "slider.horizontal.3") {
-                            VStack(spacing: 10) {
-                                NavigationLink(destination: NearbyFacilitiesScreen()) { ToolCard(title: "Yakındaki spor alanları", subtitle: "Kort, saha, havuz ve spor salonlarını bul", icon: "mappin.and.ellipse", color: TempoTheme.green) }
-                                NavigationLink(destination: RoutesScreen()) { ToolCard(title: "Aktivite rotaları", subtitle: "Strava GPS rotalarını tek haritada incele", icon: "map", color: TempoTheme.blue) }
-                                NavigationLink(destination: CoachScreen()) { ToolCard(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet", icon: "sparkles", color: TempoTheme.purple) }
-                            }.buttonStyle(.plain)
-                        }
+            .buttonStyle(TempoSoftPressStyle())
+                        .simultaneousGesture(TapGesture().onEnded { TempoHaptics.selection() })
+                        .accessibilityIdentifier("sport.open.\(sport.id)")
                     }
-                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, TempoTheme.scrollBottomClearance)
+                }
+
+                TempoDisclosureSection(title: "Spor araçları", icon: "slider.horizontal.3") {
+                    VStack(spacing: 10) {
+                        NavigationLink(destination: NearbyFacilitiesScreen()) { ToolCard(title: "Yakındaki spor alanları", subtitle: "Kort, saha, havuz ve spor salonlarını bul", icon: "mappin.and.ellipse", color: TempoTheme.green) }
+                        NavigationLink(destination: RoutesScreen()) { ToolCard(title: "Aktivite rotaları", subtitle: "Strava GPS rotalarını tek haritada incele", icon: "map", color: TempoTheme.blue) }
+                        NavigationLink(destination: CoachScreen()) { ToolCard(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet", icon: "sparkles", color: TempoTheme.purple) }
+                    }.buttonStyle(.plain)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -72,12 +66,12 @@ struct SportsHubScreen: View {
     private var sportsHeader: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Sporlarım").font(.system(size: 28, weight: .bold, design: .rounded)).accessibilityIdentifier("screen.sports")
-                Text("Her spora uygun, sade bir özet.").font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+                Text("Sporlarım".tempoLocalized).font(.title.weight(.bold)).tracking(-0.4).accessibilityIdentifier("screen.sports").accessibilityAddTraits(.isHeader)
+                Text("Her spora uygun, sade bir özet.".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
             NavigationLink(destination: AccountSettingsScreen()) {
-                Image(systemName: "slider.horizontal.3").font(.subheadline).frame(width: 42, height: 42).background(TempoTheme.card, in: Circle())
+                TempoIconBadge(symbol: "slider.horizontal.3", color: TempoTheme.green)
             }.tint(TempoTheme.green).accessibilityLabel("Sporlarını düzenle".tempoLocalized)
         }.padding(.vertical, 8)
     }
@@ -98,8 +92,7 @@ private struct SportSummaryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: sport.symbol).font(.title2).foregroundStyle(TempoTheme.onAccent)
-                    .frame(width: 50, height: 50).background(TempoTheme.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                TempoIconBadge(symbol: sport.symbol, color: sport.accentColor, size: 48)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sport.title).font(.headline).fixedSize(horizontal: false, vertical: true)
                     Text("%d antrenman · bu hafta %d".tempoFormatted(matchingManual.count, weekCount)).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
@@ -117,12 +110,8 @@ private struct SportSummaryCard: View {
             }
         }
         .multilineTextAlignment(.leading)
-        .padding(18)
-        .background(
-            LinearGradient(colors: [TempoTheme.green.opacity(0.09), TempoTheme.card, TempoTheme.blue.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-        )
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(TempoTheme.primary.opacity(0.075), lineWidth: 1))
+        .padding(22)
+        .modifier(TempoSurface())
     }
 }
 
@@ -145,11 +134,11 @@ private struct SportMetric: View {
     let label: String
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(value).font(.subheadline.monospacedDigit().weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
-            Text(label.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Text(value).font(.title3.monospacedDigit().weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+            Text(label.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12).frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
-        .background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .padding(14).frame(maxWidth: .infinity, minHeight: 88, alignment: .topLeading)
+        .background(TempoTheme.raised.opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -573,6 +562,7 @@ private struct SportDetailScreen: View {
     @EnvironmentObject private var model: TempoAppModel
     let sport: TempoSportChoice
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var section: SportDetailSection = .overview
     @State private var weeklyTarget = 3
     @Namespace private var sectionAnimation
@@ -584,31 +574,23 @@ private struct SportDetailScreen: View {
     }
 
     var body: some View {
-        ZStack {
-            TempoTheme.background.ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 18) {
-                    SportMotionArtwork(sport: sport)
-                    sectionPicker
+        TempoPage {
+            SportMotionArtwork(sport: sport)
+            sectionPicker
 
-                    Group {
-                        switch section {
-                        case .overview:
-                            CrossSportPreparationView(sportID: sport.rawValue)
-                            if let latest = matchingManual.max(by: { $0.startedAt < $1.startedAt }) {
-                                TempoDisclosureSection(title: "archetype.details", icon: "chart.bar.xaxis") { SportArchetypeSection(workout: latest) }
-                            }
-                            SportOverviewSection(sport: sport, manualWorkouts: matchingManual, weeklyTarget: $weeklyTarget)
-                        case .progress:
-                            SportProgressSection(sport: sport, workouts: matchingManual)
-                        }
+            Group {
+                switch section {
+                case .overview:
+                    CrossSportPreparationView(sportID: sport.rawValue)
+                    if let latest = matchingManual.max(by: { $0.startedAt < $1.startedAt }) {
+                        TempoDisclosureSection(title: "archetype.details", icon: "chart.bar.xaxis") { SportArchetypeSection(workout: latest) }
                     }
-                    .transition(.opacity)
+                    SportOverviewSection(sport: sport, manualWorkouts: matchingManual, weeklyTarget: $weeklyTarget)
+                case .progress:
+                    SportProgressSection(sport: sport, workouts: matchingManual)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, TempoTheme.scrollBottomClearance)
             }
+            .transition(.opacity)
         }
         .navigationTitle(sport.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -622,17 +604,18 @@ private struct SportDetailScreen: View {
     }
 
     private var sectionPicker: some View {
-        HStack(spacing: 6) {
+        let pickerLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 6))
+        return pickerLayout {
             ForEach(SportDetailSection.allCases) { item in
                 Button {
                     TempoHaptics.selection()
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { section = item }
                 } label: {
                     Text(item.rawValue.tempoLocalized)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1).minimumScaleFactor(0.85)
+            .font(.subheadline.weight(.semibold))
+            .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(section == item ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.72))
-                        .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 44)
                         .padding(.vertical, 11)
                         .background {
                             if section == item {
@@ -646,8 +629,7 @@ private struct SportDetailScreen: View {
             }
         }
         .padding(5)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(TempoTheme.primary.opacity(0.08)))
+        .modifier(TempoSurface(glass: true, radius: 26))
     }
 }
 
@@ -1330,18 +1312,16 @@ private struct ToolCard: View {
 
     var body: some View {
         HStack(spacing: 15) {
-            Image(systemName: icon).font(.title2).foregroundStyle(color)
-                .frame(width: 52, height: 52).background(color.opacity(0.12), in: Circle())
+            TempoIconBadge(symbol: icon, color: color, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title.tempoLocalized).font(.headline).foregroundStyle(TempoTheme.primary)
-                Text(subtitle.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
-            }
+                Text(subtitle.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+            }.fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
             Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
         }
-        .padding(17)
-        .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.primary.opacity(0.07), lineWidth: 1))
+        .padding(20)
+        .modifier(TempoSurface())
     }
 }
 
