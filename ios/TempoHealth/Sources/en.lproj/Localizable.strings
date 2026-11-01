@@ -2056,3 +2056,39 @@
 "social.hub.shareMessage" = "Find me on Tempo: @%@";
 
 "social.hub.shareUsername" = "Share my username";
+
+"places.locating" = "Finding your location…";
+
+"places.partialResults" = "%d places ready. One map source is temporarily unavailable.";
+
+"places.partialEmpty" = "The available source returned no matching places. Another source could not be checked; try again or search in Maps.";
+
+"places.serviceUnavailable" = "Map services did not respond in time. Try again or continue your search in Maps.";
+
+"places.openMaps" = "Search in Apple Maps";
+
+"sport.progress.title" = "Your progress";
+
+"sport.progress.subtitle" = "See your activity rhythm for this sport using your recorded workouts.";
+
+"sport.progress.period" = "Summary period";
+
+"sport.progress.days" = "%d days";
+
+"sport.progress.empty" = "No recorded workouts for this sport in this period. Your summary appears when sessions are saved or imported from Health.";
+
+"sport.progress.typical" = "Typical session";
+
+"sport.progress.longest" = "Longest session";
+
+"sport.progress.comparison" = "Compared with the previous period";
+
+"sport.progress.change" = "%@ total time vs. the previous %d days";
+
+"sport.progress.changeHint" = "More time does not automatically mean better performance. This compares recorded time only.";
+
+"sport.progress.sessions" = "Your recent sessions";
+
+"sport.progress.tapSession" = "Tap a bar to see the session and its available measurements.";
+
+"sport.progress.sourceNote" = "Tempo and Apple Health workouts are included. Missing measurements stay blank; Strava is shown separately in the overview.";

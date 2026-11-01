@@ -1531,3 +1531,39 @@
 "social.hub.shareMessage" = "Tempo’da beni bul: @%@";
 
 "social.hub.shareUsername" = "Kullanıcı adımı paylaş";
+
+"places.locating" = "Konumun bulunuyor…";
+
+"places.partialResults" = "%d alan hazır. Harita kaynaklarından biri geçici olarak yanıt vermedi.";
+
+"places.partialEmpty" = "Ulaşılan kaynakta eşleşen alan bulunamadı. Diğer kaynak kontrol edilemedi; yenileyebilir veya Haritalar’da arayabilirsin.";
+
+"places.serviceUnavailable" = "Harita servislerinden zamanında yanıt alınamadı. Yeniden deneyebilir veya aramana Haritalar’da devam edebilirsin.";
+
+"places.openMaps" = "Apple Haritalar’da ara";
+
+"sport.progress.title" = "İlerlemen";
+
+"sport.progress.subtitle" = "Bu branştaki hareket ritmini kayıtlı antrenmanların üzerinden gör.";
+
+"sport.progress.period" = "Özet dönemi";
+
+"sport.progress.days" = "%d gün";
+
+"sport.progress.empty" = "Bu dönemde bu branşa ait antrenman yok. Kaydedilen veya Sağlık’tan gelen antrenmanlarla özetin oluşur.";
+
+"sport.progress.typical" = "Tipik antrenman";
+
+"sport.progress.longest" = "En uzun antrenman";
+
+"sport.progress.comparison" = "Önceki dönemle karşılaştırma";
+
+"sport.progress.change" = "Önceki %2$d güne göre toplam süre: %1$@";
+
+"sport.progress.changeHint" = "Daha uzun süre her zaman daha iyi performans demek değildir. Yalnız kayıtlı süreler karşılaştırılır.";
+
+"sport.progress.sessions" = "Son antrenmanların";
+
+"sport.progress.tapSession" = "Antrenmanı ve mevcut ölçümlerini görmek için bir çubuğa dokun.";
+
+"sport.progress.sourceNote" = "Tempo ve Apple Sağlık antrenmanları kullanılır. Eksik ölçümler boş kalır; Strava özet bölümünde ayrı gösterilir.";

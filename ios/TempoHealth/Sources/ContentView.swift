@@ -201,7 +201,7 @@ private struct TempoMainShell: View {
         case 2:
             SportsHubScreen()
         case 3:
-            NavigationStack { HealthScreen() }
+            NavigationStack { HealthScreen(showsBackButton: false) }
         default:
             MoreScreen()
         }
@@ -1064,15 +1064,24 @@ private struct ActivitiesScreen: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 SearchField(text: $search, placeholder: "Aktivite ara")
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                Menu {
                         ForEach(filterOptions) { option in
                             Button { selectedFilter = option } label: {
-                                Text(option.title.tempoLocalized).font(.caption.weight(.semibold)).foregroundStyle(selectedFilter.id == option.id ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.8)).padding(.horizontal, 14).padding(.vertical, 10).background(selectedFilter.id == option.id ? TempoTheme.green : TempoTheme.card, in: Capsule())
+                                if selectedFilter.id == option.id { Label(option.title.tempoLocalized, systemImage: "checkmark") }
+                                else { Text(option.title.tempoLocalized) }
                             }.buttonStyle(.plain).accessibilityIdentifier("activity.filter.\(option.id)")
                         }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "line.3.horizontal.decrease").foregroundStyle(TempoTheme.green)
+                        Text("Spor".tempoLocalized).font(.subheadline.weight(.medium))
+                        Spacer(minLength: 8)
+                        Text(selectedFilter.title.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                        Image(systemName: "chevron.down").font(.caption.weight(.semibold))
                     }
-                }.accessibilityIdentifier("activity.filters")
+                    .padding(16).frame(maxWidth: .infinity, minHeight: 48)
+                    .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
+                }.buttonStyle(.plain).accessibilityIdentifier("activity.filters")
                 SectionHeading(title: "Antrenmanların", caption: "TEMPO + APPLE SAĞLIK", padding: false)
                 ForEach(activityDays) { day in
                     VStack(alignment: .leading, spacing: 12) {
@@ -3243,6 +3252,7 @@ private struct MoreScreen: View {
 }
 
 struct HealthScreen: View {
+    var showsBackButton = true
     @EnvironmentObject private var model: TempoAppModel
     @EnvironmentObject private var account: TempoAccountStore
     @StateObject private var wellness = TempoWellnessStore()
@@ -3335,7 +3345,7 @@ struct HealthScreen: View {
                 }
             }
         }
-        .navigationTitle("Sağlık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .navigationTitle("Sağlık").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton(showsBackButton)
         .onAppear { selectLatestHealthDayIfNeeded(); wellness.reload() }
         .onReceive(NotificationCenter.default.publisher(for: TempoWellnessStore.didChange)) { note in
             if note.object as? String == wellness.ownerID { wellness.reload() }
@@ -4353,15 +4363,20 @@ struct TempoPage<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
+        GeometryReader { geometry in
         ZStack {
             TempoAmbientBackground()
-            ScrollView {
+            ScrollView(.vertical) {
                 VStack(spacing: 16) { content }
+                    .frame(width: max(0, geometry.size.width - 32))
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, TempoTheme.scrollBottomClearance)
             }
             .scrollDismissesKeyboard(.interactively)
+        }
+        .frame(width: geometry.size.width, height: geometry.size.height)
+        .clipped()
         }
         .multilineTextAlignment(.leading)
     }

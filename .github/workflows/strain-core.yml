@@ -40,3 +40,8 @@ jobs:
           plutil -lint ios/TempoHealth/Info.plist ios/TempoHealth/Sources/en.lproj/InfoPlist.strings ios/TempoHealth/Sources/tr.lproj/InfoPlist.strings
       - name: Koç bağlamı ve izin kontrolleri
         run: node --test worker/test/coach-social.test.js worker/test/athletic-context.test.js
+      - name: Harita araması yaşam döngüsü
+        run: |
+          set -euo pipefail
+          swiftc -swift-version 6 ios/TempoHealth/Sources/FacilitySearchLifecycle.swift ios/MapRegressionTests/main.swift -o "$RUNNER_TEMP/tempo-map-checks"
+          "$RUNNER_TEMP/tempo-map-checks"

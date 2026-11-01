@@ -37,6 +37,7 @@
 		F1000000000000000000000A /* WorkoutDetectionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000A /* WorkoutDetectionEngine.swift */; };
 		F1000000000000000000000B /* TempoWorkoutDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000B /* TempoWorkoutDetection.swift */; };
 		F1000000000000000000000C /* WorkoutDetectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000C /* WorkoutDetectionViews.swift */; };
+		F1000000000000000000000D /* FacilitySearchLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000D /* FacilitySearchLifecycle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -77,6 +78,7 @@
 		F2000000000000000000000A /* WorkoutDetectionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetectionEngine.swift; sourceTree = "<group>"; };
 		F2000000000000000000000B /* TempoWorkoutDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoWorkoutDetection.swift; sourceTree = "<group>"; };
 		F2000000000000000000000C /* WorkoutDetectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetectionViews.swift; sourceTree = "<group>"; };
+		F2000000000000000000000D /* FacilitySearchLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacilitySearchLifecycle.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -123,6 +125,7 @@
                 F2000000000000000000000C /* WorkoutDetectionViews.swift */,
                 F2000000000000000000000B /* TempoWorkoutDetection.swift */,
                 F2000000000000000000000A /* WorkoutDetectionEngine.swift */,
+                F2000000000000000000000D /* FacilitySearchLifecycle.swift */,
 				A20000000000000000000018 /* PrivacyInfo.xcprivacy */,
 				A40000000000000000000004 /* Localizable.strings */,
 				A40000000000000000000005 /* InfoPlist.strings */,
@@ -241,6 +244,7 @@
             F1000000000000000000000C /* WorkoutDetectionViews.swift in Sources */,
             F1000000000000000000000B /* TempoWorkoutDetection.swift in Sources */,
             F1000000000000000000000A /* WorkoutDetectionEngine.swift in Sources */,
+            F1000000000000000000000D /* FacilitySearchLifecycle.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		B80000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B10000000000000000000001 /* TempoHealthUserFlowTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */

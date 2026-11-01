@@ -557,15 +557,13 @@ private func tempoMovementDayStamp(_ date: Date) -> String {
 
 private enum SportDetailSection: String, CaseIterable, Identifiable {
     case overview = "Özet"
-    case program = "Program"
-    case guide = "Rehber"
+    case progress = "sport.progress.title"
 
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .overview: return "chart.xyaxis.line"
-        case .program: return "list.clipboard.fill"
-        case .guide: return "figure.cooldown"
+        case .progress: return "chart.bar.xaxis"
         }
     }
 }
@@ -585,8 +583,6 @@ private struct SportDetailScreen: View {
         model.activityWorkouts.filter { $0.sportId == sport.rawValue }
     }
 
-    private var guide: SportOfflineGuide { sport.offlineGuide }
-
     var body: some View {
         ZStack {
             TempoTheme.background.ignoresSafeArea()
@@ -603,10 +599,8 @@ private struct SportDetailScreen: View {
                                 TempoDisclosureSection(title: "archetype.details", icon: "chart.bar.xaxis") { SportArchetypeSection(workout: latest) }
                             }
                             SportOverviewSection(sport: sport, manualWorkouts: matchingManual, weeklyTarget: $weeklyTarget)
-                        case .program:
-                            SportProgramSection(sport: sport, guide: guide)
-                        case .guide:
-                            SportPreparationSection(sport: sport, guide: guide)
+                        case .progress:
+                            SportProgressSection(sport: sport, workouts: matchingManual)
                         }
                     }
                     .transition(.opacity)
@@ -654,6 +648,100 @@ private struct SportDetailScreen: View {
         .padding(5)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().stroke(TempoTheme.primary.opacity(0.08)))
+    }
+}
+
+private struct SportProgressSection: View {
+    let sport: TempoSportChoice
+    let workouts: [TempoManualWorkout]
+    @State private var days = 28
+    @State private var selectedID: UUID?
+    private var start: Date { Calendar.current.date(byAdding: .day, value: 1 - days, to: Calendar.current.startOfDay(for: Date())) ?? Date() }
+    private var period: [TempoManualWorkout] {
+        workouts.filter { $0.startedAt >= start && $0.startedAt <= Date() }.sorted { $0.startedAt < $1.startedAt }
+    }
+    private var previous: [TempoManualWorkout] {
+        let from = Calendar.current.date(byAdding: .day, value: -days, to: start) ?? start
+        return workouts.filter { $0.startedAt >= from && $0.startedAt < start }
+    }
+    private func seconds(_ workout: TempoManualWorkout) -> Double { max(0, Double(workout.durationSeconds ?? workout.durationMinutes * 60)) }
+    private var total: Double { period.reduce(0) { $0 + seconds($1) } }
+    private var typical: Double {
+        let values = period.map(seconds).sorted()
+        guard !values.isEmpty else { return 0 }
+        let index = values.count / 2
+        return values.count.isMultiple(of: 2) ? (values[index - 1] + values[index]) / 2 : values[index]
+    }
+    private var selected: TempoManualWorkout? { period.first { $0.id == selectedID } ?? period.last }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("sport.progress.title".tempoLocalized).font(.title2.bold())
+                Text("sport.progress.subtitle".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                Picker("sport.progress.period".tempoLocalized, selection: $days) {
+                    ForEach([7, 28, 90], id: \.self) { value in Text("sport.progress.days".tempoFormatted(value)).tag(value) }
+                }.pickerStyle(.segmented).padding(.top, 6)
+            }
+            if period.isEmpty {
+                EmptyCard(icon: sport.symbol, text: "sport.progress.empty")
+                NavigationLink(destination: WorkoutDetectionScreen()) {
+                    Label("detection.title".tempoLocalized, systemImage: "waveform.path").frame(maxWidth: .infinity)
+                }.buttonStyle(TempoSecondaryButtonStyle())
+            } else {
+                TempoMetricGrid(columns: 2) {
+                    MetricCard(value: Set(period.map { Calendar.current.startOfDay(for: $0.startedAt) }).count.formatted(), label: "Hareketli gün", icon: "calendar", color: sport.accentColor)
+                    MetricCard(value: TempoFormat.duration(total), label: "Süre", icon: "clock", color: TempoTheme.blue)
+                    MetricCard(value: TempoFormat.duration(typical), label: "sport.progress.typical", icon: "chart.bar", color: sport.accentColor)
+                    MetricCard(value: TempoFormat.duration(period.map(seconds).max() ?? 0), label: "sport.progress.longest", icon: "timer", color: TempoTheme.purple)
+                }
+                if previous.count >= 2, period.count >= 2 {
+                    let prior = previous.reduce(0) { $0 + seconds($1) }
+                    if prior > 0 {
+                        let change = Int(((total / prior - 1) * 100).rounded())
+                        TempoCard {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("sport.progress.comparison".tempoLocalized, systemImage: "arrow.left.arrow.right").font(.subheadline.weight(.semibold))
+                                Text("sport.progress.change".tempoFormatted((change > 0 ? "+" : "") + change.formatted() + "%", days)).font(.headline)
+                                Text("sport.progress.changeHint".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                            }
+                        }
+                    }
+                }
+                sessionChart
+                if let selected {
+                    TempoCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(selected.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.subheadline.weight(.semibold))
+                            Text(selected.sourceTitle).font(.caption).foregroundStyle(TempoTheme.secondary)
+                            SportArchetypeSection(workout: selected, compact: true)
+                        }
+                    }
+                }
+                Text("sport.progress.sourceNote".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+            }
+        }.onChange(of: days) { _, _ in selectedID = nil }
+    }
+    private var sessionChart: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("sport.progress.sessions".tempoLocalized).font(.headline)
+                Text("sport.progress.tapSession".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                let recent = Array(period.suffix(6))
+                let maximum = max(60, recent.map(seconds).max() ?? 60)
+                HStack(alignment: .bottom, spacing: 10) {
+                    ForEach(recent) { workout in
+                        Button { selectedID = workout.id; TempoHaptics.selection() } label: {
+                            VStack(spacing: 8) {
+                                RoundedRectangle(cornerRadius: 8).fill(sport.accentColor.opacity(selected?.id == workout.id ? 1 : 0.35))
+                                    .frame(height: max(16, 100 * seconds(workout) / maximum))
+                                Text(workout.startedAt.formatted(.dateTime.day().month(.twoDigits))).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                            }.frame(maxWidth: .infinity, minHeight: 128, alignment: .bottom)
+                        }.buttonStyle(.plain).accessibilityLabel(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
+                            .accessibilityValue(TempoFormat.duration(seconds(workout))).accessibilityAddTraits(selected?.id == workout.id ? .isSelected : [])
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1367,7 +1455,7 @@ struct NearbyFacilitiesScreen: View {
         .mapStyle(.standard(elevation: .flat))
         .mapControls { MapUserLocationButton(); MapCompass(); MapScaleView() }
         .overlay(alignment: .top) {
-            if searchModel.isSearching {
+            if searchModel.isSearching && searchModel.places.isEmpty {
                 ProgressView("Spor alanları aranıyor…".tempoLocalized)
                     .font(.caption).padding(12).background(.regularMaterial, in: Capsule()).padding(10)
             }
@@ -1392,8 +1480,12 @@ struct NearbyFacilitiesScreen: View {
                 if searchModel.needsPermission {
                     Button("İzin ver") { searchModel.requestLocation(openSettingsIfDenied: true) }
                         .buttonStyle(TempoSecondaryButtonStyle())
-                } else if searchModel.searchFailed && !searchModel.isSearching, let selectedSport {
-                    Button("Tekrar dene") { Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm) } }
+                } else if searchModel.canRetry && !searchModel.isSearching, let selectedSport {
+                    Button("Tekrar dene") { Task { await searchModel.search(for: selectedSport, radiusKm: searchRadiusKm, force: true) } }
+                        .buttonStyle(TempoSecondaryButtonStyle())
+                }
+                if !searchModel.isSearching && !searchModel.needsPermission && (searchModel.places.isEmpty || searchModel.canRetry) {
+                    Button { searchModel.openSystemMaps() } label: { Label("places.openMaps".tempoLocalized, systemImage: "map") }
                         .buttonStyle(TempoSecondaryButtonStyle())
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -1435,199 +1527,216 @@ private struct PlaceCard: View {
 
 @MainActor
 final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
-    @Published var places: [NearbyPlace] = []
-    @Published var isSearching = false
-    @Published var message: String? = "Yakındaki spor alanlarını görmek için konum izni ver."
-    @Published var region: MKCoordinateRegion?
-    @Published var needsPermission = true
+    @Published private(set) var places: [NearbyPlace] = []
+    @Published private(set) var isSearching = false
+    @Published private(set) var message: String? = "Yakındaki spor alanlarını görmek için konum izni ver."
+    @Published private(set) var region: MKCoordinateRegion?
+    @Published private(set) var needsPermission = true
     @Published private(set) var searchFailed = false
-
+    @Published private(set) var canRetry = false
     var hasOpenStreetMapPlaces: Bool { places.contains { $0.source == .openStreetMap } }
 
     private let manager = CLLocationManager()
     private var location: CLLocation?
     private var pendingSport: TempoSportChoice?
+    private var pendingRadiusKm = 25
+    private var pendingForce = false
     private var lastSport: TempoSportChoice?
     private var lastRadiusKm = 25
-    private var pendingRadiusKm = 25
     private var searchGeneration = 0
+    private var lifecycle = FacilitySearchLifecycle()
     private var resultCache: [String: CachedFacilitySearch] = [:]
+    private var endpointCooldown: [String: Date] = [:]
+    private var sourceTasks: [FacilitySearchLifecycle.Provider: Task<Void, Never>] = [:]
+    private var requestTask: Task<Void, Never>?
+    private var overallDeadline: Task<Void, Never>?
     private var locationDeadline: Task<Void, Never>?
+    private var visible = false
     private let providerSession: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 8
-        configuration.timeoutIntervalForResource = 10
-        configuration.waitsForConnectivity = false
-        return URLSession(configuration: configuration)
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 4
+        config.timeoutIntervalForResource = 5
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
     }()
 
     override init() {
-        super.init()
-        manager.delegate = self
+        super.init(); manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
-    func requestLocation(openSettingsIfDenied: Bool = false) {
-        switch manager.authorizationStatus {
-        case .notDetermined:
-            needsPermission = true
-            manager.requestWhenInUseAuthorization()
-        case .authorizedAlways, .authorizedWhenInUse:
-            needsPermission = false
-            locationDeadline?.cancel()
-            locationDeadline = Task { [weak self] in
-                do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
-                guard let self, self.pendingSport != nil else { return }
-                self.pendingSport = nil; self.isSearching = false; self.searchFailed = true
-                self.message = "places.locationTimeout".tempoLocalized
-            }
-            manager.requestLocation()
-        case .denied, .restricted:
-            invalidateLocationAccess()
-            if openSettingsIfDenied, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-        @unknown default:
-            needsPermission = true
-        }
-    }
-
-    func search(for sport: TempoSportChoice, radiusKm: Int) async {
-        lastSport = sport
-        lastRadiusKm = radiusKm
-        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else {
-            pendingSport = sport
-            pendingRadiusKm = radiusKm
-            requestLocation()
-            return
-        }
-        guard let location, abs(location.timestamp.timeIntervalSinceNow) <= 120 else {
-            searchGeneration += 1
-            isSearching = true
-            searchFailed = false
-            pendingSport = sport
-            pendingRadiusKm = radiusKm
-            requestLocation()
-            return
-        }
-
-        searchGeneration += 1
-        let generation = searchGeneration
-        defer { if generation == searchGeneration { isSearching = false } }
-        isSearching = true
-        searchFailed = false
-        message = nil
-        let radiusMeters = max(5_000, min(radiusKm, 50) * 1_000)
-        region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: CLLocationDistance(radiusMeters * 2),
-            longitudinalMeters: CLLocationDistance(radiusMeters * 2)
-        )
-
-        let cacheKey = Self.cacheKey(for: sport, radiusKm: radiusKm, location: location)
-        if let cached = resultCache[cacheKey],
-           (0.0..<600.0).contains(Date().timeIntervalSince(cached.createdAt)),
-           cached.origin.distance(from: location) <= 100 {
-            places = cached.places.map { $0.measured(from: location) }
-                .filter { $0.distanceMeters <= Double(radiusMeters) }
-                .sorted { $0.distanceMeters < $1.distanceMeters }
-            isSearching = false
-            message = places.isEmpty
-                ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
-                : "%d alan bulundu · kayıtlı sonuçlar anında gösterildi.".tempoFormatted(places.count)
-            return
-        }
-
-        // Show whichever provider returns first; a slow Apple Maps search
-        // must not hide completed OpenStreetMap results (or the reverse).
-        places = []
-        var providersSucceeded = true
-        await withTaskGroup(of: FacilitySearchBatch.self) { group in
-            group.addTask { await self.searchAppleMaps(for: sport, location: location, radiusMeters: radiusMeters) }
-            group.addTask { await self.searchOpenStreetMap(for: sport, location: location, radiusMeters: radiusMeters) }
-            var results: [NearbyPlace] = []
-            for await batch in group {
-                guard generation == searchGeneration, !Task.isCancelled else { group.cancelAll(); return }
-                providersSucceeded = providersSucceeded && batch.succeeded
-                results.append(contentsOf: batch.places.filter { $0.distanceMeters <= Double(radiusMeters) })
-                places = Self.deduplicated(results)
-                if !places.isEmpty { message = "%d alan bulundu; diğer harita kaynakları taranıyor…".tempoFormatted(places.count) }
-            }
-        }
-        guard generation == searchGeneration else { return }
-        isSearching = false
+    func search(for sport: TempoSportChoice, radiusKm: Int, force: Bool = false) async {
         guard !Task.isCancelled else { return }
-        guard providersSucceeded else {
-            searchFailed = true
-            message = places.isEmpty
-                ? "Harita kaynaklarına ulaşılamadı. İnternetini kontrol edip tekrar dene."
-                : "Bazı harita kaynakları yüklenemedi. Bulunan yerleri gösteriyoruz."
+        cancelJobs(); lifecycle.cancel(); searchGeneration += 1
+        let generation = searchGeneration
+        visible = true; lastSport = sport; lastRadiusKm = radiusKm
+        pendingSport = nil; searchFailed = false; canRetry = false
+        places = []; message = nil
+        let authorized = manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse
+        guard authorized else {
+            isSearching = false; pendingSport = sport; pendingRadiusKm = radiusKm; pendingForce = force
+            requestLocation()
             return
         }
-        resultCache[cacheKey] = CachedFacilitySearch(createdAt: Date(), origin: location, places: places)
-        message = places.isEmpty
-            ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm)
-            : "%d alan bulundu · yakından uzağa sıralandı.".tempoFormatted(places.count)
+        needsPermission = false
+        let reference = location ?? manager.location
+        guard let origin = reference, Self.validLocation(origin) else {
+            isSearching = true; pendingSport = sport; pendingRadiusKm = radiusKm; pendingForce = force
+            message = "places.locating".tempoLocalized
+            requestLocation()
+            return
+        }
+        location = origin
+        let meters = max(5_000, min(radiusKm, 50) * 1000)
+        region = MKCoordinateRegion(center: origin.coordinate, latitudinalMeters: Double(meters * 2), longitudinalMeters: Double(meters * 2))
+        let key = Self.cacheKey(for: sport, radiusKm: radiusKm, location: origin)
+        if !force, let cached = resultCache[key],
+           (0.0..<(cached.places.isEmpty ? 120.0 : 600.0)).contains(Date().timeIntervalSince(cached.createdAt)),
+           cached.origin.distance(from: origin) <= 150 {
+            places = cached.places.map { $0.measured(from: origin) }.filter { $0.distanceMeters <= Double(meters) }
+            isSearching = false; canRetry = !cached.fullyLoaded
+            message = places.isEmpty ? "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, radiusKm) : "%d alan bulundu · kayıtlı sonuçlar anında gösterildi.".tempoFormatted(places.count)
+            return
+        }
+        lifecycle.begin(generation: generation); isSearching = true
+        // Filtreyi hızlıca değiştirmek, her dokunuşta yeni MapKit istekleri üretmesin.
+        requestTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 300_000_000) } catch { return }
+            guard let self, self.visible, self.lifecycle.active, generation == self.searchGeneration else { return }
+            self.startProviders(sport: sport, origin: origin, meters: meters, key: key, generation: generation)
+        }
     }
 
-    private func searchAppleMaps(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> FacilitySearchBatch {
-        let searchRegion = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: CLLocationDistance(radiusMeters * 2),
-            longitudinalMeters: CLLocationDistance(radiusMeters * 2)
-        )
-        return await withTaskGroup(of: FacilitySearchBatch.self, returning: FacilitySearchBatch.self) { group in
-            for query in sport.facilitySearchQueries {
-                group.addTask {
-                    let request = MKLocalSearch.Request()
-                    request.naturalLanguageQuery = query
-                    request.region = searchRegion
-                    request.resultTypes = .pointOfInterest
-                    return await FacilityAppleSearchOperation(request: request).run(sport: sport, location: location)
-                }
-            }
-            var results: [NearbyPlace] = []
-            var succeeded = true
-            for await batch in group {
-                if Task.isCancelled { group.cancelAll(); return FacilitySearchBatch(places: results, succeeded: false) }
-                results.append(contentsOf: batch.places)
-                succeeded = succeeded && batch.succeeded
-            }
-            return FacilitySearchBatch(places: Self.deduplicated(results), succeeded: succeeded)
+    private func startProviders(sport: TempoSportChoice, origin: CLLocation, meters: Int, key: String, generation: Int) {
+        // Sağlayıcı task'ları ayrı tutulur: yanıt vermeyen bir servis, UI sonlandırmasını bekletemez.
+        overallDeadline = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 12_000_000_000) } catch { return }
+            self?.finish(sport: sport, origin: origin, key: key, generation: generation)
         }
+        sourceTasks[.appleMaps] = Task { [weak self] in
+            guard let self else { return }
+            let batch = await self.searchAppleMaps(for: sport, location: origin, radiusMeters: meters, generation: generation)
+            guard !Task.isCancelled else { return }
+            self.receive(batch, provider: .appleMaps, sport: sport, origin: origin, meters: meters, key: key, generation: generation)
+        }
+        sourceTasks[.openStreetMap] = Task { [weak self] in
+            guard let self else { return }
+            let batch = await self.searchOpenStreetMap(for: sport, location: origin, radiusMeters: meters)
+            guard !Task.isCancelled else { return }
+            self.receive(batch, provider: .openStreetMap, sport: sport, origin: origin, meters: meters, key: key, generation: generation)
+        }
+    }
+
+    private func merge(_ results: [NearbyPlace], meters: Int, generation: Int) {
+        guard generation == searchGeneration, lifecycle.active else { return }
+        let valid = results.filter { $0.distanceMeters.isFinite && $0.distanceMeters <= Double(meters) }
+        places = Self.deduplicated(places + valid)
+        if !places.isEmpty {
+            _ = lifecycle.showResults(generation: generation)
+            // Harita artık kullanılabilir; diğer kaynağı sessizce tamamla, haritanın üstünde spinner bırakma.
+            isSearching = false
+            message = "%d alan bulundu · yakından uzağa sıralandı.".tempoFormatted(places.count)
+        }
+    }
+
+    private func receive(_ batch: FacilitySearchBatch, provider: FacilitySearchLifecycle.Provider, sport: TempoSportChoice, origin: CLLocation, meters: Int, key: String, generation: Int) {
+        guard generation == searchGeneration, lifecycle.active else { return }
+        merge(batch.places, meters: meters, generation: generation)
+        guard lifecycle.receive(provider, succeeded: batch.succeeded, hasResults: !places.isEmpty, generation: generation) else { return }
+        isSearching = lifecycle.blocking
+        if lifecycle.complete { finish(sport: sport, origin: origin, key: key, generation: generation) }
+    }
+
+    private func finish(sport: TempoSportChoice, origin: CLLocation, key: String, generation: Int) {
+        guard generation == searchGeneration, let outcome = lifecycle.finish(generation: generation) else { return }
+        cancelJobs(); isSearching = false
+        canRetry = outcome != .results && outcome != .empty
+        searchFailed = outcome == .unavailable || outcome == .partialEmpty
+        switch outcome {
+        case .results: message = "%d alan bulundu · yakından uzağa sıralandı.".tempoFormatted(places.count)
+        case .partialResults: message = "places.partialResults".tempoFormatted(places.count)
+        case .empty: message = "%@ için %d km çevrede kayıtlı bir alan bulunamadı.".tempoFormatted(sport.title, lastRadiusKm)
+        case .partialEmpty: message = "places.partialEmpty".tempoLocalized
+        case .unavailable: message = "places.serviceUnavailable".tempoLocalized
+        }
+        // Hatalı/eksik boş yanıtları 'bu bölgede tesis yok' diye önbelleğe alma.
+        if !places.isEmpty || outcome == .empty {
+            resultCache = resultCache.filter { Date().timeIntervalSince($0.value.createdAt) < 600 }
+            if resultCache.count >= 18, let oldest = resultCache.min(by: { $0.value.createdAt < $1.value.createdAt })?.key { resultCache.removeValue(forKey: oldest) }
+            resultCache[key] = CachedFacilitySearch(createdAt: Date(), origin: origin, places: places, fullyLoaded: outcome == .results || outcome == .empty)
+        }
+    }
+
+    private func searchAppleMaps(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int, generation: Int) async -> FacilitySearchBatch {
+        let searchRegion = MKCoordinateRegion(center: location.coordinate, latitudinalMeters: Double(radiusMeters * 2), longitudinalMeters: Double(radiusMeters * 2))
+        let all = sport.facilitySearchQueries
+        let english = Bundle.main.preferredLocalizations.first?.hasPrefix("en") == true
+        let englishQuery: String
+        switch sport {
+        case .run: englishQuery = "running track"
+        case .cycling: englishQuery = "cycling track"
+        case .walking: englishQuery = "walking trail"
+        case .hiking: englishQuery = "trailhead"
+        case .swimming: englishQuery = "swimming pool"
+        case .fitness: englishQuery = "fitness center gym"
+        case .tennis: englishQuery = "tennis court"
+        case .basketball: englishQuery = "basketball court"
+        case .football: englishQuery = "football soccer field"
+        case .volleyball: englishQuery = "volleyball court"
+        case .padel: englishQuery = "padel court"
+        case .badminton: englishQuery = "badminton court"
+        case .yoga: englishQuery = "yoga studio"
+        }
+        var queries: [String] = []
+        queries.append(english ? englishQuery : (all.first ?? englishQuery))
+        let alternate = english ? (all.first ?? englishQuery) : englishQuery
+        if !queries.contains(alternate) { queries.append(alternate) }
+        var results: [NearbyPlace] = []
+        var anySucceeded = false
+        // Aynı anda 3–4 eşanlamlı sorgu MapKit'i gereksiz yere hız sınırına sokuyordu.
+        for query in queries {
+            guard !Task.isCancelled, generation == searchGeneration, lifecycle.active else { break }
+            let request = MKLocalSearch.Request(); request.naturalLanguageQuery = query; request.region = searchRegion; request.resultTypes = .pointOfInterest
+            let batch = await FacilityAppleSearchOperation(request: request).run(sport: sport, location: location)
+            guard !Task.isCancelled else { break }
+            anySucceeded = anySucceeded || batch.succeeded
+            results += batch.places
+            merge(batch.places, meters: radiusMeters, generation: generation)
+        }
+        return FacilitySearchBatch(places: Self.deduplicated(results), succeeded: anySucceeded)
     }
 
     private func searchOpenStreetMap(for sport: TempoSportChoice, location: CLLocation, radiusMeters: Int) async -> FacilitySearchBatch {
         guard !sport.openStreetMapSelectors.isEmpty else { return FacilitySearchBatch(places: [], succeeded: true) }
         let latitude = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), location.coordinate.latitude)
         let longitude = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), location.coordinate.longitude)
-        let selectors = sport.openStreetMapSelectors
-            .map { "nwr(around:\(radiusMeters),\(latitude),\(longitude))\($0);" }
-            .joined()
-        let query = "[out:json][timeout:8];(\(selectors));out center tags;"
-
-        let endpoints = [
-            "https://overpass.kumi.systems/api/interpreter",
-            "https://overpass-api.de/api/interpreter",
-        ]
+        let selectors = sport.openStreetMapSelectors.map { "nwr(around:\(radiusMeters),\(latitude),\(longitude))\($0);" }.joined()
+        let query = "[out:json][timeout:4][maxsize:16777216];(\(selectors));out center tags 200;"
+        let endpoints = ["https://overpass.private.coffee/api/interpreter", "https://overpass-api.de/api/interpreter"]
         for endpoint in endpoints {
-            guard !Task.isCancelled else { return FacilitySearchBatch(places: [], succeeded: false) }
+            guard !Task.isCancelled else { break }
+            if let until = endpointCooldown[endpoint], until > Date() { continue }
             guard let url = URL(string: endpoint) else { continue }
-            var components = URLComponents()
-            components.queryItems = [URLQueryItem(name: "data", value: query)]
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
-            request.timeoutInterval = 8
+            var components = URLComponents(); components.queryItems = [URLQueryItem(name: "data", value: query)]
+            var request = URLRequest(url: url); request.httpMethod = "POST"
+            request.httpBody = components.percentEncodedQuery?.data(using: .utf8); request.timeoutInterval = 4
             request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.setValue("Tempo/1.0 (https://apitempo.com)", forHTTPHeaderField: "User-Agent")
             do {
                 let (data, response) = try await providerSession.data(for: request)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { continue }
+                guard !Task.isCancelled else { break }
+                guard let http = response as? HTTPURLResponse else { continue }
+                guard (200..<300).contains(http.statusCode) else {
+                    let delay = http.statusCode == 429 ? min(300, max(60, Double(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 60)) : 15
+                    endpointCooldown[endpoint] = Date().addingTimeInterval(delay)
+                    continue
+                }
                 let decoded = try JSONDecoder().decode(OpenStreetMapResponse.self, from: data)
-                return FacilitySearchBatch(places: decoded.elements.filter { sport.matchesFacilityTags($0.tags ?? [:]) }.prefix(160).compactMap {
-                    NearbyPlace(openStreetMapElement: $0, sportTitle: sport.title, origin: location)
-                }, succeeded: !Task.isCancelled)
+                let places = decoded.elements.filter { sport.matchesFacilityTags($0.tags ?? [:]) }.compactMap { NearbyPlace(openStreetMapElement: $0, sportTitle: sport.title, origin: location) }
+                return FacilitySearchBatch(places: places, succeeded: decoded.remark == nil)
             } catch {
-                continue
+                if Task.isCancelled { break }
+                endpointCooldown[endpoint] = Date().addingTimeInterval(10)
             }
         }
         return FacilitySearchBatch(places: [], succeeded: false)
@@ -1659,64 +1768,86 @@ final class FacilitySearchModel: NSObject, ObservableObject, @preconcurrency CLL
         return "\(sport.rawValue):\(radiusKm):\(latitude):\(longitude)"
     }
 
+
+    private static func validLocation(_ location: CLLocation) -> Bool {
+        CLLocationCoordinate2DIsValid(location.coordinate) && location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 2500 && abs(location.timestamp.timeIntervalSinceNow) <= 600
+    }
+    func requestLocation(openSettingsIfDenied: Bool = false) {
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            needsPermission = true; isSearching = false
+            message = "Yakındaki spor alanlarını görmek için konum izni ver."
+            manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            needsPermission = false
+            guard pendingSport != nil, visible else { return }
+            locationDeadline?.cancel()
+            let generation = searchGeneration
+            locationDeadline = Task { [weak self] in
+                do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
+                guard let self, self.visible, generation == self.searchGeneration, self.pendingSport != nil else { return }
+                self.pendingSport = nil; self.isSearching = false; self.searchFailed = true; self.canRetry = true
+                self.message = "places.locationTimeout".tempoLocalized
+            }
+            manager.requestLocation()
+        case .denied, .restricted:
+            invalidateLocationAccess()
+            if openSettingsIfDenied, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+        @unknown default:
+            needsPermission = true; isSearching = false
+        }
+    }
     private func invalidateLocationAccess() {
-        locationDeadline?.cancel()
-        searchGeneration += 1
-        isSearching = false
-        searchFailed = false
-        location = nil
-        region = nil
-        places = []
-        resultCache.removeAll()
-        pendingSport = lastSport
-        pendingRadiusKm = lastRadiusKm
-        needsPermission = true
+        cancelJobs(); lifecycle.cancel(); searchGeneration += 1
+        locationDeadline?.cancel(); isSearching = false; searchFailed = false; canRetry = false
+        location = nil; region = nil; places = []; resultCache = [:]
+        pendingSport = lastSport; pendingRadiusKm = lastRadiusKm; needsPermission = true
         message = "Konum izni kapalı. iPhone Ayarlar’dan Tempo için konuma izin verebilirsin."
     }
-
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
             needsPermission = false
-            requestLocation()
-        } else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
-            invalidateLocationAccess()
-        }
+            if visible, pendingSport != nil { requestLocation() }
+        } else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted { invalidateLocationAccess() }
     }
-
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        locationDeadline?.cancel()
-        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
-        guard let value = locations.last(where: {
-            CLLocationCoordinate2DIsValid($0.coordinate) && $0.horizontalAccuracy >= 0 && abs($0.timestamp.timeIntervalSinceNow) <= 120
-        }) else {
-            location = nil
-            isSearching = false
-            searchFailed = true
-            message = "Konum alınamadı. Konum servislerini kontrol edip yeniden deneyebilirsin."
-            return
-        }
+        guard visible, manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
+        guard let value = locations.last(where: Self.validLocation) else { locationFailed(); return }
         location = value
-        region = MKCoordinateRegion(center: value.coordinate, latitudinalMeters: 16_000, longitudinalMeters: 16_000)
-        if let pendingSport {
-            let radius = pendingRadiusKm
-            self.pendingSport = nil
-            Task { await search(for: pendingSport, radiusKm: radius) }
+        guard let sport = pendingSport else { return }
+        locationDeadline?.cancel(); pendingSport = nil
+        let radius = pendingRadiusKm, force = pendingForce
+        let generation = searchGeneration
+        Task { [weak self] in
+            guard let self, self.visible, generation == self.searchGeneration, self.lastSport == sport else { return }
+            await self.search(for: sport, radiusKm: radius, force: force)
         }
     }
-
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        locationDeadline?.cancel()
-        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else {
-            invalidateLocationAccess()
-            return
-        }
-        isSearching = false
-        searchFailed = true
+        guard visible, pendingSport != nil else { return }
+        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { invalidateLocationAccess(); return }
+        locationFailed()
+    }
+    private func locationFailed() {
+        locationDeadline?.cancel(); pendingSport = nil; isSearching = false; searchFailed = true; canRetry = true
         message = "Konum alınamadı. Konum servislerini kontrol edip yeniden deneyebilirsin."
     }
-
+    private func cancelJobs() {
+        requestTask?.cancel(); requestTask = nil; overallDeadline?.cancel(); overallDeadline = nil
+        for task in sourceTasks.values { task.cancel() }; sourceTasks = [:]
+        locationDeadline?.cancel(); locationDeadline = nil
+    }
     func cancelSearch() {
-        searchGeneration += 1; locationDeadline?.cancel(); pendingSport = nil; isSearching = false
+        visible = false; searchGeneration += 1; lifecycle.cancel(); cancelJobs(); pendingSport = nil; isSearching = false
+    }
+    func openSystemMaps() {
+        guard let sport = lastSport else { return }
+        var url = URLComponents(string: "https://maps.apple.com/")!
+        url.queryItems = [URLQueryItem(name: "q", value: sport.facilitySearchQuery ?? sport.title)]
+        if let location, Self.validLocation(location) {
+            url.queryItems?.append(URLQueryItem(name: "sll", value: String(format: "%.6f,%.6f", locale: Locale(identifier: "en_US_POSIX"), location.coordinate.latitude, location.coordinate.longitude)))
+        }
+        if let url = url.url { UIApplication.shared.open(url) }
     }
 }
 
@@ -1735,7 +1866,7 @@ private final class FacilityAppleSearchOperation {
                 if finished { self.continuation = nil; continuation.resume(returning: FacilitySearchBatch(places: [], succeeded: false)); return }
                 guard !Task.isCancelled else { finish(FacilitySearchBatch(places: [], succeeded: false)); return }
                 deadline = Task { [weak self] in
-                    do { try await Task.sleep(nanoseconds: 8_000_000_000) } catch { return }
+                    do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
                     self?.finish(FacilitySearchBatch(places: [], succeeded: false))
                 }
                 search.start { [weak self] response, error in
@@ -1764,10 +1895,12 @@ private struct CachedFacilitySearch {
     let createdAt: Date
     let origin: CLLocation
     let places: [NearbyPlace]
+    let fullyLoaded: Bool
 }
 
 struct OpenStreetMapResponse: Decodable {
     let elements: [OpenStreetMapElement]
+    let remark: String?
 }
 
 struct OpenStreetMapElement: Decodable {

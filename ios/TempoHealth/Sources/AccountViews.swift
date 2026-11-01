@@ -2095,9 +2095,12 @@ private extension UIImage {
 }
 
 struct TempoGlassBackButtonModifier: ViewModifier {
+    var enabled = true
     @Environment(\.dismiss) private var dismiss
 
+    @ViewBuilder
     func body(content: Content) -> some View {
+        if enabled {
         content
             .simultaneousGesture(
                 DragGesture(minimumDistance: 18, coordinateSpace: .global)
@@ -2131,11 +2134,14 @@ struct TempoGlassBackButtonModifier: ViewModifier {
                     .accessibilityLabel("Geri".tempoLocalized)
                 }
             }
+        } else {
+            content.navigationBarBackButtonHidden(true)
+        }
     }
 }
 
 extension View {
-    func tempoGlassBackButton() -> some View {
-        modifier(TempoGlassBackButtonModifier())
+    func tempoGlassBackButton(_ enabled: Bool = true) -> some View {
+        modifier(TempoGlassBackButtonModifier(enabled: enabled))
     }
 }

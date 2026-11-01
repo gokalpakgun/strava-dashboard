@@ -201,9 +201,9 @@ final class TempoHealthUserFlowTests: XCTestCase {
         capture(app, named: "Workout ledger - consistent weekly totals")
         element("tab.1", in: app).tap()
         let tennis = element("activity.filter.sport:tennis", in: app)
-        for _ in 0..<5 where !element("activity.filter.all", in: app).isHittable { app.swipeUp() }
+        for _ in 0..<5 where !element("activity.filters", in: app).isHittable { app.swipeUp() }
         let bar = element("activity.filters", in: app)
-        for _ in 0..<4 where !tennis.isHittable { bar.swipeLeft() }
+        bar.tap()
         XCTAssertTrue(tennis.isHittable)
         tennis.tap()
         _ = reveal("workout.record.tennis")
