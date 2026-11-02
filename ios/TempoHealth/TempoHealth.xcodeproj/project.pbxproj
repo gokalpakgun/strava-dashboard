@@ -39,6 +39,8 @@
 		F1000000000000000000000C /* WorkoutDetectionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000C /* WorkoutDetectionViews.swift */; };
 		F1000000000000000000000D /* FacilitySearchLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000D /* FacilitySearchLifecycle.swift */; };
         F1000000000000000000000E /* TempoPermissionSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000E /* TempoPermissionSetup.swift */; };
+        F1000000000000000000000F /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000000000000000000000F /* Workout.swift */; };
+        F10000000000000000000010 /* WorkoutCardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000010 /* WorkoutCardViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -81,6 +83,8 @@
 		F2000000000000000000000C /* WorkoutDetectionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetectionViews.swift; sourceTree = "<group>"; };
 		F2000000000000000000000D /* FacilitySearchLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacilitySearchLifecycle.swift; sourceTree = "<group>"; };
         F2000000000000000000000E /* TempoPermissionSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoPermissionSetup.swift; sourceTree = "<group>"; };
+        F2000000000000000000000F /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
+        F20000000000000000000010 /* WorkoutCardViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutCardViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,6 +130,8 @@
                 F20000000000000000000009 /* RecoveryLoadAnalysis.swift */,
                 F2000000000000000000000C /* WorkoutDetectionViews.swift */,
                 F2000000000000000000000E /* TempoPermissionSetup.swift */,
+                F2000000000000000000000F /* Workout.swift */,
+                F20000000000000000000010 /* WorkoutCardViews.swift */,
                 F2000000000000000000000B /* TempoWorkoutDetection.swift */,
                 F2000000000000000000000A /* WorkoutDetectionEngine.swift */,
                 F2000000000000000000000D /* FacilitySearchLifecycle.swift */,
@@ -246,6 +252,8 @@
             F10000000000000000000009 /* RecoveryLoadAnalysis.swift in Sources */,
             F1000000000000000000000C /* WorkoutDetectionViews.swift in Sources */,
             F1000000000000000000000E /* TempoPermissionSetup.swift in Sources */,
+            F1000000000000000000000F /* Workout.swift in Sources */,
+            F10000000000000000000010 /* WorkoutCardViews.swift in Sources */,
             F1000000000000000000000B /* TempoWorkoutDetection.swift in Sources */,
             F1000000000000000000000A /* WorkoutDetectionEngine.swift in Sources */,
             F1000000000000000000000D /* FacilitySearchLifecycle.swift in Sources */,

@@ -17,6 +17,7 @@ jobs:
           set -euo pipefail
           swiftc -swift-version 6 -D STRAIN_CORE_TESTS \
             ios/TempoHealth/Sources/SportArchetypes.swift \
+            ios/TempoHealth/Sources/Workout.swift \
             ios/TempoHealth/Sources/HeartRateZoneInference.swift \
             ios/TempoHealth/Sources/RecoveryLoadAnalysis.swift \
             ios/TempoHealth/Sources/UniversalStrainEngine.swift \

@@ -241,4 +241,25 @@ let hardSet = StrengthSet(muscle: .legs, repetitions: 8, loadKg: 80, rpe: 9)
 check(!StrengthProgression.suggestsIncrease(hardSet, current: draftSet), "Yüksek eforda artış önerilmez")
 let savedPreset = StrengthWorkoutPreset(sportID: "fitness", name: "Upper A", sets: [originalSet])
 check(savedPreset.isValid && (try? JSONDecoder().decode(StrengthWorkoutPreset.self, from: JSONEncoder().encode(savedPreset)))?.name == "Upper A", "Şablon yerel kayıtta korunur")
+
+// Kart modelinin kaynak birimleri ve tüm branşlarda güvenli eksik veri davranışı.
+for id in ["run", "TrailRun", "VirtualRun", "walking", "hiking"] { check(SportType(sportID: id) == .running, "Kara dayanıklılığı: \(id)") }
+for id in ["ride", "cycling", "GravelRide", "EBikeRide", "HandCycle"] { check(SportType(sportID: id) == .cycling, "Bisiklet: \(id)") }
+for id in ["fitness", "Powerlifting", "Calisthenics", "CrossFit"] { check(SportType(sportID: id) == .lifting, "Kuvvet: \(id)") }
+for id in ["swim", "Swimming", "OpenWaterSwimming"] { check(SportType(sportID: id) == .swimming, "Yüzme: \(id)") }
+for id in ["tennis", "basketball", "football", "yoga", "boxing", "unrecognized-sport"] { check(SportType(sportID: id) == .generic, "Diğer branş: \(id)") }
+check(SportType(sportID: "other", archetype: .strengthAndHypertrophy) == .lifting, "HealthKit kuvvet arketipi korunur")
+check(SportType(sportID: "run", archetype: .teamAndCourt) == .generic, "Açık kort arketipine mesafe zorlanmaz")
+let cardRun = Workout(id: "local-test", sportType: .running, date: now, duration: 1_800, distance: 5_000)
+check(cardRun.paceSecondsPerKm == 360 && cardRun.speedKmh == 10, "Metre ve saniyeden doğru tempo/hız")
+let cardZero = Workout(id: "zero", sportType: .running, date: nil, duration: 0, distance: 0)
+check(cardZero.paceSecondsPerKm == nil && cardZero.speedKmh == nil && cardZero.validDuration == nil, "Sıfır sürede bölme yok")
+let cardMissing = Workout(id: "missing", sportType: .lifting, date: nil, duration: 3_600, avgHeartRate: 170)
+check(cardMissing.estimatedMuscleLoad == nil && cardMissing.totalVolume == nil && cardMissing.laps == nil, "Nabız CNS/tonaj/tur üretmez")
+let cardInvalid = Workout(id: "invalid", sportType: .swimming, date: nil, duration: .infinity, activeCalories: .nan, avgHeartRate: 500, distance: -1, laps: -1, totalVolume: .nan)
+check(cardInvalid.validDuration == nil && cardInvalid.validCalories == nil && cardInvalid.validHeartRate == nil && cardInvalid.validDistance == nil && cardInvalid.validLaps == nil && cardInvalid.validVolume == nil, "Geçersiz kart ölçümleri gösterilmez")
+var cardRoundTrip = cardRun; cardRoundTrip.laps = 20; cardRoundTrip.totalVolume = 5_200
+let decodedCard = try! JSONDecoder().decode(Workout.self, from: JSONEncoder().encode(cardRoundTrip))
+check(decodedCard.id == cardRun.id && decodedCard.distance == 5_000 && decodedCard.laps == 20 && decodedCard.totalVolume == 5_200, "Tek model Codable değerleri ve kaynak kimliğini korur")
+check((try? JSONDecoder().decode(SportType.self, from: Data("\"future-sport\"".utf8))) == .generic, "Yeni spor enum değeri güvenle generic olur")
 print("STRAIN_CORE_PASS checks=\(checked) swift6=true phases3to5=true")

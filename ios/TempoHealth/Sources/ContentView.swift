@@ -137,6 +137,8 @@ struct ContentView: View {
     @EnvironmentObject private var account: TempoAccountStore
     @State private var selectedTab = 0
     @State private var minimumLaunchFinished = false
+    @StateObject private var workoutCardMetrics = SportMetricsStore()
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -155,6 +157,9 @@ struct ContentView: View {
             }
         }
         .background(TempoTheme.background.ignoresSafeArea())
+        .environmentObject(workoutCardMetrics)
+        .task(id: account.profile?.id) { workoutCardMetrics.bind(account.profile?.id) }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { workoutCardMetrics.reload() } }
         .task {
             do { try await Task.sleep(nanoseconds: reduceMotion ? 200_000_000 : 1_150_000_000) }
             catch { return }
@@ -1161,6 +1166,8 @@ private struct TempoWorkoutHistoryScreen: View {
 
 private struct ManualWorkoutRow: View {
     @EnvironmentObject private var model: TempoAppModel
+    @EnvironmentObject private var account: TempoAccountStore
+    @EnvironmentObject private var cardMetrics: SportMetricsStore
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var isShowingPhotoEvidence = false
     @State private var isShowingRoute = false
@@ -1169,67 +1176,75 @@ private struct ManualWorkoutRow: View {
     private var sportChoice: TempoSportChoice? {
         TempoSportChoice.allCases.first { $0.rawValue == workout.sportId }
     }
+    private var cardWorkout: Workout {
+        let source = WorkoutPayloadAdapter.record(workout)
+        let record = cardMetrics.owner == account.profile?.id ? cardMetrics.applying(to: source) : source
+        return WorkoutCardAdapter.make(workout, record: record)
+    }
 
     var body: some View {
         let rowLayout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
-        rowLayout {
-            TempoIconBadge(symbol: sportChoice?.symbol ?? "figure.mixed.cardio", color: TempoTheme.green, size: 42)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(workout.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary).fixedSize(horizontal: false, vertical: true)
-                Text("%@ · %@".tempoFormatted(workout.sportTitle, TempoFormat.duration(Double(workout.durationSeconds ?? workout.durationMinutes * 60))))
-                    .font(.caption).foregroundStyle(TempoTheme.secondary)
-                Text(workout.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(TempoTheme.secondary)
-                HStack(spacing: 5) {
-                    Image(systemName: sourceSymbol).font(.caption2)
-                    Text(sourceTitle).font(.caption2.weight(.medium)).fixedSize(horizontal: false, vertical: true)
-                    if TempoSport(rawValue: workout.sportId).supportsDistance, let distance = workout.distanceKm, distance > 0 {
-                        Text("· %@".tempoFormatted(TempoSport(rawValue: workout.sportId).distanceText(distance))).font(.caption2)
+        VStack(alignment: .leading, spacing: 18) {
+            rowLayout {
+                TempoIconBadge(symbol: sportChoice?.symbol ?? "figure.mixed.cardio", color: TempoTheme.green, size: 42)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(workout.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary).fixedSize(horizontal: false, vertical: true)
+                    Text(workout.sportTitle)
+                        .font(.caption).foregroundStyle(TempoTheme.secondary)
+                    Text(workout.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(TempoTheme.secondary)
+                    HStack(spacing: 5) {
+                        Image(systemName: sourceSymbol).font(.caption2)
+                        Text(sourceTitle).font(.caption2.weight(.medium)).fixedSize(horizontal: false, vertical: true)
                     }
+                    .foregroundStyle(workout.recordSource == "phone-gps" ? TempoTheme.blue : TempoTheme.green)
+                    if workout.isSensorVerified {
+                        Label("progress.sensorVerified".tempoLocalized, systemImage: "checkmark.shield.fill")
+                            .font(.caption2.weight(.semibold)).foregroundStyle(TempoTheme.blue)
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(TempoTheme.blue.opacity(0.1), in: Capsule())
+                            .accessibilityHint("progress.sensorHint".tempoLocalized)
+                    }
+                    if let signal = workout.healthSignal {
+                        DisclosureGroup("feed.signals".tempoLocalized) {
+                            WorkoutHealthSignalSummary(signal: signal, durationMinutes: workout.durationMinutes).padding(.top, 8)
+                        }.font(.caption).tint(TempoTheme.green)
+                    }
+                    if workout.perceivedEffort != nil || workout.enjoyment != nil {
+                        Text("Zorluk %@ · Keyif %@".tempoFormatted(rating(workout.perceivedEffort), rating(workout.enjoyment)))
+                            .font(.caption2).foregroundStyle(TempoTheme.secondary)
+                    }
+                    if !workout.notes.isEmpty {
+                        Text(workout.notes).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
+                    }
+                    SportArchetypeSection(workout: workout, compact: true)
                 }
-                .foregroundStyle(workout.recordSource == "phone-gps" ? TempoTheme.blue : TempoTheme.green)
-                if workout.isSensorVerified {
-                    Label("progress.sensorVerified".tempoLocalized, systemImage: "checkmark.shield.fill")
-                        .font(.caption2.weight(.semibold)).foregroundStyle(TempoTheme.blue)
-                        .padding(.horizontal, 9).padding(.vertical, 5)
-                        .background(TempoTheme.blue.opacity(0.1), in: Capsule())
-                        .accessibilityHint("progress.sensorHint".tempoLocalized)
+                if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
+                if (workout.routeCoordinates?.count ?? 0) >= 2 {
+                    Button { isShowingRoute = true } label: {
+                        Image(systemName: "map.fill")
+                            .foregroundStyle(TempoTheme.blue)
+                            .frame(width: 44, height: 44)
+                            .background(TempoTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Rotayı görüntüle")
                 }
-                if let signal = workout.healthSignal {
-                    WorkoutHealthSignalSummary(signal: signal, durationMinutes: workout.durationMinutes)
+                if let url = model.manualWorkoutPhotoURL(for: workout), let image = UIImage(contentsOfFile: url.path) {
+                    Button { isShowingPhotoEvidence = true } label: {
+                        Image(uiImage: image).resizable().scaledToFill()
+                            .frame(width: 54, height: 54).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                } else if workout.photoFilename != nil {
+                    Image(systemName: "photo").foregroundStyle(TempoTheme.secondary).frame(width: 40, height: 40)
                 }
-                if workout.perceivedEffort != nil || workout.enjoyment != nil {
-                    Text("Zorluk %@ · Keyif %@".tempoFormatted(rating(workout.perceivedEffort), rating(workout.enjoyment)))
-                        .font(.caption2).foregroundStyle(TempoTheme.secondary)
-                }
-                if !workout.notes.isEmpty {
-                    Text(workout.notes).font(.caption).foregroundStyle(TempoTheme.secondary).lineLimit(2)
-                }
-                SportArchetypeSection(workout: workout, compact: true)
             }
-            if !textSize.isAccessibilitySize { Spacer(minLength: 0) }
-            if (workout.routeCoordinates?.count ?? 0) >= 2 {
-                Button { isShowingRoute = true } label: {
-                    Image(systemName: "map.fill")
-                        .foregroundStyle(TempoTheme.blue)
-                        .frame(width: 44, height: 44)
-                        .background(TempoTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Rotayı görüntüle")
-            }
-            if let url = model.manualWorkoutPhotoURL(for: workout), let image = UIImage(contentsOfFile: url.path) {
-                Button { isShowingPhotoEvidence = true } label: {
-                    Image(uiImage: image).resizable().scaledToFill()
-                        .frame(width: 54, height: 54).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            } else if workout.photoFilename != nil {
-                Image(systemName: "photo").foregroundStyle(TempoTheme.secondary).frame(width: 40, height: 40)
-            }
+            WorkoutCardView(workout: cardWorkout, embedded: true)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(TempoSurface())
+        .modifier(WorkoutCardSurface())
+        .modifier(WorkoutCardEntrance())
         .sheet(isPresented: $isShowingPhotoEvidence) {
             if let url = model.manualWorkoutPhotoURL(for: workout), let image = UIImage(contentsOfFile: url.path) {
                 NavigationStack {
@@ -4533,23 +4548,7 @@ struct SectionHeading: View {
 private struct ActivityRow: View {
     let activity: TempoActivity
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: activity.sport.symbol).font(.title3).foregroundStyle(TempoTheme.orange)
-                .frame(width: 48, height: 48).background(TempoTheme.orange.opacity(0.11), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(activity.name ?? activity.sport.title).font(.subheadline.weight(.semibold)).foregroundStyle(TempoTheme.primary).lineLimit(1)
-                Text("\(activity.sport.title) · \(activity.date.map { TempoFormat.shortDate.string(from: $0) } ?? "")").font(.caption).foregroundStyle(TempoTheme.secondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                if activity.sport.supportsDistance { Text(activity.sport.distanceText(activity.distanceKm)).font(.subheadline.bold()).foregroundStyle(TempoTheme.primary) }
-                Text(TempoFormat.duration(activity.movingSeconds)).font(.subheadline.weight(.medium)).foregroundStyle(TempoTheme.primary.opacity(0.85))
-            }
-            Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.primary.opacity(0.25))
-        }
-        .padding(14)
-        .background(TempoTheme.card.opacity(0.88), in: RoundedRectangle(cornerRadius: 21, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.065), lineWidth: 1))
+        WorkoutCardView(workout: WorkoutCardAdapter.make(activity))
     }
 }
 

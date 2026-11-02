@@ -1591,3 +1591,12 @@
 "permissions.photos.detail" = "Ürettiğin profil kartını galerine kaydet. Yalnız yeni görsel ekleme izni istenir; arşivindeki diğer fotoğraflar okunmaz. Profil fotoğrafını sistem seçicisiyle ayrıca seçersin.";
 
 "Verileri şimdi eşitle" = "Verileri şimdi eşitle";
+"feed.volume" = "Toplam hacim";
+"feed.muscleLoad" = "Kas yükü · tahmin";
+"feed.averageHR" = "Ort. nabız: %@ bpm";
+"feed.heartRate" = "Ort. nabız";
+"feed.laps" = "Tur sayısı";
+"feed.signals" = "Sağlık sinyallerini gör";
+"feed.dateMissing" = "Tarih bilgisi yok";
+"feed.loadMissing" = "Yük tahmini için yeterli set veya efor verisi yok. Nabız tek başına CNS yorgunluğunu ölçmez.";
+"feed.loadExplanation" = "Kaydedilmiş set ve efor verilerine dayalı model tahmini; CNS yorgunluğu ölçümü değildir.";

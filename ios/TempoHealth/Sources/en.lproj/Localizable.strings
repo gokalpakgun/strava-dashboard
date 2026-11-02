@@ -2116,3 +2116,12 @@
 "permissions.photos.detail" = "Save your generated profile card to your gallery. Only permission to add new images is requested; other photos in your library are not read. Select a profile photo separately with the system picker.";
 
 "Verileri şimdi eşitle" = "Sync data now";
+"feed.volume" = "Total volume";
+"feed.muscleLoad" = "Muscle load · estimate";
+"feed.averageHR" = "Avg. heart rate: %@ bpm";
+"feed.heartRate" = "Avg. heart rate";
+"feed.laps" = "Laps";
+"feed.signals" = "View health signals";
+"feed.dateMissing" = "Date unavailable";
+"feed.loadMissing" = "Not enough set or effort data to estimate load. Heart rate alone does not measure CNS fatigue.";
+"feed.loadExplanation" = "A model estimate based on recorded sets and effort; it is not a measurement of CNS fatigue.";
