@@ -9,7 +9,7 @@ enum WorkoutCardAdapter {
                             distance: source.distanceKm.map { $0 * 1_000 }, title: source.title, sportName: source.sportTitle,
                             symbol: TempoSportChoice(rawValue: source.sportId)?.symbol ?? TempoSport(rawValue: source.sportId).symbol,
                             archetype: record.payload?.archetype)
-        if case .strength(let strength) = record.payload, strength.isValid { value.totalVolume = strength.totalTonnageKg }
+        if case .strength(let strength) = record.payload, strength.isValid { value.totalVolume = strength.tonnageKg }
         if case .endurance(let endurance) = record.payload, endurance.isValid {
             value.distance = endurance.distanceMeters ?? value.distance
             value.laps = endurance.laps.isEmpty ? nil : endurance.laps.count
