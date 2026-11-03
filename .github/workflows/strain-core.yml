@@ -2,16 +2,28 @@ name: Tempo Strain Core Checks
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS kontrol çalıştırıcısı
+        type: choice
+        default: macos-26
+        options: [macos-26, macos-15]
 
 permissions:
   contents: read
 
 jobs:
   math:
-    runs-on: macos-26
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      - name: Xcode 26 SDK seçimi
+        run: |
+          set -euo pipefail
+          XCODE_PATH="$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -V | tail -1)"
+          test -n "$XCODE_PATH"
+          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
       - name: Swift 6 efor motoru kontrolü
         run: |
           set -euo pipefail

@@ -79,7 +79,7 @@ export async function handlePassiveSocial(request,env,url,ctx) {
 export async function deletePassiveSocial(env,actor) {
   if(!env.PASSIVE_RECIPIENT||!env.PASSIVE_COHORT)return;
   const mine=await recipient(env,actor,{action:'list'});
-  for(const id of mine.groups)await cohort(env,id,{action:'deleteMember',actor});
+  for(const id of mine.groups){try{await cohort(env,id,{action:'deleteMember',actor});}catch(e){if(![403,410].includes(e.status))throw e;}}
   await recipient(env,actor,{action:'delete'});
 }
 
@@ -113,7 +113,6 @@ export class PassiveCohort {
         }else if(b.action==='sync'){
           if(g.pledge.consent[b.actor]?.activity&&!['settled','void'].includes(g.pledge.status)){
             const a=g.activity[b.actor]||{joinedAt:now};
-            if((g.pledge.goal==='sensorSessions'&&b.queryComplete===true)||(g.pledge.goal==='venueVisits'&&b.venueComplete===true))a.lastSyncAt=now;
             for(const input of (b.sessions||[]).slice(0,24)){
               const r=validatedReport(input,b.actor,now);if(!r)continue;
               if((g.pledge.goal==='sensorSessions'&&r.source==='healthkit')||(g.pledge.goal==='venueVisits'&&r.source==='corelocation')){
@@ -131,7 +130,10 @@ export class PassiveCohort {
             }
             // Beta sözleşmesinde yalnız cihazın tamamlanmış sorgu bildirimi kullanılır.
             // Bu App Attest veya HealthKit verisi için sunucu doğrulaması değildir.
-            if(((b.queryComplete===true&&g.pledge.goal==='sensorSessions')||(b.venueComplete===true&&g.pledge.goal==='venueVisits'))&&now>=g.pledge.startsAt){try{g.pledge=applyTrustedSync(g.pledge,b.actor,Math.min(now,g.pledge.endsAt),now);}catch{}}
+            const sourceAvailable=g.pledge.receipts.some(r=>r.owner===b.actor);
+            const coverageReported=(b.queryComplete===true&&g.pledge.goal==='sensorSessions')||(b.venueComplete===true&&g.pledge.goal==='venueVisits');
+            // Tamamen boş okuma, read izni veya o haftanın eksiksizliği için kanıt olamaz.
+            if(sourceAvailable&&coverageReported){a.lastSyncAt=now;if(now>=g.pledge.startsAt)try{g.pledge=applyTrustedSync(g.pledge,b.actor,Math.min(now,g.pledge.endsAt),now);}catch{}}
             g.activity[b.actor]=a;
             for(const id of g.pledge.members)if(id!==b.actor&&g.pledge.consent[id]?.activity&&g.preferences[id]?.ghosts&&g.preferences[b.actor]?.ghosts&&g.traces[b.actor]&&(!g.matches[id]||g.matches[id].expiresAt<now)){
               try{g.matches[id]=createGhostMatch({id:crypto.randomUUID(),groupId:g.pledge.id,members:g.pledge.members,ghost:g.traces[b.actor],challenger:id,ghostConsent:true,challengerConsent:true},now);}catch{}

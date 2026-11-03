@@ -156,6 +156,7 @@ const activity=(changes={})=>({optedIn:true,paused:false,joinedAt:NOW-10*DAY,las
 test("activity status never calls stale/missing telemetry inactive",()=>{
   assert.equal(passiveMemberStatus(activity(),NOW),"atRisk");
   assert.equal(passiveMemberStatus(activity({lastSessionAt:NOW-DAY}),NOW),"active");
+  assert.equal(passiveMemberStatus(activity({joinedAt:NOW-1000,lastSessionAt:NOW-3600000}),NOW),"active");
   for(const changes of [{lastSyncAt:null},{lastSyncAt:NOW-2*DAY},{optedIn:false},{paused:true},{joinedAt:NOW+DAY}])assert.equal(passiveMemberStatus(activity(changes),NOW),"hidden");
   assert.equal(passiveMemberStatus(activity({lastSessionAt:null,joinedAt:NOW-DAY}),NOW),"active");
 });

@@ -33,14 +33,16 @@ test('creation reaches all three inboxes and concurrent acceptance reserves one 
  const inbox=env.NOTIFICATION_INBOX.instances.get(users[1].id);assert.equal((await inbox.storage.get('notices')).filter(n=>n.type==='circle_invite').length,1);
 }));
 test('device sync excludes manual/foreign-source reports and payout alarm is idempotent',async()=>clock(T,async()=>{
- const {env,users}=await fixture(),id=await create(env,users);await accept(env,users,id);
+ const {env,users}=await fixture(),id=await create(env,users,{target:2});await accept(env,users,id);
  let raw=await env.PASSIVE_COHORT.instances.get(id).storage.get('group'),start=raw.pledge.startsAt;
  await clock(start+DAY,async()=>{
    const r={id:randomUUID(),source:'healthkit',manual:false,start:start+3600000,end:start+5400000,heartCoverage:1};
    await call(env,users[0],'/sync',{sessions:[{...r,id:randomUUID(),manual:true},{...r,id:randomUUID(),source:'strava'},r,r],queryComplete:true});
    const view=(await call(env,users[0])).value.groups[0];assert.equal(view.members.find(m=>m.id===users[0].id).days,1);
    assert.equal(JSON.stringify(view).includes('heartCoverage'),false);assert.equal(JSON.stringify(view).includes('fingerprint'),false);
+   for(const u of users.slice(1,3))await call(env,u,'/sync',{sessions:[{...r,id:randomUUID()}],queryComplete:true});
  });
+ await clock(start+2*DAY,async()=>{await call(env,users[0],'/sync',{sessions:[{id:randomUUID(),source:'healthkit',manual:false,start:start+DAY+3600000,end:start+DAY+5400000,heartCoverage:1}],queryComplete:true});});
  await clock(raw.pledge.endsAt+DAY,async()=>{for(const u of users.slice(0,3))await call(env,u,'/sync',{sessions:[],queryComplete:true});});
  await clock(raw.pledge.finalizeAt+1,async()=>{const object=env.PASSIVE_COHORT.instances.get(id).object;await Promise.all([object.alarm(),object.alarm()]);const g=(await call(env,users[0])).value.groups[0];assert.equal(g.status,'settled');assert.equal(g.balance,140);});
 }));
@@ -74,4 +76,9 @@ test('withdrawal removes sharing and account deletion closes membership without 
  await deletePassiveSocial(env,users[0].id);assert.deepEqual((await call(env,users[0])).value.groups,[]);
  assert.deepEqual((await call(env,users[1])).value.groups,[]);
  const classic=await env.TOKEN_STORE.get('social-state:'+users[0].id,'json');assert.equal(classic.friends.length,3);
+}));
+test('account cleanup is idempotent even when another member already closed the group',async()=>clock(T,async()=>{
+ const {env,users}=await fixture(),id=await create(env,users);await accept(env,users,id);
+ await deletePassiveSocial(env,users[0].id);await deletePassiveSocial(env,users[1].id);await deletePassiveSocial(env,users[1].id);
+ assert.deepEqual((await call(env,users[1])).value.groups,[]);
 }));

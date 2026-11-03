@@ -28,7 +28,7 @@ A'nın uygun ve izinli eğrisi eşitlendiğinde B için sonraki antrenmana ait e
 
 API yalnız giriş yapılmış ve açık izin vermiş üyeden veri alır; manuel/Strava kaynakları, desteklenmeyen süreler, yetersiz kapsam ve tekrarlar reddedilir. Ancak sunucu fiziksel egzersizi veya HealthKit örneklerini bağımsız doğrulayamaz. App Attest doğrulayıcısı bu sürümde yoktur. Uygulama ve API `device-reported-v1` olarak açık etiketlidir; “hile yapılamaz”, “kesin doğrulanmış biyometri” veya tıbbi anlam taşıyan etiket kullanılmaz.
 
-Tamamlanan Sağlık sorgusu veya açık Always-konum bölge takibi cihazdan kapsama bildirimi verir. Bunlar bağımsız ispat değildir. Hafta sonundan sonra 48 saatlik eşitleme payında her üyeden kapsama bildirimi gelmezse hafta cezasız iade ile kapanır. Bu beta, parasal değeri olmayan arkadaşlar arası krediler içindir.
+Tamamlanan Sağlık sorgusu veya açık Always-konum bölge takibi cihazdan kapsama bildirimi verir. Sunucu ancak o haftada üyeye ait en az bir uygun kaynak kaydı da varsa bu bildirimi kapsama işareti olarak kullanır; tamamen boş okuma izin/başarısızlık kanıtı sayılmaz. Bunlar bağımsız ispat değildir. Hafta sonundan sonra 48 saatlik eşitleme payında her üyeden desteklenen kapsama bildirimi gelmezse hafta cezasız iade ile kapanır. Bu nedenle hiç veri üretmeyen bir üyeye otomatik kayıp kesilmez. Bu beta, parasal değeri olmayan arkadaşlar arası krediler içindir.
 
 ## Kontroller
 

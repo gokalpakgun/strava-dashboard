@@ -157,7 +157,7 @@ export function pledgeProjection(state, viewer) {
 
 export function passiveMemberStatus({ optedIn, paused, joinedAt, lastSessionAt, lastSyncAt }, now) {
   if (!finite(now) || !finite(joinedAt) || joinedAt > now || optedIn !== true || paused !== false) return "hidden";
-  if (finite(lastSessionAt) && lastSessionAt >= joinedAt && lastSessionAt <= now
+  if (finite(lastSessionAt) && lastSessionAt >= joinedAt - P.weekMs && lastSessionAt <= now
       && now - lastSessionAt < P.inactivityMs) return "active";
   // Eşitleme yokluğu hareketsizlik değildir; bilinmeyen üyeyi kırmızı gösterme.
   if (!finite(lastSyncAt) || lastSyncAt > now || now - lastSyncAt > P.freshSyncMs) return "hidden";
