@@ -19,6 +19,9 @@ struct TempoHealthApp: App {
                 .environmentObject(account)
                 .preferredColorScheme((TempoAppearance(rawValue: appearance) ?? .system).colorScheme)
                 .onOpenURL(perform: model.handleCallback)
+                .task(id: [account.profile?.id ?? "", model.activityAccountID ?? "", model.healthLastSync?.description ?? "", model.healthWorkoutReadAt?.description ?? "", String(model.healthSyncEnabled), detector.lastScan?.description ?? ""]) {
+                    await TempoCircleStore.shared.sync(account: account, model: model)
+                }
                 .task(id: [account.profile?.id ?? "", model.activityAccountID ?? "", String(account.isRestoring), String(model.healthSyncEnabled), model.activitySessionID.uuidString, String(model.manualWorkouts.count), model.healthLastSync?.description ?? ""]) {
                     // Arka plan açılışında hesap geri yüklenirken kayıtlı bölgeyi kapatma.
                     guard !account.isRestoring, !(account.isAuthenticated && model.activityAccountID == nil) else { return }

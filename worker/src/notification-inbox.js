@@ -1,7 +1,7 @@
 // Each account has one serialized, strongly consistent inbox. This class is
 // reachable only through its Worker binding, never a public HTTP route.
 const TTL_MS = 35 * 86400 * 1000;
-const TYPES = new Set(["friend_request", "friend_accepted", "challenge_invite"]);
+const TYPES = new Set(["friend_request", "friend_accepted", "challenge_invite", "circle_invite","pledge_settled", "ghost_result", "passive_nudge"]);
 const valid = n => n && /^[a-f0-9-]{36}$/i.test(n.id || "") && TYPES.has(n.type) && Number.isFinite(Date.parse(n.createdAt));
 export class NotificationInbox {
   constructor(state) { this.state = state; }

@@ -39,6 +39,14 @@
       {
         "name": "NOTIFICATION_INBOX",
         "class_name": "NotificationInbox"
+      },
+      {
+        "name": "PASSIVE_COHORT",
+        "class_name": "PassiveCohort"
+      },
+      {
+        "name": "PASSIVE_RECIPIENT",
+        "class_name": "PassiveRecipient"
       }
     ]
   },
@@ -47,6 +55,13 @@
       "tag": "notification-inbox-v1",
       "new_sqlite_classes": [
         "NotificationInbox"
+      ]
+    },
+    {
+      "tag": "passive-circle-v1",
+      "new_sqlite_classes": [
+        "PassiveCohort",
+        "PassiveRecipient"
       ]
     }
   ]

@@ -40,7 +40,7 @@ jobs:
           "$RUNNER_TEMP/tempo-detection-checks"
           plutil -lint ios/TempoHealth/Info.plist ios/TempoHealth/Sources/en.lproj/InfoPlist.strings ios/TempoHealth/Sources/tr.lproj/InfoPlist.strings
       - name: Koç bağlamı ve izin kontrolleri
-        run: node --test worker/test/coach-social.test.js worker/test/athletic-context.test.js
+        run: node --test worker/test/coach-social.test.js worker/test/athletic-context.test.js worker/test/passive-social.test.js worker/test/passive-social-live.test.js worker/test/notification-inbox.test.js
       - name: Harita araması yaşam döngüsü
         run: |
           set -euo pipefail

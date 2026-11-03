@@ -1,4 +1,6 @@
 export { NotificationInbox } from "./notification-inbox.js";
+export { PassiveCohort, PassiveRecipient } from "./passive-social-live.js";
+import { handlePassiveSocial } from "./passive-social-live.js";
 import { accountContext, handleAccountRequest, handlePasswordResetPage } from "./account.js";
 import { handleAccountHealth, handleSportsChat } from "./sports-chat.js";
 import { handleModerationRequest, handleSocialRequest } from "./social.js";
@@ -23,6 +25,9 @@ export default {
       }
       if (["/api/account/push/devices", "/api/account/notifications", "/api/account/notifications/read"].includes(url.pathname)) {
         return handlePushRequest(request, env, await accountContext(request, env));
+      }
+      if (url.pathname === "/api/account/passive-social" || url.pathname.startsWith("/api/account/passive-social/")) {
+        return handlePassiveSocial(request, env, url, ctx);
       }
       if (url.pathname === "/api/account/health" && ["GET", "POST", "DELETE"].includes(request.method)) {
         return handleAccountHealth(request, env);

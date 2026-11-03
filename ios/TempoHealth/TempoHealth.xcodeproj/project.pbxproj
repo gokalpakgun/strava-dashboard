@@ -45,6 +45,7 @@
         F10000000000000000000012 /* TempoPassiveGym.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000012 /* TempoPassiveGym.swift */; };
         F10000000000000000000013 /* PassiveWorkoutNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000013 /* PassiveWorkoutNotifications.swift */; };
         F10000000000000000000014 /* PassiveGymSetupScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000014 /* PassiveGymSetupScreen.swift */; };
+F10000000000000000000015 /* TempoCircle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000015 /* TempoCircle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -93,6 +94,7 @@
         F20000000000000000000012 /* TempoPassiveGym.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoPassiveGym.swift; sourceTree = "<group>"; };
         F20000000000000000000013 /* PassiveWorkoutNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassiveWorkoutNotifications.swift; sourceTree = "<group>"; };
         F20000000000000000000014 /* PassiveGymSetupScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassiveGymSetupScreen.swift; sourceTree = "<group>"; };
+F20000000000000000000015 /* TempoCircle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoCircle.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,6 +143,7 @@
                 F2000000000000000000000F /* Workout.swift */,
                 F20000000000000000000010 /* WorkoutCardViews.swift */,
                 F20000000000000000000014 /* PassiveGymSetupScreen.swift */,
+                F20000000000000000000015 /* TempoCircle.swift */,
                 F20000000000000000000013 /* PassiveWorkoutNotifications.swift */,
                 F20000000000000000000012 /* TempoPassiveGym.swift */,
                 F20000000000000000000011 /* PassiveWorkoutEngine.swift */,
@@ -267,6 +270,7 @@
             F1000000000000000000000F /* Workout.swift in Sources */,
             F10000000000000000000010 /* WorkoutCardViews.swift in Sources */,
             F10000000000000000000014 /* PassiveGymSetupScreen.swift in Sources */,
+            F10000000000000000000015 /* TempoCircle.swift in Sources */,
             F10000000000000000000013 /* PassiveWorkoutNotifications.swift in Sources */,
             F10000000000000000000012 /* TempoPassiveGym.swift in Sources */,
             F10000000000000000000011 /* PassiveWorkoutEngine.swift in Sources */,

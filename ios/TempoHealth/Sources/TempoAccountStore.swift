@@ -359,6 +359,10 @@ final class TempoAccountStore: ObservableObject {
         return try JSONDecoder().decode(TempoSocialSnapshot.self, from: data)
     }
 
+    func circleRequest<Body: Encodable>(path: String, method: String, body: Body?) async throws -> Data {
+        try await socialRequest(path: path, method: method, body: body)
+    }
+
     func sendFriendRequest(username: String) async throws -> Bool {
         let data = try await socialRequest(path: "/api/account/social/friends", method: "POST", body: SocialFriendRequest(username: username))
         return (try? JSONDecoder().decode(SocialFriendRequestResult.self, from: data).accepted) ?? false

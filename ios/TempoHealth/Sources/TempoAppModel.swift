@@ -22,6 +22,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     @Published private(set) var manualWorkoutError: String?
     @Published private(set) var activitySessionID = UUID()
     @Published private(set) var healthLastSync: Date?
+    @Published private(set) var healthWorkoutReadAt: Date?
     @Published private(set) var healthError: String?
     @Published private(set) var dashboard: TempoDashboard?
     @Published private(set) var dashboardError: String?
@@ -240,6 +241,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthWorkouts = []
         healthWorkoutError = nil
         healthLastSync = nil
+
+        healthWorkoutReadAt = nil
         todayWaterMl = 0
         healthSyncEnabled = false
         healthError = nil
@@ -1156,7 +1159,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             try Task.checkCancellation()
             guard !Task.isCancelled, healthGeneration == generation, healthSyncEnabled,
                   activeTempoAccountId == accountId, accountAccessToken == accountToken else { return }
-            if let workouts { healthWorkouts = workouts }
+            if let workouts { healthWorkouts = workouts; healthWorkoutReadAt = Date() }
             healthWorkoutError = workouts == nil ? "Apple Sağlık antrenmanları okunamadı. İzinlerini kontrol edip yeniden eşitle.".tempoLocalized : nil
             // A daily-metric failure must not discard a successful workout read.
             // Retain the last daily snapshot, report its error, and never upload
@@ -1215,6 +1218,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthWorkouts = []
         healthWorkoutError = nil
         healthLastSync = nil
+
+        healthWorkoutReadAt = nil
         todayWaterMl = 0
         let disconnectGeneration = healthGeneration
         healthDisconnectTask = Task {
@@ -1416,6 +1421,8 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         healthSyncRequested = false
         isHealthSyncing = false
         healthLastSync = nil
+
+        healthWorkoutReadAt = nil
         todayWaterMl = 0
         isRestoringConnection = false
         dashboardGeneration = UUID()

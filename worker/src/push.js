@@ -96,17 +96,18 @@ export async function queueSocialNotification(env, ctx, userId, type, eventId) {
   // runs in the background, so a phone can immediately read its own inbox.
   try {
     const notice = await persistNotification(env,userId,type,eventId);
-    if (!notice) return;
+    if (!notice) return { queued: true };
     const work = sendNotification(env,userId,type,notice.id).catch(()=>console.warn("Tempo notification delivery unavailable"));
     if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
-  } catch { console.warn("Tempo notification inbox unavailable"); }
+    return { queued: true };
+  } catch { console.warn("Tempo notification inbox unavailable"); return { queued: false }; }
 }
 export async function createNotification(env,userId,type,eventId) {
   const notice = await persistNotification(env,userId,type,eventId);
   if (notice) await sendNotification(env,userId,type,notice.id);
 }
 async function persistNotification(env,userId,type,eventId) {
-  if (!["friend_request","friend_accepted","challenge_invite"].includes(type)) return;
+  if (!["friend_request","friend_accepted","challenge_invite","circle_invite","pledge_settled","ghost_result","passive_nudge"].includes(type)) return;
   const id = await notificationID(type,eventId);
   const notification = {id,type,createdAt:new Date().toISOString(),read:false,destination:"social"};
   if (env.NOTIFICATION_INBOX) {
@@ -139,12 +140,17 @@ async function sendNotification(env,userId,type,id) {
     if (!session || session.userId !== userId || (session.version || 1) !== (user.sessionVersion || 1)) {
       await removeDevice(env, item.id, record); return;
     }
-    if ((type === "challenge_invite" && !record.challenges) || (type !== "challenge_invite" && !record.friends)) return;
+    const challengeNotice = ["challenge_invite","circle_invite","pledge_settled","ghost_result"].includes(type);
+    if ((challengeNotice && !record.challenges) || (!challengeNotice && !record.friends)) return;
     const tr = record.language === "tr";
     const messages = {
       friend_request: tr ? "Yeni bir arkadaşlık isteğin var." : "You have a new friend request.",
       friend_accepted: tr ? "Arkadaşlık isteğin kabul edildi." : "Your friend request was accepted.",
       challenge_invite: tr ? "Birlikte hareket etmek için yeni bir yarış davetin var." : "You have a new challenge invitation.",
+      circle_invite: tr ? "Kapalı bir Çember davetin var." : "You have a private Circle invitation.",
+      pledge_settled: tr ? "Çember haftanın sonucu hazır." : "Your Circle week result is ready.",
+      ghost_result: tr ? "Hayalet karşılaşman tamamlandı." : "Your ghost matchup is complete.",
+      passive_nudge: tr ? "Çemberinden küçük bir hatırlatma var." : "A gentle reminder from your Circle.",
     };
     const host = record.environment === "production" ? "api.push.apple.com" : "api.sandbox.push.apple.com";
     const response = await fetch(`https://${host}/3/device/${record.token}`, {

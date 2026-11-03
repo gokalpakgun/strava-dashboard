@@ -2165,6 +2165,15 @@ struct SocialScreen: View {
                     .accessibilityLabel("Arkadaş ekle".tempoLocalized)
             }
             sectionSelector
+            NavigationLink { TempoCircleScreen() } label: {
+                TempoCard {
+                    HStack(spacing: 14) {
+                        TempoIconBadge(symbol: "person.3.sequence.fill", color: TempoTheme.green, size: 48)
+                        VStack(alignment: .leading, spacing: 4) { Text("circle.title".tempoLocalized).font(.headline); Text("circle.subtitle".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                        Spacer(); Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
+                    }
+                }
+            }.buttonStyle(.plain)
             if !notice.isEmpty {
                 Label(notice, systemImage: "info.circle").font(.caption).foregroundStyle(TempoTheme.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)

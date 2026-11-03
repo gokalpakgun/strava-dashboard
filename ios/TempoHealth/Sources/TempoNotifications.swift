@@ -44,6 +44,7 @@ struct TempoNotice: Codable, Identifiable, Equatable {
         case "friend_request": return "Yeni arkadaşlık isteği".tempoLocalized
         case "friend_accepted": return "Artık arkadaşsınız".tempoLocalized
         case "challenge_invite": return "Yeni yarış daveti".tempoLocalized
+        case "circle_invite", "pledge_settled", "ghost_result", "passive_nudge": return "circle.title".tempoLocalized
         case "achievement": return "Yeni bir dönüm noktası".tempoLocalized
         default: return "Hareket zamanı".tempoLocalized
         }
@@ -53,6 +54,9 @@ struct TempoNotice: Codable, Identifiable, Equatable {
         case "friend_request": return "Gelen isteği görmek için sosyal bölümünü aç.".tempoLocalized
         case "friend_accepted": return "Birlikte hareket etmek için ortak bir hedef belirleyebilirsiniz.".tempoLocalized
         case "challenge_invite": return "Davetin ayrıntılarına göz at; katılmak sana bağlı.".tempoLocalized
+        case "circle_invite": return "circle.notice.invite".tempoLocalized
+        case "pledge_settled", "ghost_result": return "circle.notice.result".tempoLocalized
+        case "passive_nudge": return "circle.notice.nudge".tempoLocalized
         case "achievement": return "İlerlemeni başarımlar bölümünde görebilirsin.".tempoLocalized
         default: return "Kısa bir yürüyüş veya esneme de iyi bir başlangıç.".tempoLocalized
         }
@@ -66,6 +70,7 @@ struct TempoNotice: Codable, Identifiable, Equatable {
         switch type {
         case "friend_request", "friend_accepted": return "person.2.fill"
         case "challenge_invite": return "flag.checkered"
+        case "circle_invite", "pledge_settled", "ghost_result", "passive_nudge": return "person.3.fill"
         case "achievement": return "medal.fill"
         default: return "figure.walk"
         }

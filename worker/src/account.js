@@ -1,5 +1,6 @@
 import { deletePushAccount, removeSessionDevices } from "./push.js";
 import { deleteSocialAccount } from "./social.js";
+import { deletePassiveSocial } from "./passive-social-live.js";
 import { readLimitedText, RequestBodyTooLargeError } from "./http.js";
 import { moderateCommunityText } from "./content-moderation.js";
 
@@ -508,6 +509,7 @@ async function deleteAccount(request, env) {
   const athleteId = await env.TOKEN_STORE.get("account-strava:" + context.user.id);
   const strava = athleteId ? await env.TOKEN_STORE.get("mobile-strava:" + athleteId, "json") : null;
   const stravaRevoked = !strava?.refresh_token || await revokeStravaRefreshToken(env, strava.refresh_token);
+  await deletePassiveSocial(env, context.user.id);
   await deleteSocialAccount(env, context.user.id);
   await deletePushAccount(env, context.user.id);
   const accountKeys = await accountDataKeysForDeletion(env, context.user.id);
