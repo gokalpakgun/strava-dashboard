@@ -197,10 +197,14 @@ final class TempoWorkoutDetection: ObservableObject {
                     inferred[index].loadEstimate = PassiveWorkoutEngine.estimate(start: inferred[index].start, end: inferred[index].end, samples: values.0.map { .init(date: $0.start, bpm: $0.value) })
                 }
                 found += inferred
-                for workout in workouts.compactMap({ $0 as? HKWorkout }).suffix(12) where workout.endDate <= now.addingTimeInterval(-120) && workout.startDate >= start && (900...14_400).contains(workout.duration) && (workout.metadata?[HKMetadataKeyWasUserEntered] as? Bool) != true {
+                for workout in workouts.compactMap({ $0 as? HKWorkout }).suffix(12) where workout.endDate <= now && workout.startDate >= start && (900...14_400).contains(workout.duration) && (workout.metadata?[HKMetadataKeyWasUserEntered] as? Bool) != true {
                     guard generation == token, !Task.isCancelled else { return }
-                    if state.records.contains(where: { $0.healthWorkoutID == workout.uuid }) { continue }
                     let estimate = PassiveWorkoutEngine.estimate(start: workout.startDate, end: workout.endDate, samples: values.0.map { .init(date: $0.start, bpm: $0.value) })
+                    if let index = state.records.firstIndex(where: { $0.healthWorkoutID == workout.uuid }) {
+                        // Saatin nabız örnekleri antrenman kaydından sonra eşitlenebilir.
+                        if state.records[index].decision == .pending { state.records[index].loadEstimate = estimate }
+                        continue
+                    }
                     let overlapping = state.records.filter { WorkoutDetectionEngine.overlaps(workout.startDate, workout.endDate, DetectionInterval(start: $0.start, end: $0.end)) }
                     let replacementID = WorkoutDetectionEngine.nativeReplacementID(start: workout.startDate, end: workout.endDate, history: overlapping, queued: Set(queuedResponses.map(\.id)))
                     var candidate = DetectedWorkout(id: replacementID ?? workout.uuid, start: workout.startDate, end: workout.endDate, origin: .health, suggestedSport: Self.sportID(workout.workoutActivityType) ?? "fitness")

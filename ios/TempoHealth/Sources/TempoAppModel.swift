@@ -486,7 +486,7 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
                     if passiveNativeSyncRequests.count > 100 { passiveNativeSyncRequests = [accountId + "|" + nativeID.uuidString] }
                     Task { await syncAppleHealth() }
                 }
-                return
+                  continue
             }
             do {
                 if let rpe = response.rpe {

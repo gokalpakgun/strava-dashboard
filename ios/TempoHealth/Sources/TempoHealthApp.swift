@@ -19,7 +19,9 @@ struct TempoHealthApp: App {
                 .environmentObject(account)
                 .preferredColorScheme((TempoAppearance(rawValue: appearance) ?? .system).colorScheme)
                 .onOpenURL(perform: model.handleCallback)
-                .task(id: [account.profile?.id ?? "", model.activityAccountID ?? "", String(model.healthSyncEnabled), model.activitySessionID.uuidString, String(model.manualWorkouts.count), model.healthLastSync?.description ?? ""]) {
+                .task(id: [account.profile?.id ?? "", model.activityAccountID ?? "", String(account.isRestoring), String(model.healthSyncEnabled), model.activitySessionID.uuidString, String(model.manualWorkouts.count), model.healthLastSync?.description ?? ""]) {
+                    // Arka plan açılışında hesap geri yüklenirken kayıtlı bölgeyi kapatma.
+                    guard !account.isRestoring, !(account.isAuthenticated && model.activityAccountID == nil) else { return }
                     let owner = account.profile?.id == model.activityAccountID ? model.activityAccountID : nil
                     let known = model.activityWorkouts.map { DetectionInterval(start: $0.startedAt, end: $0.sourceEndedAt ?? $0.endedAt) }
                     TempoWorkoutDetection.shared.bind(owner: owner, healthEnabled: model.healthSyncEnabled, known: known)
@@ -35,7 +37,8 @@ struct TempoHealthApp: App {
                         do { try await Task.sleep(nanoseconds: 180_000_000_000) } catch { return }
                     }
                 }
-                .task(id: [account.profile?.id ?? "", model.activityAccountID ?? "", String(account.isAuthenticated), String(model.isRestoringConnection), String(detector.responseRevision), String(detector.enabled)]) {
+                .task(id: [account.profile?.id ?? "", model.activityAccountID ?? "", String(account.isRestoring), String(account.isAuthenticated), String(model.isRestoringConnection), String(detector.responseRevision), String(detector.enabled)]) {
+                    guard !account.isRestoring, !(account.isAuthenticated && model.activityAccountID == nil) else { return }
                     let owner = account.isAuthenticated && account.profile?.id == model.activityAccountID ? model.activityAccountID : nil
                     TempoPassiveGym.shared.bind(owner: owner)
                     if owner != nil { model.processPassiveResponses() }
