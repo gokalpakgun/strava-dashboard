@@ -1,7 +1,7 @@
-# Tempo T assets
+# Tempo brand · 4 November 2026
 
-The approved green/blue T is maintained in mark.svg. The 30 October 2026 approved light-green gradient runs from #48B97B through #7AD69A to #B1EAB5, matching the blue ribbon's smooth gradient treatment. Blue, silhouette, padding and seam shading stay unchanged. The background is a uniform #071B35; no texture, grain, neon or glow is used.
+The approved mark is now two glossy, separated parallelograms: silver/white on the lower left, blue/cyan/mint on the upper right. mark.svg is its clean scalable implementation, matching the supplied Glossy Dual Parallelogram Logo.png. The icon and web canvas are pure black (#000000), with no grain or external neon glow. The mark occupies roughly 70% of the icon width.
 
-Run node branding/tempo/build.cjs with sharp installed, or set TEMPO_SHARP_PATH to its package directory. The generator updates all opaque AppIcon sizes, branding/app-icon.png, both transparent in-app image sets and the web SVG from the same vector. Do not edit the raster outputs independently. Keep the AppIcon Contents.json mapping intact.
+Run node branding/tempo/build.cjs. It uses the existing worker sharp dependency or TEMPO_SHARP_PATH. The generator updates every opaque AppIcon size, app-icon.png, the opaque in-app mark, the transparent launch mark, the two transparent launch layers and the web SVG. Do not modify raster outputs independently. Keep AppIcon's Contents.json mapping intact.
 
-TempoBrandMark is also used by TempoProfileShareArtwork, so both profile-card preview and exported PNG receive the same transparent mark. Launch animation uses that shared mark, with one short focus/scale entrance, no text, no spinner and a reduced-motion alternative.
+TempoBrandMark is shared by the generated athlete/profile card and other in-app branding. The launch assembles the two layers using a single finite perspective animation; Reduce Motion uses the static mark. Its black launch background is shared with the system launch screen. The launch has no text, spinner or looping animation, and does not delay account loading.

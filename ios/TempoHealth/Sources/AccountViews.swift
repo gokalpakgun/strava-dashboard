@@ -9,18 +9,21 @@ struct TempoLaunchView: View {
 
     var body: some View {
         ZStack {
-            TempoTheme.background
+            Color.black
             if reduceMotion {
-                TempoBrandMark(size: 154).accessibilityIdentifier("launch.brand")
+                Image("TempoLaunchMark").resizable().scaledToFit()
+                    .frame(width: 216, height: 216)
+                    .accessibilityIdentifier("launch.brand")
             } else {
-                TempoBrandMark(size: 154)
-                    .keyframeAnimator(initialValue: TempoLaunchMotion(), trigger: hasAppeared) { logo, motion in
-                        logo.opacity(motion.opacity).scaleEffect(motion.scale).offset(y: motion.offset).blur(radius: motion.blur)
+                Color.clear.frame(width: 216, height: 216)
+                    .keyframeAnimator(initialValue: TempoLaunchMotion(), trigger: hasAppeared) { _, motion in
+                        TempoLaunchAssembly(motion: motion)
                     } keyframes: { _ in
-                        KeyframeTrack(\.opacity) { CubicKeyframe(1, duration: 0.32) }
-                        KeyframeTrack(\.scale) { CubicKeyframe(1.012, duration: 0.56); CubicKeyframe(1, duration: 0.30) }
-                        KeyframeTrack(\.offset) { CubicKeyframe(0, duration: 0.68) }
-                        KeyframeTrack(\.blur) { CubicKeyframe(0, duration: 0.40) }
+                        KeyframeTrack(\.opacity) { CubicKeyframe(1, duration: 0.22) }
+                        KeyframeTrack(\.scale) { CubicKeyframe(1.025, duration: 0.64); CubicKeyframe(1, duration: 0.28) }
+                        KeyframeTrack(\.separation) { CubicKeyframe(0, duration: 0.72) }
+                        KeyframeTrack(\.tilt) { CubicKeyframe(0, duration: 0.78) }
+                        KeyframeTrack(\.light) { LinearKeyframe(-180, duration: 0.18); CubicKeyframe(180, duration: 0.72) }
                     }.accessibilityIdentifier("launch.brand")
             }
         }
@@ -34,20 +37,46 @@ struct TempoLaunchView: View {
 
 private struct TempoLaunchMotion {
     var opacity = 0.0
-    var scale: CGFloat = 0.90
-    var offset: CGFloat = 10
-    var blur: CGFloat = 2.5
+    var scale: CGFloat = 0.86
+    var separation: CGFloat = 22
+    var tilt: Double = 42
+    var light: CGFloat = -180
+}
+
+/// İki gerçek logo katmanı tek seferlik perspektif hareketiyle aynı düzleme oturur.
+private struct TempoLaunchAssembly: View {
+    let motion: TempoLaunchMotion
+    var body: some View {
+        ZStack {
+            layer("TempoLaunchLeading", direction: -1)
+            layer("TempoLaunchTrailing", direction: 1)
+            LinearGradient(colors: [.clear, .white.opacity(0.24), .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: 54, height: 216)
+                .rotationEffect(.degrees(24)).offset(x: motion.light)
+                .mask { Image("TempoLaunchMark").resizable().scaledToFit().frame(width: 216, height: 216) }
+                .allowsHitTesting(false)
+        }
+        .frame(width: 216, height: 216)
+        .opacity(motion.opacity).scaleEffect(motion.scale)
+    }
+
+    private func layer(_ name: String, direction: Double) -> some View {
+        Image(name).resizable().scaledToFit().frame(width: 216, height: 216)
+            .rotation3DEffect(.degrees(direction * motion.tilt), axis: (x: 0.35, y: 1, z: 0), perspective: 0.45)
+            .offset(x: CGFloat(direction) * motion.separation, y: -CGFloat(direction) * motion.separation * 0.65)
+    }
 }
 
 struct TempoBrandMark: View {
     var size: CGFloat = 76
 
     var body: some View {
-        Image("TempoLaunchMark")
+        Image("TempoLogo")
             .resizable()
             .scaledToFit()
-            .scaleEffect(1.3)
             .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.23, style: .continuous))
+            .accessibilityLabel("Tempo")
     }
 }
 

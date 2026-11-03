@@ -1,13 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" fill="none">
   <defs>
-    <linearGradient id="blue" x1="450" y1="1010" x2="900" y2="410" gradientUnits="userSpaceOnUse"><stop stop-color="#248FEA"/><stop offset="0.6" stop-color="#69CEF1"/><stop offset="1" stop-color="#44ADEB"/></linearGradient>
-    <linearGradient id="green" x1="420" y1="1005" x2="1000" y2="245" gradientUnits="userSpaceOnUse"><stop stop-color="#48B97B"/><stop offset="0.55" stop-color="#7AD69A"/><stop offset="1" stop-color="#B1EAB5"/></linearGradient>
-    <path id="silhouette" d="M240 516Q232 516 233 507C243 403 322 325 441 325H846C926 325 977 298 1000 250Q1008 239 1016 248C1050 376 1008 488 863 518H850C729 518 649 590 602 711C647 640 698 592 757 576L706 850C685 953 610 1010 505 1010H335C420 984 469 933 499 847C515 799 539 635 557 516Z"/>
-    <clipPath id="markClip"><use href="#silhouette"/></clipPath>
-    <filter id="seamShadow" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feDropShadow dx="3" dy="5" stdDeviation="7" flood-color="#12394F" flood-opacity="0.22"/></filter>
+    <linearGradient id="silver" x1="300" y1="540" x2="590" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/><stop offset="0.52" stop-color="#F2F6FF"/><stop offset="1" stop-color="#DCE6F6"/>
+    </linearGradient>
+    <linearGradient id="ocean" x1="660" y1="795" x2="972" y2="328" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0084FA"/><stop offset="0.32" stop-color="#00DCE9"/><stop offset="0.63" stop-color="#26FCE2"/><stop offset="1" stop-color="#B9FA9B"/>
+    </linearGradient>
+    <linearGradient id="reflection" x1="770" y1="370" x2="945" y2="670" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.52"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.12"/>
+    </linearGradient>
   </defs>
-  <use href="#silhouette" fill="url(#blue)"/>
-  <g clip-path="url(#markClip)">
-    <path fill="url(#green)" filter="url(#seamShadow)" d="M240 516Q232 516 233 507C243 403 322 325 441 325H846C926 325 977 298 1000 250Q1008 239 1016 248C1041 333 1019 413 967 456C932 486 887 490 851 493C733 499 653 555 617 662L599 712C552 886 478 971 335 1005Q327 1006 327 1010H335C421 978 471 928 501 839C515 797 538 635 557 516Z"/>
+  <g id="leading">
+    <path d="M200 915H434L701 487H483Z" fill="url(#silver)"/>
+    <path d="M210 905H434L691 497H643L384 905Z" fill="#FFFFFF" opacity="0.42"/>
+    <path d="M200 915H434L701 487" stroke="#FFFFFF" stroke-opacity="0.24" stroke-width="2"/>
+  </g>
+  <g id="trailing">
+    <path d="M560 781H798L1081 339H841Z" fill="url(#ocean)"/>
+    <path d="M841 339H1081L997 453C942 511 884 536 809 569C716 609 650 641 606 710Z" fill="url(#reflection)"/>
+    <path d="M753 759H787L1049 349H1015Z" fill="#FFFFFF" opacity="0.24"/>
+    <path d="M560 781H798L1081 339" stroke="#C5FFFF" stroke-opacity="0.22" stroke-width="2"/>
   </g>
 </svg>
