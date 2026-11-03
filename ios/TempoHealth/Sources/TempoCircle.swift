@@ -20,7 +20,15 @@ struct CircleCommand: Encodable {
     var nudges: Bool? = nil; var recipient: String? = nil; var timeZone: String? = nil
 }
 struct CircleCreate: Encodable { let id: String; let friendIds: [String]; let goal: String; let target: Int; let stake: Int }
-struct CirclePoint: Encodable { var value: Double?; var observedSeconds: Double }
+struct CirclePoint: Encodable {
+    var value: Double?; var observedSeconds: Double
+    private enum CodingKeys: String, CodingKey { case value, observedSeconds }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        if let value { try values.encode(value, forKey: .value) } else { try values.encodeNil(forKey: .value) }
+        try values.encode(observedSeconds, forKey: .observedSeconds)
+    }
+}
 struct CircleTrace: Encodable { let sport: String; let metric = "relativeEffort"; let points: [CirclePoint] }
 struct CircleEvidence: Encodable {
     let id: String; let source: String; let manual = false; let start: Double; let end: Double
@@ -108,6 +116,8 @@ final class TempoCircleStore: ObservableObject {
 @MainActor private enum CircleEvidenceReader {
     static func trace(_ workout: TempoManualWorkout, end: Date, maximum: Double) async -> CircleTrace? {
         guard maximum.isFinite, maximum > 0 else { return nil }
+        let duration = floor(end.timeIntervalSince(workout.startedAt))
+        let windowEnd = workout.startedAt.addingTimeInterval(duration)
         let store = HKHealthStore(), type = HKQuantityType(.heartRate)
         let gate = CircleReadGate(store: store)
         let samples: [HKQuantitySample] = await withTaskCancellationHandler {
@@ -123,7 +133,7 @@ final class TempoCircleStore: ObservableObject {
             }
         } onCancel: { Task { @MainActor in gate.finish([]) } }
         guard !Task.isCancelled, samples.count >= 18, samples.count < 5000 else { return nil }
-        let duration = end.timeIntervalSince(workout.startedAt), count = Int(ceil(duration / 60))
+        let count = Int(ceil(duration / 60))
         guard (15...240).contains(count) else { return nil }
         var seconds = Array(repeating: 0.0, count: count), sums = seconds
         let unit = HKUnit.count().unitDivided(by: .minute())
@@ -131,8 +141,8 @@ final class TempoCircleStore: ObservableObject {
             let point = samples[index], bpm = point.quantity.doubleValue(for: unit)
             guard bpm.isFinite, (30...230).contains(bpm), (point.metadata?[HKMetadataKeyWasUserEntered] as? Bool) != true else { continue }
             let offset = max(0, point.startDate.timeIntervalSince(workout.startedAt))
-            let next = index + 1 < samples.count ? samples[index + 1].startDate : min(end, point.startDate.addingTimeInterval(15))
-            var remaining = max(0, min(30, min(end, next).timeIntervalSince(point.startDate))), cursor = offset
+            let next = index + 1 < samples.count ? samples[index + 1].startDate : min(windowEnd, point.startDate.addingTimeInterval(15))
+            var remaining = max(0, min(30, min(windowEnd, next).timeIntervalSince(point.startDate))), cursor = offset
             while remaining > 0 {
                 let bin = Int(cursor / 60); guard bin < count else { break }
                 let span = min(remaining, Double(bin + 1) * 60 - cursor)
@@ -143,7 +153,7 @@ final class TempoCircleStore: ObservableObject {
         }
         let sport: String
         switch workout.sportId { case "run": sport = "running"; case "walking": sport = "walking"; default: sport = workout.sportId }
-        return CircleTrace(sport: sport, points: seconds.indices.map { CirclePoint(value: seconds[$0] > 0 ? sums[$0] / seconds[$0] : nil, observedSeconds: min(60, seconds[$0])) })
+        return CircleTrace(sport: sport, points: seconds.indices.map { CirclePoint(value: seconds[$0] > 0 ? sums[$0] / seconds[$0] : nil, observedSeconds: min(60, min(duration - Double($0 * 60), seconds[$0]))) })
     }
 }
 
@@ -251,3 +261,4 @@ struct TempoCircleScreen: View {
         }.toolbar { ToolbarItem(placement: .cancellationAction) { Button("Vazgeç".tempoLocalized) { pendingAccept = nil } } } }
     }
 }
+
