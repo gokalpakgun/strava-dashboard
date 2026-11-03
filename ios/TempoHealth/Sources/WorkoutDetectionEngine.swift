@@ -2,7 +2,7 @@ import Foundation
 
 /// Sinyal tabanlı bir öneridir; sporun yapıldığına dair doğrulama veya tıbbi değerlendirme değildir.
 struct DetectedWorkout: Codable, Identifiable, Equatable, Sendable {
-    enum Origin: String, Codable, Sendable { case phone, health }
+    enum Origin: String, Codable, Sendable { case phone, health, gym }
     enum Decision: String, Codable, Sendable { case pending, accepted, dismissed }
     let id: UUID
     let start: Date
@@ -15,6 +15,19 @@ struct DetectedWorkout: Codable, Identifiable, Equatable, Sendable {
     var activeEnergy: Double?
     var decision: Decision = .pending
     var notified = false
+    var loadEstimate: PassiveLoadEstimate? = nil
+    var healthWorkoutID: UUID? = nil
+    var primarySportIsKnown: Bool? = nil
+    var routineName: String? = nil
+    var isValid: Bool {
+        start.timeIntervalSince1970.isFinite && end.timeIntervalSince1970.isFinite && (900...14_400).contains(seconds)
+            && (steps.map { (0...100_000).contains($0) } ?? true)
+            && (distanceMeters.map { $0.isFinite && (0...200_000).contains($0) } ?? true)
+            && (averageHeartRate.map { $0.isFinite && (20...230).contains($0) } ?? true)
+            && (activeEnergy.map { $0.isFinite && (0...20_000).contains($0) } ?? true)
+            && (routineName.map { $0.count <= 64 } ?? true)
+            && (loadEstimate.map { $0.coverage.isFinite && (0...1).contains($0.coverage) && $0.weightedMinutes.isFinite && (0...100_000).contains($0.weightedMinutes) && ($0.strain.map { (1...10).contains($0) } ?? true) } ?? true)
+    }
     var seconds: Double { end.timeIntervalSince(start) }
 }
 
@@ -24,6 +37,9 @@ struct DetectionInterval: Codable, Hashable, Sendable {
 }
 
 enum WorkoutDetectionEngine {
+    static func nativeReplacementID(start: Date, end: Date, history: [DetectedWorkout], queued: Set<UUID>) -> UUID? {
+        history.first { $0.decision == .pending && !queued.contains($0.id) && overlaps(start, end, DetectionInterval(start: $0.start, end: $0.end)) }?.id
+    }
     enum MotionKind: Sendable { case walking, running, vehicle, other }
     struct MotionSlice: Sendable {
         let start: Date
@@ -129,7 +145,7 @@ enum WorkoutDetectionEngine {
     static func fresh(_ candidates: [DetectedWorkout], existing: [DetectionInterval], history: [DetectedWorkout], now: Date) -> [DetectedWorkout] {
         var accepted: [DetectedWorkout] = []
         for candidate in candidates.sorted(by: { $0.origin == .phone && $1.origin == .health }) {
-            guard candidate.start >= now.addingTimeInterval(-48 * 3600), candidate.end <= now,
+            guard candidate.isValid, candidate.start >= now.addingTimeInterval(-48 * 3600), candidate.end <= now,
                   !existing.contains(where: { overlaps(candidate.start, candidate.end, $0) }),
                   !(history + accepted).contains(where: { overlaps(candidate.start, candidate.end, DetectionInterval(start: $0.start, end: $0.end)) }) else { continue }
             accepted.append(candidate)

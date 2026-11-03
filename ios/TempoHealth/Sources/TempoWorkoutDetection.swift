@@ -16,6 +16,8 @@ final class TempoWorkoutDetection: ObservableObject {
     @Published private(set) var message = ""
     @Published private(set) var lastScan: Date?
     @Published private(set) var motionAuthorized = false
+    @Published private(set) var responseRevision = 0
+    var queuedResponses: [PassiveWorkoutResponse] { state.responses ?? [] }
     private(set) var owner: String?
     private let motion = CMMotionActivityManager()
     private let pedometer = CMPedometer()
@@ -25,6 +27,7 @@ final class TempoWorkoutDetection: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private var liveRecordingStart: Date?
     private var state = State()
+    private var storageReady = true
     private let center = UNUserNotificationCenter.current()
     private var bootstrapped = false
     var pending: [DetectedWorkout] { candidates.filter { $0.decision == .pending }.sorted { $0.start > $1.start } }
@@ -38,6 +41,7 @@ final class TempoWorkoutDetection: ObservableObject {
         var lastNotification: Date?
         var records: [DetectedWorkout] = []
         var known: [DetectionInterval] = []
+        var responses: [PassiveWorkoutResponse]? = nil
     }
 
     /// iOS çağırma zamanını kendisi belirler; sürekli arka plan yürütmesi istenmez.
@@ -64,9 +68,10 @@ final class TempoWorkoutDetection: ObservableObject {
         if owner != next {
             stopRuntime()
             liveRecordingStart = nil
-            owner = nil; state = State(); candidates = []; enabled = false; message = ""; lastScan = nil
+            owner = nil; state = State(); storageReady = true; candidates = []; enabled = false; message = ""; lastScan = nil
             if let next { load(owner: next) }
         }
+        if let next, owner == next, !storageReady { load(owner: next) }
         guard let next else {
             UserDefaults.standard.removeObject(forKey: "tempo.detection.activeOwner")
             return
@@ -85,7 +90,7 @@ final class TempoWorkoutDetection: ObservableObject {
     }
 
     func enable() async {
-        guard owner != nil else { return }
+        guard owner != nil, storageReady else { return }
         let token = generation
         message = ""
         // Sistem izin ekranı yalnız kullanıcının etkinleştir düğmesinden sonra açılır.
@@ -102,11 +107,36 @@ final class TempoWorkoutDetection: ObservableObject {
 
     func disable() {
         state.enabled = false; enabled = false
+        state.responses = []; responseRevision += 1
         stopRuntime(); persist()
     }
+    func enableVenueDetection() {
+        guard owner != nil, storageReady else { return }
+        state.enabled = true; enabled = true; state.activatedAt = Date().addingTimeInterval(-24 * 3600)
+        persist(); startObservers(); scheduleBackground()
+    }
+    func addGymVisit(_ visit: PassiveGymVisit, owner expected: String) async {
+        guard owner == expected, enabled else { return }
+        var candidate = DetectedWorkout(id: visit.id, start: visit.start, end: visit.end, origin: .gym, suggestedSport: "fitness")
+        candidate.routineName = visit.routine
+        let fresh = WorkoutDetectionEngine.fresh([candidate], existing: state.known, history: state.records, now: Date())
+        state.records += fresh; persist()
+        await notifyIfNeeded(generation: generation)
+    }
+    func queueResponse(id: UUID, owner expected: String, rpe: Int?) {
+        guard owner == expected, enabled, pending.contains(where: { $0.id == id }), rpe.map({ (1...10).contains($0) }) ?? true else { return }
+        var responses = state.responses ?? []; responses.removeAll { $0.id == id }
+        responses.append(PassiveWorkoutResponse(id: id, rpe: rpe, createdAt: Date()))
+        state.responses = Array(responses.suffix(30)); persist(); clearNotifications([id]); responseRevision += 1
+    }
+    func finishResponse(_ id: UUID) {
+        state.responses?.removeAll { $0.id == id }; persist(); responseRevision += 1
+    }
+    func reportResponseError() { message = "passive.action.failed".tempoLocalized }
     func setLiveRecording(start: Date?) { liveRecordingStart = start }
 
     func removeAccount(_ accountID: String) {
+        TempoPassiveGym.shared.removeAccount(accountID)
         if owner == accountID { disable(); owner = nil; candidates = []; state = State(); UserDefaults.standard.removeObject(forKey: "tempo.detection.activeOwner") }
         try? FileManager.default.removeItem(at: fileURL(owner: accountID))
     }
@@ -114,6 +144,7 @@ final class TempoWorkoutDetection: ObservableObject {
     func decide(_ candidate: DetectedWorkout, accepted: Bool) {
         guard let index = state.records.firstIndex(where: { $0.id == candidate.id }) else { return }
         state.records[index].decision = accepted ? .accepted : .dismissed
+        if !accepted { state.responses?.removeAll { $0.id == candidate.id }; responseRevision += 1 }
         clearNotifications([candidate.id]); persist()
     }
 
@@ -150,6 +181,9 @@ final class TempoWorkoutDetection: ObservableObject {
         if state.healthEnabled, HKHealthStore.isHealthDataAvailable() {
             do {
                 let workouts = try await samples(type: HKObjectType.workoutType(), from: start, to: now)
+                let nativeIDs = Set(workouts.compactMap { ($0 as? HKWorkout)?.uuid })
+                let removed = pending.filter { $0.start >= start && $0.healthWorkoutID.map { !nativeIDs.contains($0) } == true }
+                for candidate in removed { decide(candidate, accepted: false) }
                 known += workouts.map { DetectionInterval(start: $0.startDate, end: $0.endDate) }
                 async let rates = quantities(.heartRate, from: start, to: now, unit: HKUnit.count().unitDivided(by: .minute()))
                 async let energy = quantities(.activeEnergyBurned, from: start, to: now, unit: .kilocalorie())
@@ -158,7 +192,30 @@ final class TempoWorkoutDetection: ObservableObject {
                 let values = try await (rates, energy, count, exercise)
                 let resting = try await quantities(.restingHeartRate, from: now.addingTimeInterval(-7 * 86400), to: now, unit: HKUnit.count().unitDivided(by: .minute()))
                 let bins = Self.bins(start: start, end: now, rates: values.0, energy: values.1, steps: values.2, exercise: values.3)
-                found += WorkoutDetectionEngine.healthCandidates(bins, restingHeartRate: resting.last?.value).filter { $0.end <= now.addingTimeInterval(-300) }
+                var inferred = WorkoutDetectionEngine.healthCandidates(bins, restingHeartRate: resting.last?.value).filter { $0.end <= now.addingTimeInterval(-300) }
+                for index in inferred.indices {
+                    inferred[index].loadEstimate = PassiveWorkoutEngine.estimate(start: inferred[index].start, end: inferred[index].end, samples: values.0.map { .init(date: $0.start, bpm: $0.value) })
+                }
+                found += inferred
+                for workout in workouts.compactMap({ $0 as? HKWorkout }).suffix(12) where workout.endDate <= now.addingTimeInterval(-120) && workout.startDate >= start && (900...14_400).contains(workout.duration) && (workout.metadata?[HKMetadataKeyWasUserEntered] as? Bool) != true {
+                    guard generation == token, !Task.isCancelled else { return }
+                    if state.records.contains(where: { $0.healthWorkoutID == workout.uuid }) { continue }
+                    let estimate = PassiveWorkoutEngine.estimate(start: workout.startDate, end: workout.endDate, samples: values.0.map { .init(date: $0.start, bpm: $0.value) })
+                    let overlapping = state.records.filter { WorkoutDetectionEngine.overlaps(workout.startDate, workout.endDate, DetectionInterval(start: $0.start, end: $0.end)) }
+                    let replacementID = WorkoutDetectionEngine.nativeReplacementID(start: workout.startDate, end: workout.endDate, history: overlapping, queued: Set(queuedResponses.map(\.id)))
+                    var candidate = DetectedWorkout(id: replacementID ?? workout.uuid, start: workout.startDate, end: workout.endDate, origin: .health, suggestedSport: Self.sportID(workout.workoutActivityType) ?? "fitness")
+                    candidate.primarySportIsKnown = Self.sportID(workout.workoutActivityType) != nil
+                    candidate.healthWorkoutID = workout.uuid; candidate.loadEstimate = estimate
+                    let rates = values.0.filter { $0.start >= workout.startDate && $0.start < workout.endDate }
+                    candidate.averageHeartRate = rates.isEmpty ? nil : rates.reduce(0) { $0 + $1.value } / Double(rates.count)
+                    candidate.activeEnergy = workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie())
+                    candidate.notified = overlapping.contains { $0.notified || $0.decision != .pending }
+                    if let decision = overlapping.first(where: { $0.decision != .pending })?.decision { candidate.decision = decision }
+                    guard candidate.isValid else { continue }
+                    for prior in overlapping where prior.id != candidate.id && prior.decision == .pending && !queuedResponses.contains(where: { $0.id == prior.id }) { decide(prior, accepted: false) }
+                    if let index = state.records.firstIndex(where: { $0.id == candidate.id }) { state.records[index] = candidate }
+                    else { state.records.append(candidate) }
+                }
             } catch { failed = true }
         }
         guard generation == token, !Task.isCancelled else { return }
@@ -185,17 +242,18 @@ final class TempoWorkoutDetection: ObservableObject {
             }
         }
         if state.healthEnabled, HKHealthStore.isHealthDataAvailable() {
-            let types: [HKSampleType] = [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned), HKQuantityType(.appleExerciseTime)]
+            let types: [HKSampleType] = [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned), HKQuantityType(.appleExerciseTime), HKQuantityType(.heartRate)]
             for type in types {
+                let isWorkout = type == HKObjectType.workoutType()
                 let query = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, complete, error in
                     guard error == nil else { complete(); return }
                     Task { @MainActor in
                         defer { complete() }
-                        await self?.scan()
+                        await self?.scan(force: isWorkout)
                     }
                 }
                 observers.append(query); health.execute(query)
-                health.enableBackgroundDelivery(for: type, frequency: .hourly) { _, _ in }
+                health.enableBackgroundDelivery(for: type, frequency: type == HKObjectType.workoutType() ? .immediate : .hourly) { _, _ in }
             }
         }
     }
@@ -222,14 +280,14 @@ final class TempoWorkoutDetection: ObservableObject {
         try? BGTaskScheduler.shared.submit(request)
     }
     private func removeCoveredCandidates() {
-        let covered = state.records.filter { candidate in candidate.decision == .pending && state.known.contains { WorkoutDetectionEngine.overlaps(candidate.start, candidate.end, $0) } }
+        let covered = state.records.filter { candidate in candidate.decision == .pending && candidate.healthWorkoutID == nil && !queuedResponses.contains(where: { $0.id == candidate.id }) && state.known.contains { WorkoutDetectionEngine.overlaps(candidate.start, candidate.end, $0) } }
         for item in covered {
             if let index = state.records.firstIndex(where: { $0.id == item.id }) { state.records[index].decision = .dismissed }
         }
         clearNotifications(covered.map(\.id))
     }
     private func notifyIfNeeded(generation token: UUID) async {
-        guard enabled, let owner, state.lastNotification.map({ Date().timeIntervalSince($0) >= 6 * 3600 }) ?? true,
+        guard enabled, let owner, state.lastNotification.map({ Date().timeIntervalSince($0) >= 10 * 60 }) ?? true,
               let candidate = pending.first(where: { candidate in
                   guard !candidate.notified, candidate.end > Date().addingTimeInterval(-6 * 3600) else { return false }
                   if let liveRecordingStart { return !WorkoutDetectionEngine.overlaps(candidate.start, candidate.end, DetectionInterval(start: liveRecordingStart, end: Date())) }
@@ -239,9 +297,10 @@ final class TempoWorkoutDetection: ObservableObject {
         guard generation == token, enabled, [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus) else { return }
         let content = UNMutableNotificationContent()
         content.title = "detection.notificationTitle".tempoLocalized
-        content.body = "detection.notificationBody".tempoLocalized
+        content.body = PassiveWorkoutNotifications.body(for: candidate)
+        content.categoryIdentifier = candidate.origin == .gym ? PassiveWorkoutNotifications.gymCategory : PassiveWorkoutNotifications.workoutCategory
         content.sound = .default
-        content.userInfo = ["tempo": ["destination": "detection", "owner": owner]]
+        content.userInfo = ["tempo": ["destination": "detection", "owner": owner, "candidate": candidate.id.uuidString]]
         do {
             try await center.add(UNNotificationRequest(identifier: "tempo-detected-" + candidate.id.uuidString, content: content, trigger: nil))
             guard generation == token, enabled else { clearNotifications([candidate.id]); return }
@@ -258,16 +317,41 @@ final class TempoWorkoutDetection: ObservableObject {
         let name = SHA256.hash(data: Data(owner.utf8)).map { String(format: "%02x", $0) }.joined()
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("WorkoutDetection", isDirectory: true).appendingPathComponent(name + ".json")
     }
+    private static func sportID(_ type: HKWorkoutActivityType) -> String? {
+        switch type {
+        case .running: "run"
+        case .walking: "walking"
+        case .cycling: "cycling"
+        case .swimming: "swimming"
+        case .hiking: "hiking"
+        case .tennis, .tableTennis: "tennis"
+        case .basketball: "basketball"
+        case .soccer, .americanFootball: "football"
+        case .volleyball: "volleyball"
+        case .badminton: "badminton"
+        case .yoga, .pilates, .taiChi, .mindAndBody: "yoga"
+        case .traditionalStrengthTraining, .functionalStrengthTraining, .crossTraining, .highIntensityIntervalTraining: "fitness"
+        default: nil
+        }
+    }
     private func load(owner: String) {
         self.owner = owner
-        if let data = try? Data(contentsOf: fileURL(owner: owner)), let saved = try? JSONDecoder().decode(State.self, from: data) { state = saved }
+        let url = fileURL(owner: owner)
+        if FileManager.default.fileExists(atPath: url.path) {
+            guard let data = try? Data(contentsOf: url), data.count <= 2_000_000, let saved = try? JSONDecoder().decode(State.self, from: data) else {
+                storageReady = false; enabled = false; message = "detection.storageError".tempoLocalized; return
+            }
+            state = saved
+        }
+        storageReady = true
         state.records.removeAll { $0.end < Date().addingTimeInterval(-7 * 86400) }
+        state.records.removeAll { !$0.isValid }
         enabled = state.enabled; candidates = state.records; lastScan = state.lastScan
         motionAuthorized = CMMotionActivityManager.authorizationStatus() == .authorized
     }
     private func persist() {
         candidates = state.records
-        guard let owner else { return }
+        guard let owner, storageReady else { return }
         do {
             let url = fileURL(owner: owner)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -5,3 +5,4 @@
 "NSHealthShareUsageDescription" = "Tempo; spor gelişimini göstermek için seçtiğin Sağlık verilerini, antrenman zamanındaki nabız, adım veya kayıtlı antrenmanı destekleyici sinyal olarak okur.";
 "NSHealthUpdateUsageDescription" = "Tempo, uygulamada eklediğin su miktarını Apple Sağlık hesabına kaydeder.";
 "NSMotionUsageDescription" = "Tempo, izninle iPhone hareket ve adım geçmişindeki uzun süreli hareketleri inceleyip onaylayabileceğin olası antrenmanlar önermek için hareket verilerini kullanır.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Tempo, seçtiğin spor salonuna giriş ve çıkışı uygulama arka plandayken algılamak için konumunu kullanır. Sürekli GPS kaydı yapılmaz; salon ziyareti onayın olmadan antrenman olarak eklenmez.";

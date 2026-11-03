@@ -60,4 +60,64 @@ let inferredRecord = TempoWorkoutLedger.Record(id: phone.id, sportID: "walking",
 let merged = TempoWorkoutLedger.merge([inferredRecord, healthRecord], now: now)
 expect(merged.count == 1 && merged[0].source == "apple-health", "later real workout replaces overlapping inferred totals even after sport correction")
 expect(TempoWorkoutLedger.merge([inferredRecord], now: now).count == 1, "confirmed detection appears in activity/week/month totals")
+
+// Pasif yük motoru gözlenmeyen süreyi veriyle doldurmaz.
+let passiveStart = now.addingTimeInterval(-3_600)
+let steadyRates = (0..<240).map { PassiveWorkoutEngine.HeartRate(date: passiveStart.addingTimeInterval(Double($0) * 15), bpm: 150) }
+let steadyEstimate = PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: steadyRates)
+expect(steadyEstimate.pattern == .sustained && steadyEstimate.coverage == 1 && steadyEstimate.weightedMinutes == 180, "continuous heart-rate coverage and Edwards dose")
+expect(steadyEstimate.strain == 7 && steadyEstimate.maximumHeartRateWasEstimated, "documented v1 strain normalization and default maximum")
+let actualMaximum = PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: steadyRates, maximumHeartRate: 180)
+expect(!actualMaximum.maximumHeartRateWasEstimated && (1...10).contains(actualMaximum.strain ?? 0), "measured maximum is distinguished")
+let intervalRates = (0..<240).map { PassiveWorkoutEngine.HeartRate(date: passiveStart.addingTimeInterval(Double($0) * 15), bpm: 125 + 30 * sin(Double($0) * .pi / 16)) }
+expect(PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: intervalRates).pattern == .intervals, "repeated peaks and recoveries are a pattern, not a confirmed sport")
+let sparseRates = (0..<30).map { PassiveWorkoutEngine.HeartRate(date: passiveStart.addingTimeInterval(Double($0) * 120), bpm: 155) }
+let sparseEstimate = PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: sparseRates)
+expect(sparseEstimate.strain == nil && sparseEstimate.coverage <= 0.25, "sparse watch samples do not become continuous exercise")
+expect(PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: []).strain == nil, "locker phone without watch has no invented strain")
+let duplicateRates = Array(repeating: PassiveWorkoutEngine.HeartRate(date: passiveStart, bpm: 180), count: 240)
+expect(PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: duplicateRates).strain == nil, "duplicate timestamps do not manufacture coverage")
+let invalidRates = (0..<240).map { PassiveWorkoutEngine.HeartRate(date: passiveStart.addingTimeInterval(Double($0) * 15), bpm: .nan) }
+expect(PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: invalidRates).strain == nil, "invalid rates rejected")
+expect(PassiveWorkoutEngine.estimate(start: now, end: passiveStart, samples: steadyRates).strain == nil, "reversed window rejected")
+expect(PassiveWorkoutEngine.estimate(start: now.addingTimeInterval(-600), end: now, samples: steadyRates).strain == nil, "brief fluctuations are not workouts")
+expect(PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: steadyRates, maximumHeartRate: .infinity).maximumHeartRateWasEstimated, "invalid maximum uses explicit fallback")
+let restRates = (0..<240).map { PassiveWorkoutEngine.HeartRate(date: passiveStart.addingTimeInterval(Double($0) * 15), bpm: 70) }
+expect(PassiveWorkoutEngine.estimate(start: passiveStart, end: now, samples: restRates).strain == nil, "resting data does not get minimum exercise strain")
+for value in ["0", "11", "-1", "5.5", "seven", ""] { expect(PassiveWorkoutEngine.rpe(from: value) == nil, "invalid RPE rejected: \(value)") }
+expect(PassiveWorkoutEngine.rpe(from: " 7 ") == 7 && PassiveWorkoutEngine.rpe(from: "10") == 10 && PassiveWorkoutEngine.rpe(from: "1") == 1, "RPE uses the user's explicit 1-10 scale")
+
+// Geofence yalnız ziyaret önerisi verir, süre veya program tamamlandığını varsaymaz.
+var utc = Calendar(identifier: .gregorian); utc.timeZone = TimeZone(secondsFromGMT: 0)!
+let tuesday = utc.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 23, minute: 50))!
+let gym = PassiveGymConfiguration(name: "Gym", latitude: 41, longitude: 29, routines: [3: "Push", 5: "Pull"])
+expect(gym.isValid && gym.routine(at: tuesday, calendar: utc) == "Push", "weekday routine mapping")
+var session = PassiveGymSession(); session.enter(at: tuesday); session.enter(at: tuesday.addingTimeInterval(60))
+expect(session.enteredAt == tuesday, "duplicate region entry does not reset session")
+let visit = session.exit(at: tuesday.addingTimeInterval(52 * 60), configuration: gym, calendar: utc)
+expect(visit?.routine == "Push" && visit?.end.timeIntervalSince(visit!.start) == 52 * 60, "cross-midnight visit uses entry day's routine")
+expect(session.exit(at: tuesday.addingTimeInterval(53 * 60), configuration: gym) == nil, "duplicate exit does not produce another suggestion")
+var brief = PassiveGymSession(); brief.enter(at: tuesday)
+expect(brief.exit(at: tuesday.addingTimeInterval(300), configuration: gym) == nil, "passing the gym briefly is ignored")
+var stale = PassiveGymSession(); stale.enter(at: tuesday)
+expect(stale.exit(at: tuesday.addingTimeInterval(5 * 3_600), configuration: gym) == nil, "missing exit cannot create all-day training")
+var order = PassiveGymSession(); order.enter(at: tuesday)
+expect(order.exit(at: tuesday.addingTimeInterval(-30), configuration: gym) == nil && order.enteredAt == tuesday, "out-of-order events ignored without losing entry")
+let savedSession = try! JSONDecoder().decode(PassiveGymSession.self, from: JSONEncoder().encode(order))
+expect(savedSession.enteredAt == tuesday, "entry survives process restart")
+let invalidGym = PassiveGymConfiguration(name: "", latitude: .nan, longitude: 300, routines: [9: "Invalid"])
+expect(!invalidGym.isValid, "invalid gym definition rejected")
+let venueRecord = TempoWorkoutLedger.Record(id: UUID(), sportID: "fitness", startedAt: start, seconds: 1200, distanceKm: nil, source: "detected-gym")
+expect(TempoWorkoutLedger.merge([venueRecord], now: now).count == 1, "user-confirmed gym visit appears in local history")
+expect(TempoWorkoutLedger.merge([venueRecord, healthRecord], now: now).count == 1, "real watch workout replaces gym visit in totals")
+var badCandidate = phone; badCandidate.activeEnergy = .infinity
+expect(!badCandidate.isValid && Engine.fresh([badCandidate], existing: [], history: [], now: now).isEmpty, "invalid candidate cannot reach confirmation or UI")
+var legacyObject = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(phone)) as! [String: Any]
+for key in ["loadEstimate", "healthWorkoutID", "primarySportIsKnown", "routineName"] { legacyObject.removeValue(forKey: key) }
+let legacyCandidate = try! JSONDecoder().decode(DetectedWorkout.self, from: JSONSerialization.data(withJSONObject: legacyObject))
+expect(legacyCandidate.id == phone.id && legacyCandidate.loadEstimate == nil, "old detection records remain readable")
+expect(Engine.nativeReplacementID(start: phone.start, end: phone.end, history: [phone], queued: []) == phone.id, "native arrival retains the existing notification identity")
+expect(Engine.nativeReplacementID(start: phone.start, end: phone.end, history: [phone], queued: [phone.id]) == nil, "queued user response is not replaced mid-commit")
+expect(Engine.nativeReplacementID(start: phone.start, end: phone.end, history: [dismissed], queued: []) == nil, "dismissed proposal identity is not revived")
+expect(Engine.nativeReplacementID(start: distant.start, end: distant.end, history: [phone], queued: []) == nil, "separate sessions cannot overwrite each other")
 print("DETECTION_CORE_PASS checks=\(checks) swift6=true")

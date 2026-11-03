@@ -29,6 +29,8 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Tempo, seçtiğin spor salonuna giriş ve çıkışı arka planda algılamak için konumunu kullanır. Ziyaretler onayın olmadan antrenman olarak eklenmez.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Tempo, yakınındaki spor alanlarını göstermek ve sen başlattığında koşu/yürüyüş rotanı iPhone’da kaydetmek için konumunu kullanır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

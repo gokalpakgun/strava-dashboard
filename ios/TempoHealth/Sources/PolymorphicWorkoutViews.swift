@@ -94,6 +94,7 @@ struct UserDefaultsWorkoutMetricsRepository: WorkoutMetricsRepository {
 
 @MainActor
 final class SportMetricsStore: ObservableObject {
+    static let didChange = Notification.Name("TempoWorkoutMetricsDidChange")
     @Published private var entries: [String: WorkoutPayload] = [:]
     @Published private(set) var owner: String?
     @Published private(set) var error: String?
@@ -141,6 +142,7 @@ final class SportMetricsStore: ObservableObject {
         }
         var updated = entries; updated[record.id] = payload.removingAutomaticMatches(from: record.payload)
         try repository.save(updated, for: owner); entries = updated; revision += 1
+        NotificationCenter.default.post(name: Self.didChange, object: owner)
     }
 }
 

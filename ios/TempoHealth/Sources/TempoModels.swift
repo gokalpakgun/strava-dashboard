@@ -211,6 +211,7 @@ struct TempoManualWorkout: Codable, Identifiable, Equatable {
         case "phone-timer": return "Telefonla süre kaydı · rota yok".tempoLocalized
         case "detected-motion": return "detection.sourcePhone".tempoLocalized
         case "detected-health": return "detection.sourceHealth".tempoLocalized
+        case "detected-gym": return "passive.gym.source".tempoLocalized
         case "manual": return "Elle eklendi · doğrulanmadı".tempoLocalized
         default: return healthSignal == nil ? "Elle eklendi".tempoLocalized : "Elle eklendi · Sağlık sinyali".tempoLocalized
         }

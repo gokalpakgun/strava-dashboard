@@ -262,4 +262,5 @@ var cardRoundTrip = cardRun; cardRoundTrip.laps = 20; cardRoundTrip.totalVolume 
 let decodedCard = try! JSONDecoder().decode(Workout.self, from: JSONEncoder().encode(cardRoundTrip))
 check(decodedCard.id == cardRun.id && decodedCard.distance == 5_000 && decodedCard.laps == 20 && decodedCard.totalVolume == 5_200, "Tek model Codable değerleri ve kaynak kimliğini korur")
 check((try? JSONDecoder().decode(SportType.self, from: Data("\"future-sport\"".utf8))) == .generic, "Yeni spor enum değeri güvenle generic olur")
+check(!TempoTrainingGuidance.isSensorVerified(source: "detected-gym", score: nil), "Salon ziyareti sensör onayı veya biyometrik kanıt sayılmaz")
 print("STRAIN_CORE_PASS checks=\(checked) swift6=true phases3to5=true")

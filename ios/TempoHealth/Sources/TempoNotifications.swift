@@ -7,6 +7,7 @@ import UserNotifications
 final class TempoNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        PassiveWorkoutNotifications.register()
         return true
     }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -23,11 +24,12 @@ final class TempoNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNo
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo["tempo"] as? [String: String]
         Task { @MainActor in
+            defer { completionHandler() }
+            if PassiveWorkoutNotifications.handle(response, info: info) { return }
             if info?["destination"] == "detection", info?["owner"] != TempoWorkoutDetection.shared.owner { return }
             TempoNotifications.shared.open(destination: info?["destination"] ?? "notifications")
             await TempoNotifications.shared.refresh()
         }
-        completionHandler()
     }
 }
 

@@ -453,12 +453,17 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             throw APIError.server("detection.noLongerAvailable".tempoLocalized)
         }
         try ensureManualWorkoutsLoaded(accountId: accountId)
+        if candidate.healthWorkoutID != nil {
+            detector.decide(candidate, accepted: true)
+            Task { await syncAppleHealth() }
+            return
+        }
         let overlap = (manualWorkouts + healthWorkouts).contains {
             WorkoutDetectionEngine.overlaps(candidate.start, candidate.end, DetectionInterval(start: $0.startedAt, end: $0.sourceEndedAt ?? $0.endedAt))
         }
         guard !overlap else { detector.decide(candidate, accepted: false); throw APIError.server("detection.alreadyRecorded".tempoLocalized) }
         let seconds = Int(candidate.seconds.rounded())
-        var workout = TempoManualWorkout(id: candidate.id, sportId: sportID, sportTitle: sport.title, title: sport.title, startedAt: candidate.start, durationMinutes: max(1, seconds / 60), notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: seconds, distanceKm: TempoSport(rawValue: sportID).supportsDistance ? candidate.distanceMeters.map { $0 / 1000 } : nil, routeCoordinates: nil, recordSource: candidate.origin == .phone ? "detected-motion" : "detected-health", perceivedEffort: nil, enjoyment: nil)
+        var workout = TempoManualWorkout(id: candidate.id, sportId: sportID, sportTitle: sport.title, title: candidate.routineName ?? sport.title, startedAt: candidate.start, durationMinutes: max(1, seconds / 60), notes: candidate.origin == .gym ? "passive.gym.evidence".tempoLocalized : "", photoFilename: nil, healthSignal: nil, durationSeconds: seconds, distanceKm: TempoSport(rawValue: sportID).supportsDistance ? candidate.distanceMeters.map { $0 / 1000 } : nil, routeCoordinates: nil, recordSource: candidate.origin == .gym ? "detected-gym" : candidate.origin == .phone ? "detected-motion" : "detected-health", perceivedEffort: nil, enjoyment: nil)
         workout.sourceAverageHeartRateBpm = candidate.averageHeartRate
         workout.sourceEnergyKcal = candidate.activeEnergy
         workout.sourceEndedAt = candidate.end
@@ -466,6 +471,40 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
         try Self.saveManualWorkouts(updated, accountId: accountId)
         manualWorkouts = updated
         detector.decide(candidate, accepted: true)
+    }
+
+    /// Bildirim yanıtı önce cihazda saklanır, yalnız aynı Tempo hesabı geri yüklenince uygulanır.
+    private var passiveNativeSyncRequests = Set<String>()
+    func processPassiveResponses() {
+        let detector = TempoWorkoutDetection.shared
+        guard let accountId = activeTempoAccountId, accountAccessToken != nil, detector.owner == accountId else { return }
+        for response in detector.queuedResponses {
+            guard response.createdAt > Date().addingTimeInterval(-7 * 86400),
+                  let candidate = detector.pending.first(where: { $0.id == response.id }), candidate.isValid else { detector.finishResponse(response.id); continue }
+            if response.rpe != nil, let nativeID = candidate.healthWorkoutID, !healthWorkouts.contains(where: { $0.id == nativeID }) {
+                if healthSyncEnabled, !isHealthSyncing, passiveNativeSyncRequests.insert(accountId + "|" + nativeID.uuidString).inserted {
+                    if passiveNativeSyncRequests.count > 100 { passiveNativeSyncRequests = [accountId + "|" + nativeID.uuidString] }
+                    Task { await syncAppleHealth() }
+                }
+                return
+            }
+            do {
+                if let rpe = response.rpe {
+                    let identifier = candidate.healthWorkoutID ?? candidate.id
+                    let template = healthWorkouts.first { $0.id == identifier } ?? TempoManualWorkout(id: identifier, sportId: candidate.suggestedSport, sportTitle: TempoSportChoice(rawValue: candidate.suggestedSport)?.title ?? "Fitness", title: "", startedAt: candidate.start, durationMinutes: Int(candidate.seconds / 60), notes: "", photoFilename: nil, healthSignal: nil, durationSeconds: Int(candidate.seconds), distanceKm: nil, routeCoordinates: nil, recordSource: candidate.healthWorkoutID == nil ? "detected-health" : "apple-health", perceivedEffort: nil, enjoyment: nil)
+                    let record = WorkoutPayloadAdapter.record(template)
+                    var payload = record.payload ?? WorkoutPayload.empty(for: .strengthAndHypertrophy)
+                    var inputs = payload.loadInputs; inputs.sessionRPE = Double(rpe); payload.loadInputs = inputs
+                    let store = SportMetricsStore(); store.bind(accountId)
+                    try store.save(payload, for: record, owner: accountId)
+                }
+                try addDetectedWorkout(candidate, sportID: candidate.suggestedSport)
+                detector.finishResponse(response.id)
+            } catch {
+                if !detector.pending.contains(where: { $0.id == response.id }) { detector.finishResponse(response.id) }
+                else { detector.reportResponseError() }
+            }
+        }
     }
 
     func deleteManualWorkout(_ workout: TempoManualWorkout) throws {

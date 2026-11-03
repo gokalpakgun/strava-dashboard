@@ -158,6 +158,9 @@ struct ContentView: View {
         }
         .background(TempoTheme.background.ignoresSafeArea())
         .environmentObject(workoutCardMetrics)
+        .onReceive(NotificationCenter.default.publisher(for: SportMetricsStore.didChange)) { note in
+            if note.object as? String == account.profile?.id { workoutCardMetrics.reload() }
+        }
         .task(id: account.profile?.id) { workoutCardMetrics.bind(account.profile?.id) }
         .onChange(of: scenePhase) { _, phase in if phase == .active { workoutCardMetrics.reload() } }
         .task {

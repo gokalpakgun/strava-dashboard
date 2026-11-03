@@ -40,6 +40,16 @@ struct WorkoutDetectionScreen: View {
     @State private var showDisableConfirmation = false
     var body: some View {
         TempoPage {
+            NavigationLink(destination: PassiveGymSetupScreen()) {
+                HStack(spacing: 14) {
+                    TempoIconBadge(symbol: "mappin.and.ellipse", color: TempoTheme.green)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("passive.gym.title".tempoLocalized).font(.headline)
+                        Text("passive.gym.subtitle".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right").font(.caption)
+                }.padding(20).modifier(TempoSurface())
+            }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("detection.gym.setup")
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "waveform.path.ecg").font(.system(size: 36, weight: .light)).foregroundStyle(TempoTheme.green)
                 Text("detection.introTitle".tempoLocalized).font(.largeTitle.bold())
@@ -148,8 +158,17 @@ private struct DetectedWorkoutEvidence: View {
                 if let energy = candidate.activeEnergy {
                     MetricCard(value: "\(Int(energy.rounded())) kcal", label: "detection.energy", icon: "flame.fill", color: TempoTheme.orange)
                 }
+                if let load = candidate.loadEstimate?.strain {
+                    MetricCard(value: "\(load)/10", label: "passive.load", icon: "gauge.with.dots.needle.33percent", color: TempoTheme.purple)
+                }
             }
-            Text((candidate.origin == .phone ? "detection.phoneEvidence" : "detection.healthEvidence").tempoLocalized)
+            if let estimate = candidate.loadEstimate {
+                Text(PassiveWorkoutNotifications.patternTitle(estimate.pattern)).font(.subheadline.weight(.medium))
+                Text("passive.loadEvidence".tempoFormatted(Int(estimate.coverage * 100))).font(.caption).foregroundStyle(TempoTheme.secondary)
+                if estimate.maximumHeartRateWasEstimated { Text("passive.maximumDefault".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary) }
+            }
+            if let routine = candidate.routineName { Text(routine).font(.headline) }
+            Text((candidate.origin == .gym ? "passive.gym.evidence" : candidate.origin == .phone ? "detection.phoneEvidence" : "detection.healthEvidence").tempoLocalized)
                 .font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -168,7 +187,9 @@ private struct DetectedWorkoutReview: View {
         NavigationStack {
             TempoPage {
                 TempoCard { DetectedWorkoutEvidence(candidate: candidate) }
-                TempoCard {
+                if candidate.healthWorkoutID != nil {
+                    Text("passive.nativeInfo".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                } else { TempoCard {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("detection.whichSport".tempoLocalized).font(.headline)
                         Text("detection.confirmHint".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary)
@@ -177,7 +198,7 @@ private struct DetectedWorkoutReview: View {
                             ForEach(TempoSportChoice.allCases) { sport in Text(sport.title).tag(sport.rawValue) }
                         }.pickerStyle(.menu).tint(TempoTheme.green)
                     }
-                }
+                } }
                 if !error.isEmpty { Text(error).font(.footnote).foregroundStyle(TempoTheme.orange) }
                 Button {
                     guard sessionID == model.activitySessionID, !saving else { return }; saving = true; error = ""
@@ -197,7 +218,7 @@ private struct DetectedWorkoutReview: View {
             .navigationTitle("detection.reviewAction".tempoLocalized).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Vazgeç".tempoLocalized) { dismiss() }.disabled(saving) } }
             .interactiveDismissDisabled(saving)
-            .onAppear { sessionID = model.activitySessionID; if candidate.origin == .phone { sportID = candidate.suggestedSport } }
+            .onAppear { sessionID = model.activitySessionID; sportID = candidate.suggestedSport }
             .onChange(of: model.activitySessionID) { _, _ in dismiss() }
         }
     }

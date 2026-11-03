@@ -5,3 +5,4 @@
 "NSHealthShareUsageDescription" = "Tempo reads the Health data you choose to share and can check heart rate, steps or a saved workout around the workout time as supporting signals.";
 "NSHealthUpdateUsageDescription" = "Tempo saves water entries you add in the app to Apple Health.";
 "NSMotionUsageDescription" = "With your permission, Tempo checks sustained activity in iPhone motion and step history to suggest possible workouts for you to review and confirm.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Tempo uses your location to detect entry and exit at the gym you choose while the app is in the background. It does not continuously record GPS; visits are not saved as workouts without your confirmation.";
