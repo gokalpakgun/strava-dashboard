@@ -47,7 +47,8 @@ final class TempoCircleStore: ObservableObject {
     private var owner: String?
     private var syncing = false
     private var lastSync: Date?
-    func bind(_ next: String?) { if owner != next { owner = next; groups = []; message = ""; lastSync = nil } }
+    private var permissionRevision = UUID()
+    func bind(_ next: String?) { if owner != next { permissionRevision = UUID(); owner = next; groups = []; message = ""; lastSync = nil } }
     func refresh(_ account: TempoAccountStore) async {
         let id = account.profile?.id; bind(id)
         guard id != nil, !loading else { return }; loading = true; defer { loading = false }
@@ -58,7 +59,7 @@ final class TempoCircleStore: ObservableObject {
         } catch { if account.profile?.id == id { message = error.localizedDescription.tempoLocalized } }
     }
     func command(_ body: CircleCommand, group: CircleGroup, account: TempoAccountStore) async {
-        guard !working else { return }; working = true; defer { working = false }
+        guard !working else { return }; permissionRevision = UUID(); working = true; defer { working = false }
         let id = account.profile?.id
         do {
             _ = try await account.circleRequest(path: "/api/account/passive-social/groups/\(group.id)", method: "POST", body: body)
@@ -68,7 +69,7 @@ final class TempoCircleStore: ObservableObject {
         } catch { if account.profile?.id == id { message = error.localizedDescription.tempoLocalized } }
     }
     func create(friendIDs: [String], goal: String, account: TempoAccountStore) async -> Bool {
-        guard !working else { return false }; working = true; defer { working = false }
+        guard !working else { return false }; permissionRevision = UUID(); working = true; defer { working = false }
         let id = account.profile?.id
         do {
             _ = try await account.circleRequest(path: "/api/account/passive-social/groups", method: "POST", body: CircleCreate(id: UUID().uuidString.lowercased(), friendIds: friendIDs, goal: goal, target: 3, stake: 20))
@@ -77,11 +78,12 @@ final class TempoCircleStore: ObservableObject {
     }
     func sync(account: TempoAccountStore, model: TempoAppModel) async {
         let id = account.profile?.id; bind(id)
-        guard id != nil, id == model.activityAccountID, account.isAuthenticated, !syncing else { return }
+        guard id != nil, id == model.activityAccountID, account.isAuthenticated, !syncing, !working else { return }
         if let lastSync, Date().timeIntervalSince(lastSync) < 120 { return }
         syncing = true; defer { syncing = false }
+        let revision = permissionRevision
         await refresh(account)
-        guard owner == id, groups.contains(where: \.myAccepted), !Task.isCancelled else { return }
+        guard owner == id, revision == permissionRevision, groups.contains(where: \.myAccepted), !Task.isCancelled else { return }
         let ghostSharing = groups.contains { $0.myAccepted && $0.myGhosts }
         let now = Date()
         var evidence: [CircleEvidence] = []
@@ -94,7 +96,7 @@ final class TempoCircleStore: ObservableObject {
                 var record = CircleEvidence(id: w.id.uuidString.lowercased(), source: "healthkit", start: w.startedAt.timeIntervalSince1970 * 1000, end: end.timeIntervalSince1970 * 1000, heartCoverage: coverage)
                 if ghostSharing { record.trace = await CircleEvidenceReader.trace(w, end: end, maximum: zone.maximumHeartRateBpm) }
                 evidence.append(record)
-                guard !Task.isCancelled, owner == id else { return }
+                guard !Task.isCancelled, owner == id, revision == permissionRevision else { return }
             }
         }
         if groups.contains(where: { $0.myAccepted && $0.goal == "venueVisits" }) {
@@ -103,7 +105,13 @@ final class TempoCircleStore: ObservableObject {
             }
         }
         do {
-            guard owner == id, account.profile?.id == id else { return }
+            // İzin değişikliği veya hesap geçişi, hazır ama henüz gönderilmemiş veriyi durdurur.
+            guard owner == id, account.profile?.id == id, revision == permissionRevision,
+                  !Task.isCancelled, groups.contains(where: \.myAccepted) else { return }
+            if !model.healthSyncEnabled { evidence.removeAll { $0.source == "healthkit" } }
+            if !groups.contains(where: { $0.myAccepted && $0.myGhosts }) {
+                evidence = evidence.map { item in var copy = item; copy.trace = nil; return copy }
+            }
             let queryComplete = model.healthSyncEnabled && model.healthWorkoutError == nil && model.healthWorkoutReadAt.map { now.timeIntervalSince($0) < 3600 } == true
             let gym = TempoPassiveGym.shared
             let venueComplete = gym.enabled && gym.authorization == .authorizedAlways && TempoWorkoutDetection.shared.enabled && TempoWorkoutDetection.shared.owner == id
