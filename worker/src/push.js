@@ -71,7 +71,12 @@ export async function handlePushRequest(request, env, context) {
     friends: body.friends !== false, challenges: body.challenges !== false, updatedAt: new Date().toISOString(),
   };
   if (previous && ["userId", "sessionHash", "token", "environment", "language", "friends", "challenges"].every(key => previous[key] === record[key])
-      && Date.now() - Date.parse(previous.updatedAt) < 86400000) return json({ ok: true, pushAvailable: ready(env) });
+      && Date.now() - Date.parse(previous.updatedAt) < 86400000) {
+    // Önceki kayıt yazılıp kullanıcı dizini yazılamadıysa hızlı yol bu kaydı kalıcı olarak görünmez bırakmamalı.
+    const index = await env.TOKEN_STORE.get(indexKey(userId, id), "json");
+    if (index?.id !== id) await env.TOKEN_STORE.put(indexKey(userId, id), JSON.stringify({ id, updatedAt: previous.updatedAt }), { expirationTtl: Math.max(60, Math.min(TTL, Math.ceil((Date.parse(previous.updatedAt) + TTL * 1000 - Date.now()) / 1000))) });
+    return json({ ok: true, pushAvailable: ready(env) });
+  }
   const devices = await listValues(env, `push-user:${userId}:`, 30);
   const oldest = devices.filter(x => x.id !== id).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(9);
   await Promise.all(oldest.map(async item => {

@@ -128,3 +128,11 @@ test('push diagnostic respects missing configuration and authenticated routing',
  assert.equal((await worker.fetch(req('/api/account/push/test','POST',device()),env)).status,401);
  assert.equal((await handlePushRequest(req('/api/account/push/test','POST',device()),{...env,APNS_KEY_ID:''},a)).status,503);
 });
+
+test('re-registration repairs a missing user index after a partial device registration write',async()=>{
+ const {env,contexts:[a]}=await fixture();await register(env,a);
+ const index=keys(env,'push-user:')[0];await env.TOKEN_STORE.delete(index);
+ assert.equal(keys(env,'push-device:').length,1);await register(env,a);
+ assert.equal(keys(env,'push-user:').length,1);
+ let calls=0;await mockFetch(async()=>{calls++;return new Response(null,{status:200});},()=>createNotification(env,a.user.id,'friend_request','repaired-index'));assert.equal(calls,1);
+});
