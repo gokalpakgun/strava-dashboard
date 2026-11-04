@@ -23,7 +23,7 @@ export default {
         const accountResponse = await handleAccountRequest(request, env, url);
         if (accountResponse) return accountResponse;
       }
-      if (["/api/account/push/devices", "/api/account/notifications", "/api/account/notifications/read"].includes(url.pathname)) {
+      if (["/api/account/push/devices", "/api/account/push/test", "/api/account/notifications", "/api/account/notifications/read"].includes(url.pathname)) {
         return handlePushRequest(request, env, await accountContext(request, env));
       }
       if (url.pathname === "/api/account/passive-social" || url.pathname.startsWith("/api/account/passive-social/")) {

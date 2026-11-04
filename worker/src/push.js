@@ -38,6 +38,20 @@ export async function handlePushRequest(request, env, context) {
     if (record && !record.read) await env.TOKEN_STORE.put(key, JSON.stringify({ ...record, read: true }), { expirationTtl: Math.max(60, Math.ceil((Date.parse(record.createdAt) + TTL * 1000 - Date.now()) / 1000)) });
     return json({ ok: true });
   }
+  // Tanılama yalnız isteği yapan hesabın bu oturumuna bağlı cihazına gönderilir.
+  if (path === "/api/account/push/test" && request.method === "POST") {
+    if (!ready(env)) return json({ error: "push_unconfigured" }, 503);
+    if (!/^(?:[a-f0-9]{2}){1,256}$/i.test(body.token || "") || !["production", "development"].includes(body.environment)) return json({ error: "invalid_device" }, 400);
+    const deviceID = await digest(TOPIC + body.environment + body.token.toLowerCase());
+    const device = await env.TOKEN_STORE.get("push-device:" + deviceID, "json");
+    if (!device || device.userId !== userId || device.sessionHash !== context.sessionHash) return json({ error: "device_not_registered" }, 409);
+    const rateKey = "push-test:" + deviceID;
+    if (await env.TOKEN_STORE.get(rateKey)) return json({ error: "test_rate_limited" }, 429);
+    await env.TOKEN_STORE.put(rateKey, "1", { expirationTtl: 60 });
+    const results = await sendNotification(env, userId, "push_test", crypto.randomUUID(), deviceID);
+    const result = results?.find(Boolean);
+    return json({ accepted: result?.accepted === true, reason: result?.reason || "device_not_registered" });
+  }
   if (path !== "/api/account/push/devices" || !["POST", "DELETE"].includes(request.method)) return json({ error: "Method not allowed." }, 405);
   if (!/^(?:[a-f0-9]{2}){1,256}$/i.test(body.token || "") || !["production", "development"].includes(body.environment)) return json({ error: "Geçersiz cihaz kaydı." }, 400);
   if (["friends", "challenges"].some(key => body[key] !== undefined && typeof body[key] !== "boolean")) return json({ error: "Geçersiz bildirim tercihi." }, 400);
@@ -127,12 +141,12 @@ async function inboxRequest(env,userId,path,body) {
   if (!response.ok) throw new Error("Inbox storage unavailable");
   return response.json();
 }
-async function sendNotification(env,userId,type,id) {
+async function sendNotification(env,userId,type,id,onlyDeviceID) {
   if (!ready(env)) return;
   const user = await env.TOKEN_STORE.get("account-user:" + userId, "json");
   if (!user) return;
   const devices = await listValues(env, `push-user:${userId}:`, 20);
-  await Promise.all(devices.map(async item => {
+  return Promise.all(devices.filter(item => !onlyDeviceID || item.id === onlyDeviceID).map(async item => {
     const record = await env.TOKEN_STORE.get("push-device:" + item.id, "json");
     if (!record || record.userId !== userId) return;
     let session = await env.TOKEN_STORE.get("account-session:" + record.sessionHash);
@@ -141,9 +155,10 @@ async function sendNotification(env,userId,type,id) {
       await removeDevice(env, item.id, record); return;
     }
     const challengeNotice = ["challenge_invite","circle_invite","pledge_settled","ghost_result"].includes(type);
-    if ((challengeNotice && !record.challenges) || (!challengeNotice && !record.friends)) return;
+    if (type !== "push_test" && ((challengeNotice && !record.challenges) || (!challengeNotice && !record.friends))) return;
     const tr = record.language === "tr";
     const messages = {
+      push_test: tr ? "Bildirim bağlantın çalışıyor. Bu, istediğin deneme bildirimidir." : "Your notification connection is working. This is your requested test alert.",
       friend_request: tr ? "Yeni bir arkadaşlık isteğin var." : "You have a new friend request.",
       friend_accepted: tr ? "Arkadaşlık isteğin kabul edildi." : "Your friend request was accepted.",
       challenge_invite: tr ? "Birlikte hareket etmek için yeni bir yarış davetin var." : "You have a new challenge invitation.",
@@ -153,7 +168,8 @@ async function sendNotification(env,userId,type,id) {
       passive_nudge: tr ? "Çemberinden küçük bir hatırlatma var." : "A gentle reminder from your Circle.",
     };
     const host = record.environment === "production" ? "api.push.apple.com" : "api.sandbox.push.apple.com";
-    const response = await fetch(`https://${host}/3/device/${record.token}`, {
+    let response;
+    try { response = await fetch(`https://${host}/3/device/${record.token}`, {
       method: "POST", signal: AbortSignal.timeout(8000),
       headers: {
         authorization: "bearer " + await providerToken(env), "apns-topic": TOPIC,
@@ -162,12 +178,21 @@ async function sendNotification(env,userId,type,id) {
       },
       body: JSON.stringify({ aps: { alert: { title: "Tempo", body: messages[type] }, sound: "default", "thread-id": "tempo.social" }, tempo: { id, type, destination: "social" } }),
     });
+    } catch {
+      console.warn("APNs alert network unavailable");
+      return { accepted: false, reason: "provider_unreachable" };
+    }
     if (response.status === 410) await removeDevice(env, item.id, record);
     else if (response.status === 400) {
-      const error = await response.json().catch(() => ({}));
+      const error = await response.clone().json().catch(() => ({}));
       if (["BadDeviceToken", "DeviceTokenNotForTopic"].includes(error.reason)) await removeDevice(env, item.id, record);
     }
-    if (!response.ok) console.warn("APNs alert status", response.status);
+    if (!response.ok) {
+      const error = await response.clone().json().catch(() => ({}));
+      console.warn("APNs alert status", response.status, ["BadDeviceToken", "DeviceTokenNotForTopic", "ExpiredProviderToken", "InvalidProviderToken", "TopicDisallowed", "Unregistered", "TooManyProviderTokenUpdates"].includes(error.reason) ? error.reason : "rejected");
+      return { accepted: false, reason: response.status === 400 || response.status === 410 ? "device_rejected" : "provider_rejected" };
+    }
+    return { accepted: true };
   }));
 }
 

@@ -101,3 +101,30 @@ test('notification JSON null and arrays are rejected safely',async()=>{
 test('concurrent devices share the same newly issued provider JWT',async()=>{
   const {env}=await fixture();env.APNS_KEY_ID='NEWKEY1234';const tokens=await Promise.all(Array.from({length:10},()=>providerToken(env)));assert.equal(new Set(tokens).size,1);
 });
+
+test('push diagnostic targets only the current device and is rate limited',async()=>{
+ const {env,contexts:[a]}=await fixture();await register(env,a);await register(env,a,device('f'.repeat(64)));
+ let calls=0;
+ await mockFetch(async(url,options)=>{calls++;assert.ok(url.endsWith('e'.repeat(64)));assert.match(JSON.parse(options.body).aps.alert.body,/requested test alert/);return new Response(null,{status:200});},async()=>{
+  const result=await handlePushRequest(req('/api/account/push/test','POST',device()),env,a);
+  assert.equal((await result.json()).accepted,true);
+  assert.equal((await handlePushRequest(req('/api/account/push/test','POST',device()),env,a)).status,429);
+ });assert.equal(calls,1);assert.equal(keys(env,'notification:').length,0);
+});
+test('push diagnostic cannot target a foreign device or another session',async()=>{
+ const {env,contexts:[a,b]}=await fixture();await register(env,a);
+ for(const context of [b,{...a,sessionHash:'different-session'}]){
+  const result=await handlePushRequest(req('/api/account/push/test','POST',device()),env,context);assert.equal(result.status,409);
+ }
+});
+test('push diagnostic reports provider failure without exposing token or credentials',async()=>{
+ const {env,contexts:[a]}=await fixture();await register(env,a);
+ await mockFetch(async()=>Response.json({reason:'InvalidProviderToken'},{status:403}),async()=>{
+  const result=await handlePushRequest(req('/api/account/push/test','POST',device()),env,a);const body=await result.json();assert.equal(body.accepted,false);assert.equal(body.reason,'provider_rejected');assert.ok(!JSON.stringify(body).includes('e'.repeat(64)));
+ });
+});
+test('push diagnostic respects missing configuration and authenticated routing',async()=>{
+ const {env,contexts:[a]}=await fixture();
+ assert.equal((await worker.fetch(req('/api/account/push/test','POST',device()),env)).status,401);
+ assert.equal((await handlePushRequest(req('/api/account/push/test','POST',device()),{...env,APNS_KEY_ID:''},a)).status,503);
+});

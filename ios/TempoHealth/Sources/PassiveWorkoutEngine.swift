@@ -69,6 +69,9 @@ struct PassiveGymConfiguration: Codable, Equatable, Sendable {
     var latitude: Double
     var longitude: Double
     var routines: [Int: String]
+    var placeCategory: String? = nil
+    var id: String { String(format: "%.6f,%.6f", locale: Locale(identifier: "en_US_POSIX"), latitude, longitude) }
+    var isVerifiedGym: Bool { placeCategory == "fitness-center" }
     var isValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 64 && latitude.isFinite && longitude.isFinite && (-90...90).contains(latitude) && (-180...180).contains(longitude) && routines.count <= 7 && routines.allSatisfy { (1...7).contains($0.key) && $0.value.count <= 64 }
     }
@@ -100,6 +103,53 @@ struct PassiveGymSession: Codable, Sendable {
         defer { enteredAt = nil }
         guard configuration.isValid, let start = enteredAt, (900...14_400).contains(date.timeIntervalSince(start)) else { return nil }
         return PassiveGymVisit(id: UUID(), start: start, end: date, routine: configuration.routine(at: start, calendar: calendar))
+    }
+}
+
+/// Eski tek salon kaydı kaybolmadan taşınır; kategori doğrulaması yapılana kadar izlenmez.
+struct PassiveGymRegistry: Codable, Sendable {
+    var configurations: [PassiveGymConfiguration] = []
+    var enabled = false
+    var sessions: [String: PassiveGymSession] = [:]
+    var pendingVisits: [PassiveGymVisit] = []
+    private enum CodingKeys: String, CodingKey { case configurations, enabled, sessions, pendingVisits, configuration, session }
+    init() {}
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        if let list = try container.decodeIfPresent([PassiveGymConfiguration].self, forKey: .configurations) {
+            configurations = list
+            sessions = try container.decodeIfPresent([String: PassiveGymSession].self, forKey: .sessions) ?? [:]
+        } else if let legacy = try container.decodeIfPresent(PassiveGymConfiguration.self, forKey: .configuration) {
+            configurations = [legacy]
+            // Önceden serbest konum seçilebildiği için eski ziyaret doğrulanmış sayılmaz.
+            sessions = [:]
+        }
+        pendingVisits = try container.decodeIfPresent([PassiveGymVisit].self, forKey: .pendingVisits) ?? []
+        guard configurations.count <= 10, configurations.allSatisfy(\.isValid),
+              Set(configurations.map(\.id)).count == configurations.count else {
+            throw DecodingError.dataCorruptedError(forKey: .configurations, in: container, debugDescription: "Invalid gym registry")
+        }
+        sessions = sessions.filter { id, _ in configurations.contains { $0.id == id && $0.isVerifiedGym } }
+    }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(configurations, forKey: .configurations)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(sessions, forKey: .sessions)
+        try container.encode(pendingVisits, forKey: .pendingVisits)
+    }
+    mutating func receive(inside: Bool, gymID: String, at date: Date) {
+        guard enabled, let gym = configurations.first(where: { $0.id == gymID && $0.isVerifiedGym }) else { return }
+        var session = sessions[gymID] ?? PassiveGymSession()
+        if inside {
+            // Çakışan bölgeler aynı anda iki ziyaret başlatamaz.
+            guard !sessions.contains(where: { $0.key != gymID && $0.value.enteredAt != nil }) else { return }
+            session.enter(at: date)
+        } else if let visit = session.exit(at: date, configuration: gym) {
+            pendingVisits.append(visit); pendingVisits = Array(pendingVisits.suffix(16))
+        }
+        sessions[gymID] = session
     }
 }
 

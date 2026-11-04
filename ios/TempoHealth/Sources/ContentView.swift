@@ -710,6 +710,15 @@ private struct HomeScreen: View {
                 HomeQuickAction(title: "Spor alanları", icon: "mappin.and.ellipse", color: TempoTheme.blue, destination: AnyView(NearbyFacilitiesScreen()))
                 HomeQuickAction(title: "Sosyal", icon: "person.2", color: TempoTheme.green, destination: AnyView(SocialScreen()))
             }
+            NavigationLink(destination: PassiveGymSetupScreen()) {
+                HStack(spacing: 12) {
+                    Image(systemName: "building.2.crop.circle.fill").font(.title3).foregroundStyle(TempoTheme.green)
+                    Text("gym.homeShortcut".tempoLocalized).font(.subheadline.weight(.medium))
+                    Spacer(minLength: 8)
+                    Image(systemName: "plus.circle").foregroundStyle(TempoTheme.secondary)
+                }.padding(14).frame(maxWidth: .infinity, minHeight: 52)
+                    .background(TempoTheme.raised.opacity(0.55), in: RoundedRectangle(cornerRadius: 20))
+            }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("home.addGym")
         }
     }
 
@@ -3342,20 +3351,6 @@ struct HealthScreen: View {
             if ProcessInfo.processInfo.arguments.contains("--ui-testing-healthkit") { SimulatorHealthIntegrationPanel() }
 #endif
             wellnessHero
-            if let checkIn = wellness.todayCheckIn { TempoCard { TempoCheckInComparison(entry: checkIn, balance: model.tempoBalance) } }
-            dailyRings
-            if model.healthSyncEnabled { sleepPreview }
-            TempoWellnessTools(store: wellness)
-            healthOverview
-            if !model.healthAvailable {
-                TempoCard { Label("Apple Sağlık bu cihazda kullanılamıyor.", systemImage: "exclamationmark.triangle.fill").foregroundStyle(TempoTheme.orange) }
-            } else if !model.healthSyncEnabled { connectCard }
-            if let error = model.healthError {
-                Label(error.tempoLocalized, systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(TempoTheme.orange)
-            }
-            if let error = model.healthWorkoutError {
-                Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
-            }
             if model.healthSyncEnabled {
                 TempoDisclosureSection(title: "wellness.measurements", icon: "chart.xyaxis.line") {
                     VStack(spacing: 16) {
@@ -3380,6 +3375,23 @@ struct HealthScreen: View {
                     }
                 }
             }
+            NavigationLink(destination: HealthMonthlySummaryScreen()) {
+                TempoMenuRow(title: "health.monthly.title", subtitle: "health.monthly.subtitle", icon: "tablecells")
+            }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("health.monthly")
+            if let checkIn = wellness.todayCheckIn { TempoCard { TempoCheckInComparison(entry: checkIn, balance: model.tempoBalance) } }
+            dailyRings
+            if model.healthSyncEnabled { sleepPreview }
+            healthOverview
+            if !model.healthAvailable {
+                TempoCard { Label("Apple Sağlık bu cihazda kullanılamıyor.", systemImage: "exclamationmark.triangle.fill").foregroundStyle(TempoTheme.orange) }
+            } else if !model.healthSyncEnabled { connectCard }
+            if let error = model.healthError {
+                Label(error.tempoLocalized, systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(TempoTheme.orange)
+            }
+            if let error = model.healthWorkoutError {
+                Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            TempoWellnessTools(store: wellness)
             Button { Task { await model.syncAppleHealth() } } label: {
                 Label((model.isHealthSyncing ? "Eşitleniyor…" : "Verileri şimdi eşitle").tempoLocalized, systemImage: "arrow.triangle.2.circlepath")
                     .frame(maxWidth: .infinity)
@@ -4779,3 +4791,107 @@ private struct SimulatorHealthIntegrationPanel: View {
 }
 #endif
 
+
+/// Ölçüm olmayan günler ortalamaya sıfır olarak eklenmez; toplam yalnız birikebilen ölçülerde gösterilir.
+private struct HealthMonthlySummaryScreen: View {
+    @EnvironmentObject private var model: TempoAppModel
+    @Environment(\.dynamicTypeSize) private var textSize
+    @State private var selectedMonth = Calendar.autoupdatingCurrent.dateInterval(of: .month, for: Date())!.start
+    private struct Metric: Identifiable {
+        let title: String
+        let keyPath: KeyPath<TempoHealthMetrics, Double?>
+        let unit: String
+        var duration = false
+        var additive = false
+        var digits = 1
+        var id: String { title }
+        func formatted(_ value: Double?) -> String {
+            guard let value else { return "—" }
+            if duration { return TempoFormat.duration(value * 60) }
+            return value.formatted(.number.precision(.fractionLength(digits))) + " " + unit.tempoLocalized
+        }
+    }
+    private var metrics: [Metric] { [
+        .init(title: "Adım", keyPath: \.steps, unit: "adım", additive: true, digits: 0),
+        .init(title: "Aktif enerji", keyPath: \.activeEnergyKcal, unit: "kcal", additive: true, digits: 0),
+        .init(title: "Egzersiz", keyPath: \.exerciseMinutes, unit: "dk", duration: true, additive: true),
+        .init(title: "Toplam uyku", keyPath: \.sleepMinutes, unit: "dk", duration: true, additive: true),
+        .init(title: "Hafif uyku", keyPath: \.sleepCoreMinutes, unit: "dk", duration: true, additive: true),
+        .init(title: "Derin uyku", keyPath: \.sleepDeepMinutes, unit: "dk", duration: true, additive: true),
+        .init(title: "REM", keyPath: \.sleepREMMinutes, unit: "dk", duration: true, additive: true),
+        .init(title: "Uyanık süre", keyPath: \.sleepAwakeMinutes, unit: "dk", duration: true, additive: true),
+        .init(title: "Su", keyPath: \.waterMl, unit: "ml", additive: true, digits: 0),
+        .init(title: "Dinlenik nabız", keyPath: \.restingHeartRateBpm, unit: "atım/dk"),
+        .init(title: "HRV", keyPath: \.hrvMs, unit: "ms"),
+        .init(title: "Solunum ritmi", keyPath: \.respiratoryRate, unit: "nefes/dk"),
+        .init(title: "Kandaki oksijen", keyPath: \.oxygenSaturationPct, unit: "%"),
+        .init(title: "VO₂ Max", keyPath: \.vo2Max, unit: "ml/kg/dk"),
+        .init(title: "Yürüyüş nabzı", keyPath: \.walkingHeartRateBpm, unit: "atım/dk"),
+        .init(title: "Nabız toparlanması", keyPath: \.heartRateRecoveryBpm, unit: "atım/dk"),
+        .init(title: "Bilek sıcaklığı", keyPath: \.wristTemperatureC, unit: "°C"),
+        .init(title: "Kilo", keyPath: \.bodyMassKg, unit: "kg")
+    ] }
+    private var months: [Date] {
+        let calendar = Calendar.autoupdatingCurrent
+        let stored = model.healthDays.keys.compactMap { TempoFormat.dayFormatter.date(from: $0) }
+            .filter { $0 <= Date() }.compactMap { calendar.dateInterval(of: .month, for: $0)?.start }
+        return Set(stored + [calendar.dateInterval(of: .month, for: Date())!.start]).sorted(by: >)
+    }
+    private var days: [TempoHealthMetrics] {
+        guard let range = Calendar.autoupdatingCurrent.dateInterval(of: .month, for: selectedMonth) else { return [] }
+        return model.healthDays.compactMap { day, metrics in
+            guard let date = TempoFormat.dayFormatter.date(from: day), range.contains(date), date < range.end, date <= Date() else { return nil }
+            return metrics
+        }
+    }
+    var body: some View {
+        TempoPage {
+            PageTitle(title: "health.monthly.title", subtitle: "health.monthly.subtitle")
+            TempoCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Picker("health.monthly.month".tempoLocalized, selection: $selectedMonth) {
+                        ForEach(months, id: \.self) { month in Text(month.formatted(.dateTime.month(.wide).year())).tag(month) }
+                    }.pickerStyle(.menu).tint(TempoTheme.green)
+                    Text("health.monthly.note".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                    if days.isEmpty { Label("health.monthly.empty".tempoLocalized, systemImage: "chart.bar.xaxis").font(.subheadline).foregroundStyle(TempoTheme.secondary) }
+                    if model.isHealthSyncing { ProgressView() }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            TempoCard {
+                VStack(spacing: 0) {
+                    ForEach(metrics) { metric in
+                        metricRow(metric)
+                        if metric.id != metrics.last?.id { Divider().padding(.vertical, 14) }
+                    }
+                }
+            }
+        }
+        .navigationTitle("health.monthly.title".tempoLocalized).navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+        .accessibilityIdentifier("health.monthly.table")
+        .onChange(of: months) { _, available in if !available.contains(selectedMonth), let first = available.first { selectedMonth = first } }
+    }
+    private func metricRow(_ metric: Metric) -> some View {
+        let values = days.compactMap { $0[keyPath: metric.keyPath] }.filter { $0.isFinite && (metric.keyPath == \.wristTemperatureC || $0 >= 0) }
+        let mean = values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+        let total = metric.additive && !values.isEmpty ? values.reduce(0, +) : nil
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(metric.title.tempoLocalized).font(.subheadline.weight(.semibold))
+            if textSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) { cells(metric, mean: mean, total: total, count: values.count) }
+            } else {
+                HStack(alignment: .top, spacing: 10) { cells(metric, mean: mean, total: total, count: values.count) }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine)
+    }
+    @ViewBuilder private func cells(_ metric: Metric, mean: Double?, total: Double?, count: Int) -> some View {
+        cell("health.monthly.average", value: metric.formatted(mean))
+        cell("health.monthly.total", value: metric.formatted(total))
+        cell("health.monthly.days", value: count.formatted())
+    }
+    private func cell(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title.tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+            Text(value).font(.subheadline.monospacedDigit()).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

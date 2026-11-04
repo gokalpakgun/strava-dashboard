@@ -9,6 +9,7 @@ import UserNotifications
 @MainActor
 final class TempoWorkoutDetection: ObservableObject {
     static let shared = TempoWorkoutDetection()
+    private var schedulingNotification = false
     static let backgroundID = "com.apitempo.tempohealth.detect-workouts"
     @Published private(set) var enabled = false
     @Published private(set) var candidates: [DetectedWorkout] = []
@@ -158,6 +159,8 @@ final class TempoWorkoutDetection: ObservableObject {
 
     func requestNotifications() async {
         _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        await TempoNotifications.shared.reconnect()
+        await notifyIfNeeded(generation: generation)
         let settings = await center.notificationSettings()
         message = (settings.authorizationStatus == .denied ? "detection.notificationDenied" : "detection.notificationsReady").tempoLocalized
     }
@@ -299,14 +302,16 @@ final class TempoWorkoutDetection: ObservableObject {
         clearNotifications(covered.map(\.id))
     }
     private func notifyIfNeeded(generation token: UUID) async {
-        guard enabled, let owner, state.lastNotification.map({ Date().timeIntervalSince($0) >= 10 * 60 }) ?? true,
+        guard !schedulingNotification, enabled, let owner, state.lastNotification.map({ Date().timeIntervalSince($0) >= 10 * 60 }) ?? true,
               let candidate = pending.first(where: { candidate in
                   guard !candidate.notified, candidate.end > Date().addingTimeInterval(-6 * 3600) else { return false }
                   if let liveRecordingStart { return !WorkoutDetectionEngine.overlaps(candidate.start, candidate.end, DetectionInterval(start: liveRecordingStart, end: Date())) }
                   return true
               }) else { return }
+        schedulingNotification = true
+        defer { schedulingNotification = false }
         let settings = await center.notificationSettings()
-        guard generation == token, enabled, [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus) else { return }
+        guard pending.contains(where: { $0.id == candidate.id && !$0.notified }), generation == token, enabled, [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus) else { return }
         let content = UNMutableNotificationContent()
         content.title = "detection.notificationTitle".tempoLocalized
         content.body = PassiveWorkoutNotifications.body(for: candidate)
@@ -315,7 +320,7 @@ final class TempoWorkoutDetection: ObservableObject {
         content.userInfo = ["tempo": ["destination": "detection", "owner": owner, "candidate": candidate.id.uuidString]]
         do {
             try await center.add(UNNotificationRequest(identifier: "tempo-detected-" + candidate.id.uuidString, content: content, trigger: nil))
-            guard generation == token, enabled else { clearNotifications([candidate.id]); return }
+            guard generation == token, enabled, pending.contains(where: { $0.id == candidate.id }) else { clearNotifications([candidate.id]); return }
             if let index = state.records.firstIndex(where: { $0.id == candidate.id }) { state.records[index].notified = true }
             state.lastNotification = Date(); persist()
         } catch { /* Öneri uygulama içinde görünmeye devam eder. */ }

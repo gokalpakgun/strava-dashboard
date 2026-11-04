@@ -2,13 +2,14 @@ import Combine
 import CoreLocation
 import CryptoKit
 import Foundation
+import MapKit
 import UIKit
 
 /// Sürekli GPS yerine kayıtlı salonun bölge olayları izlenir; ziyaret önce diske yazılır.
 @MainActor
 final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelegate {
     static let shared = TempoPassiveGym()
-    @Published private(set) var configuration: PassiveGymConfiguration?
+    @Published private(set) var configurations: [PassiveGymConfiguration] = []
     @Published private(set) var enabled = false
     @Published private(set) var authorization: CLAuthorizationStatus = .notDetermined
     @Published private(set) var location: CLLocationCoordinate2D?
@@ -19,22 +20,17 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     @Published private(set) var message = ""
     private let manager = CLLocationManager()
     private var owner: String?
-    private var session = PassiveGymSession()
-    private var pendingVisits: [PassiveGymVisit] = []
+    private var registry = PassiveGymRegistry()
     private var storageReady = true
     private var locationTimeout: Task<Void, Never>?
     private var pendingLocation = false
     private var wantsBackgroundAccess = false
     private var scope = UUID()
     private var draining = false
-    private struct State: Codable {
-        let configuration: PassiveGymConfiguration
-        let enabled: Bool
-        let session: PassiveGymSession
-        var pendingVisits: [PassiveGymVisit]? = nil
-    }
     private override init() { super.init(); manager.delegate = self; manager.desiredAccuracy = kCLLocationAccuracyHundredMeters }
-    private var identifier: String? { owner.map { "tempo.gym." + hash($0) } }
+    private var regionPrefix: String? { owner.map { "tempo.gym." + hash($0) + "." } }
+    private func identifier(for config: PassiveGymConfiguration) -> String { (regionPrefix ?? "") + config.id }
+    private func configuration(for regionID: String) -> PassiveGymConfiguration? { configurations.first { identifier(for: $0) == regionID && $0.isVerifiedGym } }
     private func disabledKey(_ id: String) -> String { "tempo.gym.disabled." + hash(id) }
 
     func bootstrap() {
@@ -43,18 +39,19 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     func bind(owner next: String?) {
         if owner != next || !storageReady {
             stopMonitoring(); locationTimeout?.cancel(); scope = UUID(); draining = false
-            owner = next; session = PassiveGymSession(); pendingVisits = []; configuration = nil
+            owner = next; registry = PassiveGymRegistry(); configurations = []
             enabled = false; location = nil; locating = false; pendingLocation = false; wantsBackgroundAccess = false; message = ""
             storageReady = true
             if let next {
                 let url = fileURL(next)
                 if FileManager.default.fileExists(atPath: url.path) {
                     if let data = try? Data(contentsOf: url), data.count <= 100_000,
-                       let state = try? JSONDecoder().decode(State.self, from: data), state.configuration.isValid {
-                        configuration = state.configuration
+                       let state = try? JSONDecoder().decode(PassiveGymRegistry.self, from: data) {
+                        registry = state; configurations = state.configurations
                         enabled = state.enabled && !UserDefaults.standard.bool(forKey: disabledKey(next))
-                        session = enabled ? state.session : PassiveGymSession()
-                        pendingVisits = Array((state.pendingVisits ?? []).filter { $0.end <= Date() && $0.end > Date().addingTimeInterval(-7 * 86400) && (900...14_400).contains($0.end.timeIntervalSince($0.start)) }.suffix(16))
+                        registry.enabled = enabled
+                        if !enabled { registry.sessions = [:] }
+                        registry.pendingVisits = Array(state.pendingVisits.filter { $0.end <= Date() && $0.end > Date().addingTimeInterval(-7 * 86400) && (900...14_400).contains($0.end.timeIntervalSince($0.start)) }.suffix(16))
                     } else { storageReady = false; message = "detection.storageError".tempoLocalized }
                 }
             }
@@ -66,7 +63,7 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     func refreshStatus() {
         authorization = manager.authorizationStatus
         backgroundAvailable = UIApplication.shared.backgroundRefreshStatus == .available
-        activeSince = session.enteredAt
+        activeSince = registry.sessions.values.compactMap(\.enteredAt).min()
         reconcileMonitoring()
         Task { await deliverPendingVisits() }
     }
@@ -93,24 +90,42 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     func cancelLocationRequest() {
         locationTimeout?.cancel(); pendingLocation = false; locating = false
     }
-    func save(_ config: PassiveGymConfiguration) throws {
+    /// Yeni konum yalnız MapKit işletme kategorisiyle kabul edilir; serbest GPS noktası kaydedilmez.
+    func save(_ proposed: PassiveGymConfiguration, place: MKMapItem?, editingID: String?) throws {
         guard storageReady else { throw failure("detection.storageError") }
-        guard let owner, TempoWorkoutDetection.shared.owner == owner else {
-            throw failure("passive.gym.accountPreparing")
+        guard let owner, TempoWorkoutDetection.shared.owner == owner else { throw failure("passive.gym.accountPreparing") }
+        var config = proposed
+        if let place {
+            guard place.pointOfInterestCategory == .fitnessCenter else { throw failure("gym.verifiedOnly") }
+            config.latitude = place.placemark.coordinate.latitude; config.longitude = place.placemark.coordinate.longitude
+            config.placeCategory = "fitness-center"
+        } else {
+            guard let existing = configurations.first(where: { $0.id == editingID }), existing.isVerifiedGym,
+                  existing.id == config.id else { throw failure("gym.verifiedOnly") }
+            config.placeCategory = existing.placeCategory
         }
         guard config.isValid else { throw failure("passive.gym.invalid") }
+        let duplicate = configurations.first { $0.id != editingID && distance($0, config) < 100 }
+        guard duplicate == nil else { throw failure("gym.duplicate") }
+        guard editingID != nil || configurations.count < 10 else { throw failure("gym.limit") }
         guard TempoWorkoutDetection.shared.enableVenueDetection() else { throw failure("detection.storageError") }
-        let previous = (configuration, enabled, session)
-        let moved = configuration.map { abs($0.latitude - config.latitude) > 0.00001 || abs($0.longitude - config.longitude) > 0.00001 } ?? true
-        configuration = config; enabled = true
-        if moved { session = PassiveGymSession() }
-        do { try persist() } catch {
-            configuration = previous.0; enabled = previous.1; session = previous.2
-            throw failure("detection.storageError")
-        }
+        let previous = registry
+        if let editingID { registry.configurations.removeAll { $0.id == editingID }; if editingID != config.id { registry.sessions.removeValue(forKey: editingID) } }
+        registry.configurations.append(config); registry.enabled = true
+        do { try persist() } catch { registry = previous; throw failure("detection.storageError") }
+        configurations = registry.configurations; enabled = true
         UserDefaults.standard.removeObject(forKey: disabledKey(owner))
-        if moved { stopMonitoring() }
         message = ""; wantsBackgroundAccess = true; requestBackgroundAccess(); refreshStatus()
+    }
+    func remove(_ config: PassiveGymConfiguration) throws {
+        let previous = registry
+        registry.configurations.removeAll { $0.id == config.id }; registry.sessions.removeValue(forKey: config.id)
+        if registry.configurations.isEmpty { registry.enabled = false }
+        do { try persist() } catch { registry = previous; throw failure("detection.storageError") }
+        configurations = registry.configurations; enabled = registry.enabled; refreshStatus()
+    }
+    private func distance(_ first: PassiveGymConfiguration, _ second: PassiveGymConfiguration) -> Double {
+        CLLocation(latitude: first.latitude, longitude: first.longitude).distance(from: CLLocation(latitude: second.latitude, longitude: second.longitude))
     }
     func requestBackgroundAccess() {
         switch manager.authorizationStatus {
@@ -121,12 +136,12 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     }
     func disable() {
         if let owner { UserDefaults.standard.set(true, forKey: disabledKey(owner)) }
-        enabled = false; session = PassiveGymSession(); activeSince = nil; pendingVisits = []; stopMonitoring()
+        enabled = false; registry.enabled = false; registry.sessions = [:]; activeSince = nil; registry.pendingVisits = []; stopMonitoring()
         do { try persist() } catch { message = "detection.storageError".tempoLocalized }
     }
     func pauseForDetectionDisable() {
-        stopMonitoring(); session = PassiveGymSession(); activeSince = nil
-        guard owner != nil, configuration != nil else { return }
+        stopMonitoring(); registry.sessions = [:]; activeSince = nil
+        guard owner != nil else { return }
         do { try persist() } catch { message = "detection.storageError".tempoLocalized }
     }
     func removeAccount(_ id: String) {
@@ -135,35 +150,33 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
         try? FileManager.default.removeItem(at: fileURL(id))
     }
     private func reconcileMonitoring() {
-        // Hesap/algılayıcı henüz geri yükleniyorsa saklanmış giriş zamanını silme.
-        guard let identifier, let configuration, configuration.isValid, enabled,
-              TempoWorkoutDetection.shared.enabled, TempoWorkoutDetection.shared.owner == owner,
-              manager.authorizationStatus == .authorizedAlways,
+        guard regionPrefix != nil, enabled, TempoWorkoutDetection.shared.enabled,
+              TempoWorkoutDetection.shared.owner == owner, manager.authorizationStatus == .authorizedAlways,
               CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self), manager.maximumRegionMonitoringDistance > 0 else {
             stopMonitoring(); return
         }
-        if let existing = manager.monitoredRegions.first(where: { $0.identifier == identifier }) {
-            monitoring = true; manager.requestState(for: existing); return
+        let gyms = configurations.filter { $0.isValid && $0.isVerifiedGym }
+        let wanted = Set(gyms.map { identifier(for: $0) })
+        for region in manager.monitoredRegions where region.identifier.hasPrefix("tempo.gym.") && !wanted.contains(region.identifier) { manager.stopMonitoring(for: region) }
+        for config in gyms {
+            let id = identifier(for: config)
+            if let region = manager.monitoredRegions.first(where: { $0.identifier == id }) { manager.requestState(for: region); continue }
+            let region = CLCircularRegion(center: .init(latitude: config.latitude, longitude: config.longitude), radius: min(200, manager.maximumRegionMonitoringDistance), identifier: id)
+            region.notifyOnEntry = true; region.notifyOnExit = true; manager.startMonitoring(for: region)
         }
-        let region = CLCircularRegion(center: CLLocationCoordinate2D(latitude: configuration.latitude, longitude: configuration.longitude), radius: min(200, manager.maximumRegionMonitoringDistance), identifier: identifier)
-        region.notifyOnEntry = true; region.notifyOnExit = true
-        manager.startMonitoring(for: region)
+        monitoring = !wanted.isEmpty && wanted.isSubset(of: Set(manager.monitoredRegions.map(\.identifier)))
     }
     private func stopMonitoring() {
         monitoring = false
         for region in manager.monitoredRegions where region.identifier.hasPrefix("tempo.gym.") { manager.stopMonitoring(for: region) }
     }
     private func receive(inside: Bool, regionID: String) {
-        guard regionID == identifier, enabled, let owner, let configuration,
-              manager.authorizationStatus == .authorizedAlways,
+        guard enabled, let owner, let config = configuration(for: regionID), manager.authorizationStatus == .authorizedAlways,
               TempoWorkoutDetection.shared.enabled, TempoWorkoutDetection.shared.owner == owner else { return }
-        let previous = (session, pendingVisits)
-        if inside { session.enter(at: Date()) }
-        else if let visit = session.exit(at: Date(), configuration: configuration) {
-            pendingVisits.append(visit); pendingVisits = Array(pendingVisits.suffix(16))
-        }
-        do { try persist(); activeSince = session.enteredAt }
-        catch { session = previous.0; pendingVisits = previous.1; message = "detection.storageError".tempoLocalized; return }
+        let previous = registry
+        registry.receive(inside: inside, gymID: config.id, at: Date())
+        do { try persist(); activeSince = registry.sessions.values.compactMap(\.enteredAt).min() }
+        catch { registry = previous; message = "detection.storageError".tempoLocalized; return }
         Task { await deliverPendingVisits() }
     }
     /// Diske kaydedilmiş teslim kuyruğu, öneri de kalıcı yazılmadan silinmez.
@@ -172,13 +185,13 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
               TempoWorkoutDetection.shared.enabled else { return }
         draining = true; let token = scope
         defer { if token == scope { draining = false } }
-        for visit in pendingVisits {
+        for visit in registry.pendingVisits {
             guard token == scope, self.owner == owner, enabled else { return }
             guard await TempoWorkoutDetection.shared.addGymVisit(visit, owner: owner) else { message = "detection.storageError".tempoLocalized; return }
             guard token == scope, self.owner == owner, enabled else { return }
-            let previous = pendingVisits
-            pendingVisits.removeAll { $0.id == visit.id }
-            do { try persist() } catch { pendingVisits = previous; message = "detection.storageError".tempoLocalized; return }
+            let previous = registry.pendingVisits
+            registry.pendingVisits.removeAll { $0.id == visit.id }
+            do { try persist() } catch { registry.pendingVisits = previous; message = "detection.storageError".tempoLocalized; return }
         }
     }
     nonisolated func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
@@ -189,7 +202,7 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     }
     nonisolated func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
         let id = region.identifier
-        Task { @MainActor in guard id == self.identifier else { return }; self.monitoring = true; manager.requestState(for: region) }
+        Task { @MainActor in guard self.configuration(for: id) != nil else { return }; self.monitoring = self.configurations.filter { $0.isVerifiedGym }.allSatisfy { config in manager.monitoredRegions.contains { $0.identifier == self.identifier(for: config) } }; manager.requestState(for: region) }
     }
     nonisolated func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
         guard state != .unknown else { return }
@@ -229,10 +242,10 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     private func hash(_ id: String) -> String { SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined() }
     private func fileURL(_ id: String) -> URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("PassiveGym", isDirectory: true).appendingPathComponent(hash(id) + ".json") }
     private func persist() throws {
-        guard storageReady, let owner, let configuration else { throw failure("detection.storageError") }
+        guard storageReady, let owner else { throw failure("detection.storageError") }
         let url = fileURL(owner)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONEncoder().encode(State(configuration: configuration, enabled: enabled, session: session, pendingVisits: pendingVisits)).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try JSONEncoder().encode(registry).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         var values = URLResourceValues(); values.isExcludedFromBackup = true
         var resource = url; try? resource.setResourceValues(values)
     }

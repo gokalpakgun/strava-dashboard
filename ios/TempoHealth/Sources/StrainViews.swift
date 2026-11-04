@@ -38,7 +38,7 @@ final class StrainDashboardViewModel: ObservableObject {
         var seen = Set<String>()
         let local = records.filter { $0.source != .strava && $0.durationSeconds.isFinite && (1...604_800).contains($0.durationSeconds) && $0.date.timeIntervalSince1970.isFinite && $0.endedAt <= now && seen.insert($0.id).inserted }
         let inputs = local.compactMap(StrainInputAdapter.input)
-        let dailyStart = now.addingTimeInterval(-86_400)
+        let dailyStart = Calendar.autoupdatingCurrent.startOfDay(for: now)
         let summary = engine.summary(inputs, since: dailyStart, until: now)
         let recent = Array(local.filter { $0.endedAt > now.addingTimeInterval(-7 * 86_400) }.sorted { $0.date > $1.date }.prefix(30))
         var scores: [String: UniversalStrainScore] = [:]
@@ -118,7 +118,11 @@ struct StrainDashboardScreen: View {
             .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in refresh() }
     }
     private func refresh() {
-        viewModel.update(records: model.activityWorkouts.map { store.applying(to: WorkoutPayloadAdapter.record($0)) })
+        guard let owner = account.profile?.id, model.activityAccountID == owner else { viewModel.update(records: []); return }
+        viewModel.update(records: model.activityWorkouts.map {
+            let automatic = WorkoutPayloadAdapter.record($0)
+            return store.error == nil && store.owner == owner ? store.applying(to: automatic) : automatic
+        })
     }
 }
 

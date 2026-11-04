@@ -97,6 +97,11 @@ final class TempoNotifications: ObservableObject {
     @Published var message = ""
     @Published var busy = false
     @Published var pushAvailable = false
+    @Published private(set) var deviceRegistered = false
+    @Published private(set) var diagnosticMessage = ""
+    @Published private(set) var testing = false
+    private var registrationRetry: Task<Void, Never>?
+    private var retryAttempts = 0
     private var deviceToken: String?
     private var userId: String?
     private var accountToken: String?
@@ -128,6 +133,7 @@ final class TempoNotifications: ObservableObject {
         let nextToken = account.authorizationToken
         if userId != next || accountToken != nextToken {
             sessionGeneration = UUID()
+            registrationRetry?.cancel(); retryAttempts = 0; deviceRegistered = false; diagnosticMessage = ""; testing = false
             loadingID = nil
             refreshAgain = false
             busy = false
@@ -194,10 +200,13 @@ final class TempoNotifications: ObservableObject {
         }
     }
     func receivedDeviceToken(_ token: String) async {
+        if deviceToken != token { retryAttempts = 0; registrationRetry?.cancel() }
         deviceToken = token
         await registerDevice()
     }
     func registrationFailed() {
+        deviceRegistered = false
+        scheduleRegistrationRetry()
         guard userId != nil, accountToken != nil else { return }
         message = "Anlık bildirim bağlantısı kurulamadı. Uygulamayı yeniden açtığında tekrar denenecek.".tempoLocalized
     }
@@ -261,6 +270,7 @@ final class TempoNotifications: ObservableObject {
         route = ["social", "sports", "achievements", "summary", "notifications", "detection"].contains(destination) ? destination : "notifications"
     }
     func detach(eraseAccountData: Bool = false) {
+        registrationRetry?.cancel(); retryAttempts = 0; deviceRegistered = false; diagnosticMessage = ""; testing = false
         sessionGeneration = UUID()
         reminderGeneration = UUID()
         loadingID = nil
@@ -325,14 +335,72 @@ final class TempoNotifications: ObservableObject {
         do {
             let data = try await api(path: "/api/account/push/devices", method: "POST", token: auth, body: ["token": token, "environment": apnsEnvironment, "language": language, "friends": preferences.friends, "challenges": preferences.challenges])
             guard !Task.isCancelled, sessionGeneration == generation, userId == owner, accountToken == auth else { return }
+            deviceRegistered = true; retryAttempts = 0; registrationRetry?.cancel()
             lastRegistration = fingerprint
             lastRegistrationAt = Date()
             pushAvailable = (try? JSONDecoder().decode(PushResult.self, from: data).pushAvailable) ?? false
         } catch {
             guard !Task.isCancelled, sessionGeneration == generation, userId == owner, accountToken == auth else { return }
+            deviceRegistered = false
+            scheduleRegistrationRetry()
             message = "Anlık bildirim bağlantısı kurulamadı. Uygulamayı yeniden açtığında tekrar denenecek.".tempoLocalized
         }
     }
+    /// Kayıt hatasında yalnız sonraki uygulama açılışını bekleme; sınırlı sayıda yeniden bağlan.
+    private func scheduleRegistrationRetry() {
+        guard retryAttempts < 3, userId != nil, accountToken != nil else { return }
+        retryAttempts += 1; registrationRetry?.cancel()
+        let generation = sessionGeneration, delay = UInt64(retryAttempts * 10) * 1_000_000_000
+        registrationRetry = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: delay) } catch { return }
+            guard let self, self.sessionGeneration == generation else { return }
+            await self.reconnect()
+        }
+    }
+    func reconnect() async {
+        let generation = sessionGeneration
+        await refreshPermission()
+        guard !Task.isCancelled, sessionGeneration == generation, allowed, userId != nil else { return }
+#if !targetEnvironment(simulator)
+        UIApplication.shared.registerForRemoteNotifications()
+#endif
+        await registerDevice(force: true)
+        guard sessionGeneration == generation else { return }
+        await scheduleReminders()
+    }
+    /// Yerel deneme ile sunucudan gelen APNs denemesi birbirinden ayrılır.
+    func sendTest(remote: Bool) async {
+        guard !testing else { return }
+        let generation = sessionGeneration
+        testing = true; diagnosticMessage = ""
+        defer { if sessionGeneration == generation { testing = false } }
+        await refreshPermission()
+        guard sessionGeneration == generation, allowed else { diagnosticMessage = "push.test.permission".tempoLocalized; return }
+        do {
+            if remote {
+                await reconnect()
+                guard !Task.isCancelled, sessionGeneration == generation else { return }
+                guard let token = deviceToken, let auth = accountToken, deviceRegistered else { diagnosticMessage = "push.test.noDevice".tempoLocalized; return }
+                let data = try await api(path: "/api/account/push/test", method: "POST", token: auth, body: ["token": token, "environment": apnsEnvironment])
+                guard sessionGeneration == generation else { return }
+                let result = try JSONDecoder().decode(PushTestResult.self, from: data)
+                let reason = result.reason ?? result.error ?? "unavailable"
+                diagnosticMessage = (result.accepted == true ? "push.test.accepted" : reason == "test_rate_limited" ? "push.test.wait" : reason == "push_unconfigured" || reason == "provider_rejected" ? "push.test.server" : reason == "device_rejected" || reason == "device_not_registered" ? "push.test.noDevice" : "push.test.failed").tempoLocalized
+                if reason == "device_rejected" { deviceRegistered = false; lastRegistration = "" }
+            } else {
+                let content = UNMutableNotificationContent()
+                content.title = "Tempo"; content.body = "push.test.body".tempoLocalized; content.sound = .default
+                content.userInfo = ["tempo": ["destination": "notifications"]]
+                try await center.add(.init(identifier: "tempo.notification.test", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)))
+                guard sessionGeneration == generation else { center.removePendingNotificationRequests(withIdentifiers: ["tempo.notification.test"]); return }
+                diagnosticMessage = "push.test.scheduled".tempoLocalized
+            }
+        } catch {
+            guard sessionGeneration == generation else { return }
+            diagnosticMessage = "push.test.failed".tempoLocalized
+        }
+    }
+    private struct PushTestResult: Decodable { let accepted: Bool?; let reason: String?; let error: String? }
     private func scheduleReminders() async {
         let generation = sessionGeneration
         let revision = UUID()
@@ -378,7 +446,7 @@ final class TempoNotifications: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else { throw URLError(.badServerResponse) }
+        guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) || (path == "/api/account/push/test" && [409, 429, 503].contains(response.statusCode)) else { throw URLError(.badServerResponse) }
         return data
     }
     private struct Inbox: Decodable { let notifications: [TempoNotice]; let pushAvailable: Bool }
@@ -457,7 +525,15 @@ struct TempoNotificationSettingsScreen: View {
                     }
                     if notifications.allowed && !notifications.pushAvailable {
                         Text("Anlık bildirim hizmeti henüz hazır değil; uygulama içi bildirimlerini burada görebilirsin.").font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }                    if notifications.allowed {
+                        Label((notifications.deviceRegistered ? "push.device.ready" : "push.device.waiting").tempoLocalized, systemImage: notifications.deviceRegistered ? "checkmark.icloud" : "icloud.slash").font(.caption).foregroundStyle(TempoTheme.secondary)
+                        Button("push.reconnect".tempoLocalized) { Task { await notifications.reconnect() } }.frame(minHeight: 44).disabled(notifications.testing)
+                        Button("push.test.local".tempoLocalized) { Task { await notifications.sendTest(remote: false) } }.frame(minHeight: 44).disabled(notifications.testing)
+                        Button("push.test.remote".tempoLocalized) { Task { await notifications.sendTest(remote: true) } }.frame(minHeight: 44).disabled(notifications.testing)
+                        Text("push.test.focusHint".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                     }
+                    if !notifications.diagnosticMessage.isEmpty { Text(notifications.diagnosticMessage).font(.footnote).foregroundStyle(TempoTheme.secondary) }
+
                 }
             }
             TempoCard {
@@ -481,7 +557,7 @@ struct TempoNotificationSettingsScreen: View {
             if !notifications.message.isEmpty { Text(notifications.message).font(.caption).foregroundStyle(TempoTheme.secondary) }
         }.accessibilityIdentifier("screen.notificationSettings")
         .navigationTitle("Bildirim tercihleri").navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
-        .task { await notifications.refreshPermission() }
+        .task { await notifications.reconnect() }
         .onChange(of: notifications.preferences) { _, _ in Task { await notifications.savePreferences() } }
     }
 }

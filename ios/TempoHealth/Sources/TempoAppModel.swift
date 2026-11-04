@@ -909,10 +909,15 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
     }
 
     func dailyStrainSummary(using metrics: SportMetricsStore, now: Date = Date()) -> StrainWindowSummary {
-        guard metrics.error == nil, metrics.owner == activeTempoAccountId, activeTempoAccountId != nil else {
+        guard let owner = activeTempoAccountId else {
             return UniversalStrainEngine().summary([], since: Calendar.autoupdatingCurrent.startOfDay(for: now), until: now)
         }
-        let inputs = CrossSportInputAdapter.workouts(activityWorkouts, store: metrics, includeHealth: healthSyncEnabled).map(\.workout)
+        let inputs = activityWorkouts.compactMap { workout -> StrainWorkout? in
+            let automatic = WorkoutPayloadAdapter.record(workout)
+            let record = metrics.error == nil && metrics.owner == owner ? metrics.applying(to: automatic) : automatic
+            guard record.source != .strava, record.source != .health || healthSyncEnabled else { return nil }
+            return StrainInputAdapter.input(record)
+        }
         return UniversalStrainEngine().summary(inputs, since: Calendar.autoupdatingCurrent.startOfDay(for: now), until: now)
     }
 
@@ -1031,15 +1036,6 @@ final class TempoAppModel: NSObject, ObservableObject, ASWebAuthenticationPresen
             weightedFactors.append((
                 TempoBalanceFactor(id: "oxygen", title: "Kandaki oksijen", value: "\(number(current, digits: 1))%", score: score, symbol: "lungs.fill", tint: "green"),
                 0.05
-            ))
-        }
-
-        let waterValues = values(\.waterMl, factorID: "water")
-        if let current = waterValues.first {
-            let score = bounded((current / Double(dailyGoalMl)) * 100)
-            weightedFactors.append((
-                TempoBalanceFactor(id: "water", title: "Sıvı dengesi", value: "\(number(current)) ml", score: score, symbol: "drop.fill", tint: "blue"),
-                0.08
             ))
         }
 

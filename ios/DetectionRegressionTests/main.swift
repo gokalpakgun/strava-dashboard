@@ -126,4 +126,27 @@ expect(Engine.nativeReplacementID(start: phone.start, end: phone.end, history: [
 expect(Engine.nativeReplacementID(start: phone.start, end: phone.end, history: [phone], queued: [phone.id]) == nil, "queued user response is not replaced mid-commit")
 expect(Engine.nativeReplacementID(start: phone.start, end: phone.end, history: [dismissed], queued: []) == nil, "dismissed proposal identity is not revived")
 expect(Engine.nativeReplacementID(start: distant.start, end: distant.end, history: [phone], queued: []) == nil, "separate sessions cannot overwrite each other")
+
+var registry = PassiveGymRegistry()
+var firstGym = gym; firstGym.placeCategory = "fitness-center"
+var secondGym = gym; secondGym.name = "Second Gym"; secondGym.latitude += 0.02; secondGym.placeCategory = "fitness-center"
+registry.configurations = [firstGym, secondGym]; registry.enabled = true
+registry.receive(inside: true, gymID: firstGym.id, at: tuesday)
+registry.receive(inside: true, gymID: secondGym.id, at: tuesday.addingTimeInterval(60))
+expect(registry.sessions.values.filter { $0.enteredAt != nil }.count == 1, "overlapping gyms cannot count two simultaneous sessions")
+registry.receive(inside: false, gymID: firstGym.id, at: tuesday.addingTimeInterval(3600))
+registry.receive(inside: true, gymID: secondGym.id, at: tuesday.addingTimeInterval(7200))
+let recoveredGyms = try! JSONDecoder().decode(PassiveGymRegistry.self, from: JSONEncoder().encode(registry))
+expect(recoveredGyms.configurations.count == 2 && recoveredGyms.pendingVisits.count == 1, "multiple gyms and durable visit queue survive restart")
+registry = recoveredGyms
+registry.receive(inside: false, gymID: secondGym.id, at: tuesday.addingTimeInterval(10800))
+expect(registry.pendingVisits.count == 2, "separate gyms keep independent completed visits")
+var unverifiedGyms = PassiveGymRegistry(); unverifiedGyms.configurations = [gym]; unverifiedGyms.enabled = true
+unverifiedGyms.receive(inside: true, gymID: gym.id, at: tuesday)
+expect(unverifiedGyms.sessions.isEmpty, "arbitrary unverified coordinates never start passive monitoring")
+struct LegacyGymState: Encodable { let configuration: PassiveGymConfiguration; let enabled: Bool; let session: PassiveGymSession }
+let legacyGym = try! JSONDecoder().decode(PassiveGymRegistry.self, from: JSONEncoder().encode(LegacyGymState(configuration: gym, enabled: true, session: restoredLong)))
+expect(legacyGym.configurations.first?.name == gym.name && legacyGym.sessions.isEmpty && !legacyGym.configurations[0].isVerifiedGym, "legacy single gym migrates without silently verifying an arbitrary place")
+var invalidRegistry = registry; invalidRegistry.configurations.append(firstGym)
+expect((try? JSONDecoder().decode(PassiveGymRegistry.self, from: JSONEncoder().encode(invalidRegistry))) == nil, "duplicate gym identifiers are rejected on restore")
 print("DETECTION_CORE_PASS checks=\(checks) swift6=true")
