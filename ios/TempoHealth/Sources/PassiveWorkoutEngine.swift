@@ -91,8 +91,8 @@ struct PassiveGymSession: Codable, Sendable {
     mutating func enter(at date: Date) {
         guard date.timeIntervalSince1970.isFinite, lastEvent.map({ date >= $0 }) ?? true else { return }
         lastEvent = date
-        if let enteredAt { if date.timeIntervalSince(enteredAt) > 4 * 3600 { self.enteredAt = date } }
-        else { enteredAt = date }
+        // Tekrarlanan "içeride" sorgusu, uzun bir ziyareti yeni antrenman gibi başlatmaz.
+        if enteredAt == nil { enteredAt = date }
     }
     mutating func exit(at date: Date, configuration: PassiveGymConfiguration, calendar: Calendar = .current) -> PassiveGymVisit? {
         guard date.timeIntervalSince1970.isFinite, lastEvent.map({ date >= $0 }) ?? true else { return nil }

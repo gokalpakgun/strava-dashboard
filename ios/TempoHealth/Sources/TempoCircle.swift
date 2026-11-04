@@ -45,8 +45,8 @@ final class TempoCircleStore: ObservableObject {
     @Published private(set) var working = false
     @Published private(set) var message = ""
     private var owner: String?
-    private var syncing = false
-    private var lastSync: Date?
+    @Published private(set) var syncing = false
+    @Published private(set) var lastSync: Date?
     private var permissionRevision = UUID()
     func bind(_ next: String?) { if owner != next { permissionRevision = UUID(); owner = next; groups = []; message = ""; lastSync = nil } }
     func refresh(_ account: TempoAccountStore) async {
@@ -68,11 +68,12 @@ final class TempoCircleStore: ObservableObject {
             if body.action == "nudge" { message = "circle.nudgeQueued".tempoLocalized }
         } catch { if account.profile?.id == id { message = error.localizedDescription.tempoLocalized } }
     }
-    func create(friendIDs: [String], goal: String, account: TempoAccountStore) async -> Bool {
+    func create(friendIDs: [String], goal: String, target: Int = 3, stake: Int = 20, account: TempoAccountStore) async -> Bool {
         guard !working else { return false }; permissionRevision = UUID(); working = true; defer { working = false }
         let id = account.profile?.id
         do {
-            _ = try await account.circleRequest(path: "/api/account/passive-social/groups", method: "POST", body: CircleCreate(id: UUID().uuidString.lowercased(), friendIds: friendIDs, goal: goal, target: 3, stake: 20))
+            guard (1...5).contains(target), (1...50).contains(stake) else { message = "circle.invalid".tempoLocalized; return false }
+            _ = try await account.circleRequest(path: "/api/account/passive-social/groups", method: "POST", body: CircleCreate(id: UUID().uuidString.lowercased(), friendIds: friendIDs, goal: goal, target: target, stake: stake))
             guard account.profile?.id == id else { return false }; await refresh(account); return true
         } catch { if account.profile?.id == id { message = error.localizedDescription.tempoLocalized }; return false }
     }
@@ -187,22 +188,37 @@ struct TempoCircleScreen: View {
     @State private var selected: Set<String> = []
     @State private var showCreate = false
     @State private var goal = "sensorSessions"
+    @State private var target = 3
+    @State private var stake = 20
+    @State private var filter = "all"
+    @State private var friendsError = false
     @State private var pendingAccept: CircleGroup?
     @State private var pendingWithdraw: CircleGroup?
     @State private var pendingLeave: CircleGroup?
     var body: some View {
         TempoPage {
             PageTitle(title: "circle.title", subtitle: "circle.subtitle")
-            TempoCard { Text("circle.assurance".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true) }
+            overview
+            TempoDisclosureSection(title: "circle.howItWorks", icon: "info.circle") {
+                Text("circle.assurance".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             if !model.healthSyncEnabled { Button("circle.connectHealth".tempoLocalized) { model.connectAppleHealth() }.buttonStyle(TempoSecondaryButtonStyle()) }
             Button { showCreate = true } label: { Label("circle.create".tempoLocalized, systemImage: "person.3.fill").frame(maxWidth: .infinity) }.buttonStyle(TempoPrimaryButtonStyle())
             if store.loading && store.groups.isEmpty { ProgressView().frame(maxWidth: .infinity) }
             if !store.message.isEmpty { Text(store.message).font(.footnote).foregroundStyle(TempoTheme.orange).fixedSize(horizontal: false, vertical: true) }
             if !store.loading && store.groups.isEmpty { TempoCard { Label("circle.empty".tempoLocalized, systemImage: "circle.dotted").font(.subheadline).foregroundStyle(TempoTheme.secondary) } }
-            ForEach(store.groups) { group in groupCard(group) }
+            if !store.groups.isEmpty {
+                Picker("circle.filter".tempoLocalized, selection: $filter) {
+                    Text("circle.filter.all".tempoLocalized).tag("all")
+                    Text("circle.filter.invites".tempoLocalized).tag("invites")
+                    Text("circle.filter.joined".tempoLocalized).tag("joined")
+                }.pickerStyle(.menu)
+                if visibleGroups.isEmpty { Text("circle.filter.empty".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary) }
+            }
+            ForEach(visibleGroups) { group in groupCard(group) }
         }.navigationTitle("circle.title".tempoLocalized).navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
             .refreshable { await store.refresh(account); await store.sync(account: account, model: model) }
-            .task(id: account.profile?.id) { await store.refresh(account); friends = (try? await account.loadSocial().friends) ?? []; await store.sync(account: account, model: model) }
+            .task(id: account.profile?.id) { friends = []; selected = []; await store.refresh(account); await loadFriends(); await store.sync(account: account, model: model) }
             .sheet(isPresented: $showCreate) { creator }
             .sheet(item: $pendingAccept) { group in acceptance(group) }
             .confirmationDialog("circle.withdraw".tempoLocalized, isPresented: Binding(get: { pendingWithdraw != nil }, set: { if !$0 { pendingWithdraw = nil } }), titleVisibility: .visible) {
@@ -212,12 +228,45 @@ struct TempoCircleScreen: View {
                 Button("circle.leave".tempoLocalized, role: .destructive) { if let g = pendingLeave { Task { await store.command(CircleCommand(action: "leave"), group: g, account: account); pendingLeave = nil } } }
             } message: { Text("circle.withdrawDetail".tempoLocalized) }
     }
+    private var visibleGroups: [CircleGroup] {
+        store.groups.filter { filter == "all" || (filter == "invites" ? !$0.myAccepted && $0.editable : $0.myAccepted) }
+    }
+    private var overview: some View {
+        TempoCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("circle.overview".tempoLocalized, systemImage: "person.3.sequence.fill").font(.headline)
+                TempoMetricGrid(columns: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(store.groups.filter { $0.myAccepted }.count.formatted()).font(.title2.bold().monospacedDigit())
+                        Text("circle.filter.joined".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(store.groups.filter { !$0.myAccepted && $0.editable }.count.formatted()).font(.title2.bold().monospacedDigit())
+                        Text("circle.filter.invites".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
+                    }
+                }
+                HStack(spacing: 8) {
+                    if store.syncing { ProgressView(); Text("circle.syncing".tempoLocalized).font(.caption) }
+                    else if let date = store.lastSync { Text("circle.lastSync".tempoFormatted(date.formatted(date: .omitted, time: .shortened))).font(.caption).foregroundStyle(TempoTheme.secondary) }
+                }
+            }
+        }
+    }
+    private func loadFriends() async {
+        let owner = account.profile?.id
+        do {
+            let snapshot = try await account.loadSocial()
+            guard account.profile?.id == owner else { return }
+            friends = snapshot.friends; friendsError = false
+        } catch { if account.profile?.id == owner { friendsError = true } }
+    }
     private func groupCard(_ g: CircleGroup) -> some View {
         TempoCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Label("circle.week".tempoLocalized, systemImage: "circle.hexagongrid.fill").font(.headline); Spacer(); Text("circle.status.\(g.status)".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary) }
                 Text((g.goal == "venueVisits" ? "circle.venueGoal" : "circle.sensorGoal").tempoFormatted(g.target)).font(.title3.weight(.semibold))
                 Text(Date(timeIntervalSince1970: g.startsAt / 1000).formatted(date: .abbreviated, time: .omitted) + " – " + Date(timeIntervalSince1970: g.endsAt / 1000).formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                groupProgress(g)
                 HStack { Label("circle.balance".tempoFormatted(g.balance), systemImage: "seal.fill"); Spacer(); Text("circle.locked".tempoFormatted(g.locked)) }.font(.caption.weight(.medium))
                 ForEach(g.members) { m in
                     VStack(alignment: .leading, spacing: 8) {
@@ -249,13 +298,45 @@ struct TempoCircleScreen: View {
             }
         }
     }
+    private func groupProgress(_ group: CircleGroup) -> some View {
+        let accepted = group.members.filter(\.accepted)
+        let completed = accepted.filter { $0.days >= group.target }.count
+        let mine = group.members.first { $0.id == account.profile?.id }
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("circle.groupProgress".tempoFormatted(completed, group.members.count)).font(.subheadline.weight(.medium))
+            ProgressView(value: Double(completed), total: Double(max(1, group.members.count))).tint(TempoTheme.green)
+            if group.myAccepted, let mine {
+                Text((mine.days >= group.target ? "circle.goalComplete" : "circle.daysRemaining").tempoFormatted(max(0, group.target - mine.days)))
+                    .font(.footnote).foregroundStyle(TempoTheme.green)
+                if group.goal == "venueVisits" {
+                    NavigationLink(destination: PassiveGymSetupScreen()) { Label("circle.gymSetup".tempoLocalized, systemImage: "building.2") }.font(.footnote)
+                } else if !model.healthSyncEnabled {
+                    NavigationLink(destination: HealthScreen()) { Label("circle.connectHealth".tempoLocalized, systemImage: "heart") }.font(.footnote)
+                }
+            }
+            if accepted.count < group.members.count { Text("circle.waitingMembers".tempoFormatted(group.members.count - accepted.count)).font(.caption).foregroundStyle(TempoTheme.secondary) }
+        }.padding(14).background(TempoTheme.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+    }
     private var creator: some View {
         NavigationStack { TempoPage {
             PageTitle(title: "circle.create", subtitle: "circle.createHint")
             Picker("circle.goal".tempoLocalized, selection: $goal) { Text("circle.sensorLabel".tempoLocalized).tag("sensorSessions"); Text("circle.venueLabel".tempoLocalized).tag("venueVisits") }.pickerStyle(.menu)
+            TempoCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Stepper("circle.customDays".tempoFormatted(target), value: $target, in: 1...5)
+                    Picker("circle.customStake".tempoLocalized, selection: $stake) {
+                        ForEach([10, 20, 30, 50], id: \.self) { value in Text("circle.creditAmount".tempoFormatted(value)).tag(value) }
+                    }.pickerStyle(.menu)
+                    Text("circle.stakeTerms".tempoFormatted(stake, target)).font(.footnote).foregroundStyle(TempoTheme.secondary)
+                    if goal == "venueVisits" { NavigationLink("circle.gymSetup".tempoLocalized, destination: PassiveGymSetupScreen()) }
+                }
+            }
+            if friendsError {
+                Button("circle.reloadFriends".tempoLocalized) { Task { await loadFriends() } }.buttonStyle(TempoSecondaryButtonStyle())
+            }
             ForEach(friends) { friend in Button { if selected.contains(friend.id) { selected.remove(friend.id) } else if selected.count < 5 { selected.insert(friend.id) } } label: { HStack { Text(friend.displayName); Spacer(); Image(systemName: selected.contains(friend.id) ? "checkmark.circle.fill" : "circle") }.frame(minHeight: 48) }.foregroundStyle(TempoTheme.primary) }
             if friends.count < 2 { Text("circle.membersRequired".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary) }
-            Button { Task { if await store.create(friendIDs: selected.sorted(), goal: goal, account: account) { showCreate = false; selected = [] } } } label: { Text("circle.create".tempoLocalized).frame(maxWidth: .infinity) }.buttonStyle(TempoPrimaryButtonStyle()).disabled(selected.count < 2 || store.working)
+            Button { Task { if await store.create(friendIDs: selected.sorted(), goal: goal, target: target, stake: stake, account: account) { showCreate = false; selected = [] } } } label: { Text("circle.create".tempoLocalized).frame(maxWidth: .infinity) }.buttonStyle(TempoPrimaryButtonStyle()).disabled(selected.count < 2 || store.working)
             if !store.message.isEmpty { Text(store.message).font(.footnote).foregroundStyle(TempoTheme.orange) }
         }.toolbar { ToolbarItem(placement: .cancellationAction) { Button("Vazgeç".tempoLocalized) { showCreate = false } } } }
     }

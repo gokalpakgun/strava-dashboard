@@ -93,6 +93,7 @@ struct TempoHealthApp: App {
         guard scenePhase == .active else { return }
         while !Task.isCancelled {
             if account.isAuthenticated { model.processPassiveResponses() }
+            TempoPassiveGym.shared.refreshStatus()
             await detector.scan()
             await TempoCircleStore.shared.sync(account: account, model: model)
             do { try await Task.sleep(nanoseconds: 180_000_000_000) } catch { return }

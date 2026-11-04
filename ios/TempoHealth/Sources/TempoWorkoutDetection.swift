@@ -109,19 +109,27 @@ final class TempoWorkoutDetection: ObservableObject {
         state.enabled = false; enabled = false
         state.responses = []; responseRevision += 1
         stopRuntime(); persist()
+        TempoPassiveGym.shared.refreshStatus()
     }
-    func enableVenueDetection() {
-        guard owner != nil, storageReady else { return }
+    @discardableResult func enableVenueDetection() -> Bool {
+        guard owner != nil, storageReady else { return false }
+        let previous = state
         state.enabled = true; enabled = true; state.activatedAt = Date().addingTimeInterval(-24 * 3600)
-        persist(); startObservers(); scheduleBackground()
+        guard persist() else { state = previous; enabled = previous.enabled; return false }
+        startObservers(); scheduleBackground()
+        return true
     }
-    func addGymVisit(_ visit: PassiveGymVisit, owner expected: String) async {
-        guard owner == expected, enabled else { return }
+    @discardableResult func addGymVisit(_ visit: PassiveGymVisit, owner expected: String) async -> Bool {
+        guard owner == expected, enabled, storageReady else { return false }
         var candidate = DetectedWorkout(id: visit.id, start: visit.start, end: visit.end, origin: .gym, suggestedSport: "fitness")
         candidate.routineName = visit.routine
+        guard candidate.isValid else { return false }
         let fresh = WorkoutDetectionEngine.fresh([candidate], existing: state.known, history: state.records, now: Date())
-        state.records += fresh; persist()
+        let previous = state.records
+        state.records += fresh
+        guard persist() else { state.records = previous; candidates = previous; return false }
         await notifyIfNeeded(generation: generation)
+        return true
     }
     func queueResponse(id: UUID, owner expected: String, rpe: Int?) {
         guard owner == expected, enabled, pending.contains(where: { $0.id == id }), rpe.map({ (1...10).contains($0) }) ?? true else { return }
@@ -353,16 +361,17 @@ final class TempoWorkoutDetection: ObservableObject {
         enabled = state.enabled; candidates = state.records; lastScan = state.lastScan
         motionAuthorized = CMMotionActivityManager.authorizationStatus() == .authorized
     }
-    private func persist() {
+    @discardableResult private func persist() -> Bool {
         candidates = state.records
-        guard let owner, storageReady else { return }
+        guard let owner, storageReady else { return false }
         do {
             let url = fileURL(owner: owner)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(state).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             var values = URLResourceValues(); values.isExcludedFromBackup = true
-            var file = url; try file.setResourceValues(values)
-        } catch { message = "detection.storageError".tempoLocalized }
+            var file = url; try? file.setResourceValues(values)
+            return true
+        } catch { message = "detection.storageError".tempoLocalized; return false }
     }
 
     private func motionHistory(from start: Date, to end: Date) async throws -> [WorkoutDetectionEngine.MotionSlice] {

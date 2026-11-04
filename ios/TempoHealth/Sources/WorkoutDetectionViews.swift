@@ -205,7 +205,12 @@ private struct DetectedWorkoutReview: View {
                     Task {
                         await detector.scan(force: true)
                         do {
-                            try model.addDetectedWorkout(candidate, sportID: sportID)
+                            guard sessionID == model.activitySessionID,
+                                  let latest = detector.pending.first(where: { $0.id == candidate.id }) else {
+                                throw NSError(domain: "TempoWorkoutDetection", code: 1, userInfo: [NSLocalizedDescriptionKey: "detection.noLongerAvailable".tempoLocalized])
+                            }
+                            // Yeni Sağlık kaydı önerinin kaynağını değiştirmiş olabilir.
+                            try model.addDetectedWorkout(latest, sportID: latest.healthWorkoutID == nil ? sportID : latest.suggestedSport)
                             dismiss()
                         } catch { self.error = error.localizedDescription.tempoLocalized }
                         saving = false

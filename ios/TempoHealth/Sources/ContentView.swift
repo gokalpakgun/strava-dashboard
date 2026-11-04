@@ -10,9 +10,9 @@ enum TempoTheme {
     private static func adaptive(light: UIColor, dark: UIColor) -> Color {
         Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? dark : light })
     }
-    static let background = adaptive(light: UIColor(red: 0.96, green: 0.97, blue: 0.965, alpha: 1), dark: UIColor(red: 0.055, green: 0.058, blue: 0.065, alpha: 1))
-    static let card = adaptive(light: .white, dark: UIColor(red: 0.085, green: 0.09, blue: 0.10, alpha: 1))
-    static let raised = adaptive(light: UIColor(red: 0.92, green: 0.94, blue: 0.93, alpha: 1), dark: UIColor(red: 0.115, green: 0.12, blue: 0.13, alpha: 1))
+    static let background = adaptive(light: UIColor(red: 0.96, green: 0.97, blue: 0.965, alpha: 1), dark: UIColor(white: 0.012, alpha: 1))
+    static let card = adaptive(light: .white, dark: UIColor(red: 0.043, green: 0.047, blue: 0.052, alpha: 1))
+    static let raised = adaptive(light: UIColor(red: 0.92, green: 0.94, blue: 0.93, alpha: 1), dark: UIColor(red: 0.075, green: 0.081, blue: 0.088, alpha: 1))
     static let green = adaptive(light: UIColor(red: 0.12, green: 0.43, blue: 0.29, alpha: 1), dark: UIColor(red: 0.43, green: 0.77, blue: 0.57, alpha: 1))
     static let orange = adaptive(light: UIColor(red: 0.69, green: 0.27, blue: 0.12, alpha: 1), dark: UIColor(red: 0.91, green: 0.53, blue: 0.37, alpha: 1))
     static let blue = adaptive(light: UIColor(red: 0.16, green: 0.42, blue: 0.52, alpha: 1), dark: UIColor(red: 0.46, green: 0.68, blue: 0.72, alpha: 1))
@@ -2111,6 +2111,15 @@ struct SocialScreen: View {
         guard let value = Int(sharedTarget.trimmingCharacters(in: .whitespacesAndNewlines)), (1...1_000_000_000).contains(value) else { return nil }
         return value
     }
+    private var suggestedTeamTarget: Int {
+        let people = max(2, selectedFriends.count + 1)
+        switch metric {
+        case .steps: return people * 21_000
+        case .exerciseMinutes: return people * 90
+        case .movementDays: return people * 3
+        case .sleepDays, .hydrationDays: return people * 5
+        }
+    }
     @State private var selectedFriends: Set<String> = []
     @State private var selectedSection: SocialSection = .overview
     @State private var refreshGeneration = UUID()
@@ -2643,6 +2652,13 @@ struct SocialScreen: View {
                 TempoCard {
                     VStack(alignment: .leading, spacing: 11) {
                         Label("Haftalık yarış oluştur", systemImage: "trophy.fill").font(.headline).foregroundStyle(TempoTheme.orange)
+                        Menu {
+                            Button("social.template.movement".tempoLocalized) { useChallengeTemplate(.movementDays, titleKey: "social.template.movement") }
+                            Button("social.template.minutes".tempoLocalized) { useChallengeTemplate(.exerciseMinutes, titleKey: "social.template.minutes") }
+                            Button("social.template.sleep".tempoLocalized) { useChallengeTemplate(.sleepDays, titleKey: "social.template.sleep") }
+                        } label: {
+                            Label("social.templates".tempoLocalized, systemImage: "square.grid.2x2").frame(maxWidth: .infinity, minHeight: 44)
+                        }.buttonStyle(TempoSecondaryButtonStyle()).disabled(working)
                         TextField("Yarışma adı (isteğe bağlı)", text: $title).padding(12).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 14))
                             .onChange(of: title) { _, value in if value.count > 60 { title = String(value.prefix(60)) } }
                         Picker("Hedef", selection: $metric) {
@@ -2657,6 +2673,13 @@ struct SocialScreen: View {
                             TextField("social.coop.target".tempoLocalized, text: $sharedTarget).keyboardType(.numberPad)
                                 .onChange(of: sharedTarget) { _, value in if value.count > 10 { sharedTarget = String(value.prefix(10)) } }
                             Text("social.coop.targetHelp".tempoFormatted(metric.unit)).font(.caption).foregroundStyle(TempoTheme.secondary)
+                            Button {
+                                sharedTarget = String(suggestedTeamTarget)
+                            } label: {
+                                Label("social.coop.useSuggested".tempoFormatted(suggestedTeamTarget, metric.unit), systemImage: "wand.and.stars")
+                                    .font(.footnote).frame(maxWidth: .infinity, minHeight: 44)
+                            }.buttonStyle(TempoSecondaryButtonStyle()).disabled(working)
+                            Text("social.coop.suggestionHint".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                         }
                         if metric == .sleepDays || metric == .hydrationDays {
                             Text((metric == .sleepDays ? "social.metric.sleepHelp" : "social.metric.waterHelp").tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
@@ -2773,6 +2796,11 @@ struct SocialScreen: View {
         working = true; defer { working = false }
         do { try await account.respondToFriendRequest(id: request.id, accept: accept); notice = (accept ? "Arkadaşlık isteği kabul edildi." : "Arkadaşlık isteği reddedildi.").tempoLocalized; await refresh(clearNotice: false) }
         catch { notice = error.localizedDescription.tempoLocalized }
+    }
+
+    private func useChallengeTemplate(_ value: TempoSocialMetric, titleKey: String) {
+        metric = value; challengeMode = "coop"; title = titleKey.tempoLocalized
+        sharedTarget = ""; creationHealthSharing = nil
     }
 
     private func createChallenge() async {
@@ -3153,6 +3181,12 @@ private struct SocialChallengeCard: View {
                         Text("Skorlar mücadele başladığında hesaplanır.").font(.caption2).foregroundStyle(TempoTheme.secondary)
                     }
                 }
+                if let ends = TempoFormat.date(from: challenge.endsAt) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Label((ends > Date() ? "social.challenge.ends" : "social.challenge.ended").tempoFormatted(ends.formatted(date: .abbreviated, time: .shortened)), systemImage: "clock")
+                        Text("social.challenge.joinedCount".tempoFormatted(challenge.participants.filter { $0.status == "accepted" }.count, challenge.participants.count))
+                    }.font(.caption).foregroundStyle(TempoTheme.secondary)
+                }
                 if challenge.myStatus == "invited" {
                     Text("Bir arkadaşın seni bu haftalık yarışmaya çağırdı.").font(.caption).foregroundStyle(TempoTheme.secondary)
                     TempoMetricGrid(columns: 2) {
@@ -3245,6 +3279,8 @@ private struct MoreScreen: View {
                 SectionHeading(title: "Keşfet", caption: "", padding: false)
                 TempoCard {
                     VStack(spacing: 0) {
+                        item("passive.gym.title", "passive.gym.subtitle", "building.2", destination: PassiveGymSetupScreen())
+                        Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Spor Alanları", "Yakınındaki tesisler", "mappin.and.ellipse", destination: NearbyFacilitiesScreen())
                         Divider().overlay(TempoTheme.primary.opacity(0.06))
                         item("Rotalar", "Aktivite rotaların", "map", destination: RoutesScreen())
