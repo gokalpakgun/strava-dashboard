@@ -115,7 +115,7 @@ final class TempoCircleStore: ObservableObject {
             }
             let queryComplete = model.healthSyncEnabled && model.healthWorkoutError == nil && model.healthWorkoutReadAt.map { now.timeIntervalSince($0) < 3600 } == true
             let gym = TempoPassiveGym.shared
-            let venueComplete = gym.enabled && gym.authorization == .authorizedAlways && TempoWorkoutDetection.shared.enabled && TempoWorkoutDetection.shared.owner == id
+            let venueComplete = gym.enabled && gym.monitoring && gym.backgroundAvailable && gym.authorization == .authorizedAlways && TempoWorkoutDetection.shared.enabled && TempoWorkoutDetection.shared.owner == id
             _ = try await account.circleRequest(path: "/api/account/passive-social/sync", method: "POST", body: CircleSync(sessions: evidence, queryComplete: queryComplete, venueComplete: venueComplete))
             guard owner == id else { return }; lastSync = Date(); await refresh(account)
         } catch { if owner == id { message = error.localizedDescription.tempoLocalized } }

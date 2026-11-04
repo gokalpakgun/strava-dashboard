@@ -121,6 +121,11 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
         enabled = false; session = PassiveGymSession(); activeSince = nil; pendingVisits = []; stopMonitoring()
         do { try persist() } catch { message = "detection.storageError".tempoLocalized }
     }
+    func pauseForDetectionDisable() {
+        stopMonitoring(); session = PassiveGymSession(); activeSince = nil
+        guard owner != nil, configuration != nil else { return }
+        do { try persist() } catch { message = "detection.storageError".tempoLocalized }
+    }
     func removeAccount(_ id: String) {
         if owner == id { bind(owner: nil) }
         UserDefaults.standard.removeObject(forKey: disabledKey(id))

@@ -16,6 +16,7 @@ struct PassiveGymSetupScreen: View {
     @State private var chosen: CLLocationCoordinate2D?
     @State private var routines: [Int: String] = [:]
     @State private var notice = ""
+    @State private var saveSucceeded = false
     @State private var loadedOwner: String?
     private let weekdays = [2, 3, 4, 5, 6, 7, 1]
     private var coordinate: CLLocationCoordinate2D? { chosen ?? gym.configuration.map { .init(latitude: $0.latitude, longitude: $0.longitude) } }
@@ -44,7 +45,7 @@ struct PassiveGymSetupScreen: View {
                         .buttonStyle(TempoPrimaryButtonStyle())
                         .disabled(!ready || coordinate == nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 64)
                         .accessibilityIdentifier("gym.save")
-                    if !notice.isEmpty { Text(notice).font(.subheadline).foregroundStyle(TempoTheme.green).accessibilityIdentifier("gym.saveStatus") }
+                    if !notice.isEmpty { Text(notice).font(.subheadline).foregroundStyle(saveSucceeded ? TempoTheme.green : TempoTheme.orange).accessibilityIdentifier("gym.saveStatus") }
                     if !gym.message.isEmpty { Text(gym.message).font(.footnote).foregroundStyle(TempoTheme.orange) }
                     if gym.enabled {
                         Button("passive.gym.checkStatus".tempoLocalized) { gym.refreshStatus() }.frame(minHeight: 44)
@@ -70,6 +71,7 @@ struct PassiveGymSetupScreen: View {
             places.search(near: location)
         }
         .onChange(of: scenePhase) { _, value in if value == .active { gym.refreshStatus() } }
+        .onChange(of: name) { _, _ in notice = ""; saveSucceeded = false }
         .onDisappear { places.cancel() }
     }
     private var statusCard: some View {
@@ -151,10 +153,12 @@ struct PassiveGymSetupScreen: View {
     }
     private func openSettings() { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
     private func save() {
+        saveSucceeded = false
         guard ready, let coordinate else { notice = "passive.gym.accountPreparing".tempoLocalized; return }
         do {
             try gym.save(.init(name: name.trimmingCharacters(in: .whitespacesAndNewlines), latitude: coordinate.latitude, longitude: coordinate.longitude, routines: routines))
             notice = "passive.gym.saved".tempoLocalized
+            saveSucceeded = true
         } catch { notice = error.localizedDescription }
     }
 }

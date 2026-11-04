@@ -109,7 +109,7 @@ final class TempoWorkoutDetection: ObservableObject {
         state.enabled = false; enabled = false
         state.responses = []; responseRevision += 1
         stopRuntime(); persist()
-        TempoPassiveGym.shared.refreshStatus()
+        TempoPassiveGym.shared.pauseForDetectionDisable()
     }
     @discardableResult func enableVenueDetection() -> Bool {
         guard owner != nil, storageReady else { return false }
