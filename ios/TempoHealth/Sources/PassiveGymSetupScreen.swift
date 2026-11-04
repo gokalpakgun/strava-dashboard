@@ -72,7 +72,7 @@ struct PassiveGymSetupScreen: View {
         }
         .onChange(of: scenePhase) { _, value in if value == .active { gym.refreshStatus() } }
         .onChange(of: name) { _, _ in notice = ""; saveSucceeded = false }
-        .onDisappear { places.cancel() }
+        .onDisappear { places.cancel(); gym.cancelLocationRequest() }
     }
     private var statusCard: some View {
         TempoCard {
@@ -124,6 +124,7 @@ struct PassiveGymSetupScreen: View {
                 if !places.message.isEmpty { Text(places.message).font(.footnote).foregroundStyle(TempoTheme.secondary) }
                 ForEach(places.results) { item in
                     Button {
+                        gym.cancelLocationRequest()
                         chosen = item.coordinate; name = String(item.name.prefix(64)); notice = ""
                     } label: {
                         HStack(spacing: 12) {

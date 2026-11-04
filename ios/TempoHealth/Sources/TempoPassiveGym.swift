@@ -90,6 +90,9 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
             self.locating = false; self.pendingLocation = false; self.message = "passive.gym.locationFailed".tempoLocalized
         }
     }
+    func cancelLocationRequest() {
+        locationTimeout?.cancel(); pendingLocation = false; locating = false
+    }
     func save(_ config: PassiveGymConfiguration) throws {
         guard storageReady else { throw failure("detection.storageError") }
         guard let owner, TempoWorkoutDetection.shared.owner == owner else {
@@ -210,13 +213,14 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let value = locations.last
         Task { @MainActor in
+            guard self.locating else { return }
             self.locationTimeout?.cancel(); self.locating = false
             guard let value, value.horizontalAccuracy >= 0, value.horizontalAccuracy <= 150, abs(value.timestamp.timeIntervalSinceNow) <= 30 else { self.message = "passive.gym.locationFailed".tempoLocalized; return }
             self.location = value.coordinate
         }
     }
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        Task { @MainActor in self.locationTimeout?.cancel(); self.locating = false; self.pendingLocation = false; self.message = "passive.gym.locationFailed".tempoLocalized }
+        Task { @MainActor in guard self.locating else { return }; self.cancelLocationRequest(); self.message = "passive.gym.locationFailed".tempoLocalized }
     }
     nonisolated func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         Task { @MainActor in self.monitoring = false; self.message = "passive.gym.monitorFailed".tempoLocalized }
