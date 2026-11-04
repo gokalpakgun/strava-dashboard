@@ -104,7 +104,7 @@ final class TempoPassiveGym: NSObject, ObservableObject, CLLocationManagerDelega
                   existing.id == config.id else { throw failure("gym.verifiedOnly") }
             config.placeCategory = existing.placeCategory
         }
-        guard config.isValid else { throw failure("passive.gym.invalid") }
+        guard config.isValid, editingID == nil || configurations.contains(where: { $0.id == editingID }) else { throw failure("passive.gym.invalid") }
         let duplicate = configurations.first { $0.id != editingID && distance($0, config) < 100 }
         guard duplicate == nil else { throw failure("gym.duplicate") }
         guard editingID != nil || configurations.count < 10 else { throw failure("gym.limit") }

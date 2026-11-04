@@ -47,7 +47,7 @@ struct PassiveGymSetupScreen: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Button(action: save) { Text("passive.gym.save".tempoLocalized).frame(maxWidth: .infinity) }
                         .buttonStyle(TempoPrimaryButtonStyle())
-                        .disabled(!ready || coordinate == nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 64 || (chosenPlace == nil && !gym.configurations.contains { $0.id == editingID && $0.isVerifiedGym }))
+                        .disabled(!ready || loadedOwner != account.profile?.id || coordinate == nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 64 || (chosenPlace == nil && !gym.configurations.contains { $0.id == editingID && $0.isVerifiedGym }))
                         .accessibilityIdentifier("gym.save")
                     if !notice.isEmpty { Text(notice).font(.subheadline).foregroundStyle(saveSucceeded ? TempoTheme.green : TempoTheme.orange).accessibilityIdentifier("gym.saveStatus") }
                     if !gym.message.isEmpty { Text(gym.message).font(.footnote).foregroundStyle(TempoTheme.orange) }
@@ -197,7 +197,7 @@ struct PassiveGymSetupScreen: View {
     private func openSettings() { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
     private func save() {
         saveSucceeded = false
-        guard ready, let coordinate else { notice = "passive.gym.accountPreparing".tempoLocalized; return }
+        guard ready, loadedOwner == account.profile?.id, let coordinate else { notice = "passive.gym.accountPreparing".tempoLocalized; return }
         do {
             try gym.save(.init(name: name.trimmingCharacters(in: .whitespacesAndNewlines), latitude: coordinate.latitude, longitude: coordinate.longitude, routines: routines), place: chosenPlace, editingID: editingID)
             resetEditor()

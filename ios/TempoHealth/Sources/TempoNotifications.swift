@@ -525,7 +525,8 @@ struct TempoNotificationSettingsScreen: View {
                     }
                     if notifications.allowed && !notifications.pushAvailable {
                         Text("Anlık bildirim hizmeti henüz hazır değil; uygulama içi bildirimlerini burada görebilirsin.").font(.caption).foregroundStyle(TempoTheme.secondary)
-                    }                    if notifications.allowed {
+                    }
+                    if notifications.allowed {
                         Label((notifications.deviceRegistered ? "push.device.ready" : "push.device.waiting").tempoLocalized, systemImage: notifications.deviceRegistered ? "checkmark.icloud" : "icloud.slash").font(.caption).foregroundStyle(TempoTheme.secondary)
                         Button("push.reconnect".tempoLocalized) { Task { await notifications.reconnect() } }.frame(minHeight: 44).disabled(notifications.testing)
                         Button("push.test.local".tempoLocalized) { Task { await notifications.sendTest(remote: false) } }.frame(minHeight: 44).disabled(notifications.testing)
