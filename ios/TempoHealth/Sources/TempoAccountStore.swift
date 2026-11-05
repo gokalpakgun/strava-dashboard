@@ -203,6 +203,33 @@ final class TempoAccountStore: ObservableObject {
     @Published private(set) var stravaRevocationFailed = false
     @Published var errorMessage = ""
 
+    @Published private(set) var appleAvailable = false
+    @Published private(set) var appleNonce: String?
+    @Published private(set) var appleFlowID: String?
+    func prepareQuickAccess() async {
+        let generation = operationGeneration
+        do {
+            let options = try await request(path: "/api/account/access/options", method: "GET", body: Optional<EmptyPayload>.none, authenticated: false)
+            guard operationGeneration == generation, !Task.isCancelled, !isAuthenticated else { return }
+            appleAvailable = options.apple == true
+            if appleAvailable { await prepareAppleAccess() }
+        } catch { /* E-posta girişi çevrimdışı bir yapılandırma isteği nedeniyle engellenmez. */ }
+    }
+    func prepareAppleAccess() async {
+        guard !isBusy, !isAuthenticated else { return }
+        let generation = operationGeneration
+        appleNonce = nil; appleFlowID = nil
+        do {
+            let result = try await request(path: "/api/account/access/apple/start", method: "POST", body: EmptyPayload(), authenticated: false)
+            guard operationGeneration == generation, !Task.isCancelled, !isAuthenticated else { return }
+            appleNonce = result.nonce; appleFlowID = result.flowID
+        } catch { guard operationGeneration == generation else { return }; errorMessage = "auth.apple.unavailable" }
+    }
+    func signInWithApple(identityToken: String, authorizationCode: String, flowID: String) async -> Bool {
+        let success = await authenticate(path: "/api/account/access/apple/verify", payload: AppleAccessRequest(flowID: flowID, identityToken: identityToken, authorizationCode: authorizationCode))
+        if !success { await prepareAppleAccess() }
+        return success
+    }
     private let baseURL = URL(string: "https://apitempo.com")!
     private var sessionToken: String?
     private var operationGeneration = UUID()
@@ -286,6 +313,22 @@ final class TempoAccountStore: ObservableObject {
         )
     }
 
+    func requestEmailCode(email: String) async -> String? {
+        guard !isBusy else { return nil }
+        let operation = beginOperation(); errorMessage = ""
+        defer { finishOperation(operation) }
+        do {
+            let result = try await request(path: "/api/account/access/start", method: "POST", body: EmailCodeStart(email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()), authenticated: false)
+            guard operationGeneration == operation, !Task.isCancelled, let flow = result.flowID else { return nil }
+            return flow
+        } catch {
+            guard operationGeneration == operation, !Task.isCancelled else { return nil }
+            errorMessage = error.localizedDescription; return nil
+        }
+    }
+    func verifyEmailCode(email: String, flowID: String, code: String) async -> Bool {
+        await authenticate(path: "/api/account/access/verify", payload: EmailCodeVerify(email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), flowID: flowID, code: code))
+    }
     @discardableResult
     func requestPasswordReset(email: String) async -> Bool {
         guard !isBusy else { return false }
@@ -659,6 +702,9 @@ private struct ProfileUpdate: Encodable {
     let onboardingComplete: Bool?
 }
 
+private struct AppleAccessRequest: Encodable { let flowID: String; let identityToken: String; let authorizationCode: String }
+private struct EmailCodeStart: Encodable { let email: String }
+private struct EmailCodeVerify: Encodable { let email: String; let flowID: String; let code: String }
 private struct EmptyPayload: Encodable {}
 private struct SocialFriendRequest: Encodable { let username: String }
 private struct SocialFriendRequestResult: Decodable { let accepted: Bool? }
@@ -670,6 +716,9 @@ private struct SocialFriendRemoval: Encodable { let userId: String }
 private struct SocialChallengeCreate: Encodable { let title: String; let metric: String; let friendIds: [String]; let shareHealth: Bool; let mode: String; let targetTotal: Int? }
 private struct SocialChallengeAction: Encodable { let action: String; var share: Bool? = nil }
 private struct AccountEnvelope: Decodable {
+    var flowID: String? = nil
+    var nonce: String? = nil
+    var apple: Bool? = nil
     let token: String?
     let user: TempoUserProfile?
     let error: String?

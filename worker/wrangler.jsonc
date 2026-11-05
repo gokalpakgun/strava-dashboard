@@ -47,6 +47,10 @@
       {
         "name": "PASSIVE_RECIPIENT",
         "class_name": "PassiveRecipient"
+      },
+      {
+        "name": "AUTH_FLOW",
+        "class_name": "AuthFlow"
       }
     ]
   },
@@ -62,6 +66,12 @@
       "new_sqlite_classes": [
         "PassiveCohort",
         "PassiveRecipient"
+      ]
+    },
+    {
+      "tag": "passwordless-auth-v1",
+      "new_sqlite_classes": [
+        "AuthFlow"
       ]
     }
   ]

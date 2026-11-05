@@ -1,3 +1,5 @@
+import AuthenticationServices
+import CryptoKit
 import PhotosUI
 import Photos
 import SwiftUI
@@ -103,81 +105,128 @@ struct TempoAmbientBackground: View {
 }
 
 struct AccountWelcomeView: View {
+    @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
     var body: some View {
         NavigationStack {
-            ZStack {
-                TempoAmbientBackground()
-
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 20) {
-                        HStack(spacing: 8) {
-                            Circle().fill(TempoTheme.green).frame(width: 7, height: 7)
-                            Text("HAREKET · SAĞLIK · GELİŞİM".tempoSentenceCased)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(TempoTheme.secondary)
-                        }
-                        .padding(.top, 20)
-
-                        VStack(spacing: 10) {
-                            Text("Kendi ritmini\nbul.")
-                                .font(.system(size: 39, weight: .bold, design: .rounded))
-                                .tracking(-1.2)
-                                .multilineTextAlignment(.center)
-                                .minimumScaleFactor(0.84)
-                            Text("Sporlarını, sağlığını ve gelişimini sade bir kişisel alanda takip et.")
-                                .font(.subheadline)
-                                .foregroundStyle(TempoTheme.secondary)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(4)
-                                .padding(.horizontal, 8)
-                        }
-
-                        WellnessIntroCard()
-
-                        VStack(spacing: 11) {
-                            NavigationLink(destination: AccountFormView(mode: .signUp)) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Ücretsiz hesap oluştur")
-                                            .font(.headline)
-                                        Text("Kişisel alanını birkaç adımda hazırla")
-                                            .font(.caption2)
-                                            .opacity(0.68)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "arrow.right")
-                                        .frame(width: 32, height: 32)
-                                        .background(.black.opacity(0.08), in: Circle())
-                                }
-                                .frame(maxWidth: .infinity)
+            GeometryReader { geometry in
+                ZStack {
+                    TempoAmbientBackground()
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 30) {
+                            Spacer(minLength: 28)
+                            TempoBrandMark(size: 100).padding(.bottom, 6)
+                            VStack(spacing: 16) {
+                                Text("auth.welcome.headline".tempoLocalized).font(.largeTitle.weight(.bold)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                                Text("auth.welcome.detail".tempoLocalized).font(.body).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+                                Capsule().fill(LinearGradient(colors: [TempoTheme.blue, TempoTheme.green], startPoint: .leading, endPoint: .trailing))
+                                    .frame(width: 50, height: 3).scaleEffect(x: appeared && !reduceMotion ? 1.25 : 1)
+                                    .opacity(appeared && !reduceMotion ? 0.55 : 1)
+                                    .animation(reduceMotion ? nil : .easeInOut(duration: 2.2).repeatForever(autoreverses: true), value: appeared).accessibilityHidden(true)
                             }
-                            .buttonStyle(AccountPrimaryButtonStyle())
-                            .accessibilityIdentifier("auth.createAccount")
-
-                            NavigationLink(destination: AccountFormView(mode: .signIn)) {
-                                HStack {
-                                    Text("Zaten hesabım var")
-                                    Spacer()
-                                    Image(systemName: "person.crop.circle")
-                                }
-                                .frame(maxWidth: .infinity)
+                            Spacer(minLength: 30)
+                            VStack(spacing: 14) {
+                                if account.appleAvailable { TempoAppleAccessButton() }
+                                NavigationLink(destination: AccountCodeAccessScreen()) {
+                                    Label("auth.code.continue".tempoLocalized, systemImage: "envelope").frame(maxWidth: .infinity)
+                                }.buttonStyle(AccountPrimaryButtonStyle()).accessibilityIdentifier("auth.createAccount")
+                                NavigationLink(destination: AccountFormView(mode: .signIn)) { Text("auth.password.existing".tempoLocalized).font(.subheadline).frame(minHeight: 44) }
+                                    .buttonStyle(TempoSoftPressStyle()).foregroundStyle(TempoTheme.secondary).accessibilityIdentifier("auth.signIn")
+                                if !account.errorMessage.isEmpty { Text(account.errorMessage.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.orange) }
                             }
-                            .buttonStyle(AccountOutlineButtonStyle())
-                            .accessibilityIdentifier("auth.signIn")
-                        }
-
-                        Text("Tempo, hareketini günlük bir ritme dönüştürür.")
-                            .font(.caption)
-                            .foregroundStyle(TempoTheme.secondary)
-                            .multilineTextAlignment(.center)
+                            TempoAccessLegalNote()
+                        }.padding(.horizontal, 24).padding(.vertical, 24).frame(minHeight: max(0, geometry.size.height))
                     }
-                    .padding(.horizontal, 21)
-                    .padding(.top, 12)
-                    .padding(.bottom, 30)
+                }
+            }.toolbar(.hidden, for: .navigationBar).onAppear { appeared = true }.task { await account.prepareQuickAccess() }
+        }
+    }
+}
+
+private struct TempoAppleAccessButton: View {
+    @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var submittedFlow: String?
+    var body: some View {
+        SignInWithAppleButton(.continue) { request in
+            submittedFlow = account.appleFlowID
+            request.requestedScopes = [.email, .fullName]
+            if let nonce = account.appleNonce { request.nonce = SHA256.hash(data: Data(nonce.utf8)).map { String(format: "%02x", $0) }.joined() }
+        } onCompletion: { result in
+            switch result {
+            case .success(let authorization):
+                guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                      let token = credential.identityToken.flatMap({ String(data: $0, encoding: .utf8) }),
+                      let code = credential.authorizationCode.flatMap({ String(data: $0, encoding: .utf8) }), let flow = submittedFlow else { account.errorMessage = "auth.apple.failed"; return }
+                Task { await account.signInWithApple(identityToken: token, authorizationCode: code, flowID: flow) }
+            case .failure(let error):
+                if (error as? ASAuthorizationError)?.code != .canceled { account.errorMessage = "auth.apple.failed" }
+                Task { await account.prepareAppleAccess() }
+            }
+        }
+        .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black).frame(height: 54).clipShape(RoundedRectangle(cornerRadius: 17))
+        .disabled(account.isBusy || account.appleNonce == nil || account.appleFlowID == nil).accessibilityIdentifier("auth.apple")
+    }
+}
+
+private struct TempoAccessLegalNote: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("auth.legal".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).multilineTextAlignment(.center)
+            HStack(spacing: 18) {
+                Link("Kullanım Koşulları".tempoLocalized, destination: URL(string: "https://apitempo.com/terms")!)
+                Link("Gizlilik Politikası".tempoLocalized, destination: URL(string: "https://apitempo.com/privacy")!)
+            }.font(.caption).tint(TempoTheme.secondary)
+        }
+    }
+}
+
+private struct AccountCodeAccessScreen: View {
+    @EnvironmentObject private var account: TempoAccountStore
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var email = ""
+    @State private var code = ""
+    @State private var flowID: String?
+    @State private var resendAfter = Date.distantPast
+    @State private var now = Date()
+    @FocusState private var codeFocused: Bool
+    private var cleanEmail: String { email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+    private var validEmail: Bool { cleanEmail.count <= 254 && cleanEmail.range(of: #"^[^\s@]+@[^\s@]+\.[^\s@]+$"#, options: .regularExpression) != nil }
+    var body: some View {
+        TempoPage {
+            TempoBrandMark(size: 72).frame(maxWidth: .infinity).padding(.top, 18)
+            PageTitle(title: flowID == nil ? "auth.code.title" : "auth.code.verifyTitle", subtitle: flowID == nil ? "auth.code.detail" : "auth.code.sent")
+            TempoCard {
+                VStack(alignment: .leading, spacing: 18) {
+                    if flowID == nil {
+                        AccountTextField(title: "E-posta", icon: "envelope", text: $email, contentType: .emailAddress).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("auth.code.email")
+                    } else {
+                        Text(cleanEmail).font(.subheadline).foregroundStyle(TempoTheme.secondary)
+                        TextField("auth.code.placeholder".tempoLocalized, text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode).font(.largeTitle.monospacedDigit()).focused($codeFocused)
+                            .onChange(of: code) { _, value in code = String(value.filter { $0.isASCII && $0.isNumber }.prefix(6)) }.accessibilityIdentifier("auth.code.value")
+                    }
+                    if !account.errorMessage.isEmpty { Label(account.errorMessage.tempoLocalized, systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(TempoTheme.orange) }
+                    Button(action: submit) {
+                        HStack { if account.isBusy { ProgressView() }; Text((flowID == nil ? "auth.code.send" : "auth.code.verify").tempoLocalized) }.frame(maxWidth: .infinity)
+                    }.buttonStyle(AccountPrimaryButtonStyle()).disabled(account.isBusy || (flowID == nil ? !validEmail : code.count != 6)).accessibilityIdentifier("auth.code.submit")
+                    if flowID != nil {
+                        Button("auth.code.resend".tempoLocalized) { Task { await send() } }.frame(minHeight: 44).disabled(account.isBusy || now < resendAfter)
+                        Button("auth.code.changeEmail".tempoLocalized) { flowID = nil; code = ""; account.errorMessage = "" }.frame(minHeight: 44).disabled(account.isBusy)
+                    }
+                    Text("auth.code.safety".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-        }
+            TempoAccessLegalNote()
+        }.navigationTitle("auth.code.continue".tempoLocalized).navigationBarTitleDisplayMode(.inline).tempoGlassBackButton()
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
+            .onAppear { account.errorMessage = "" }
+    }
+    private func submit() { Task { if let flowID { await account.verifyEmailCode(email: cleanEmail, flowID: flowID, code: code) } else { await send() } } }
+    private func send() async {
+        let requested = cleanEmail
+        if let flow = await account.requestEmailCode(email: requested), cleanEmail == requested { flowID = flow; code = ""; resendAfter = Date().addingTimeInterval(60); codeFocused = true }
     }
 }
 
@@ -552,6 +601,10 @@ struct AccountOnboardingView: View {
     @EnvironmentObject private var account: TempoAccountStore
     @EnvironmentObject private var model: TempoAppModel
     @State private var step = 0
+    @AppStorage("tempo.permissions.setup.v1") private var permissionsComplete = false
+    @State private var invitation = ""
+    @State private var anchorMessage = ""
+    @State private var sendingInvite = false
     @State private var displayName = ""
     @State private var username = ""
     @State private var selectedSports = Set<TempoSportChoice>()
@@ -566,14 +619,17 @@ struct AccountOnboardingView: View {
             TempoTheme.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 onboardingProgress
-                ScrollView {
-                    Group {
-                        if step == 0 { profileStep }
-                        else if step == 1 { sportsStep }
-                        else { connectionsStep }
+                if step == 3 {
+                    TempoPermissionSetupScreen { permissionsComplete = true; withAnimation { step = 4 } }
+                } else {
+                    ScrollView {
+                        Group {
+                            if step == 0 { TempoValueIntro { withAnimation { step = 1 } } }
+                            else if step == 1 { profileStep }
+                            else if step == 2 { sportsStep }
+                            else { anchorStep }
+                        }.padding(.horizontal, 20).padding(.bottom, 32)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
                 }
             }
         }
@@ -604,10 +660,10 @@ struct AccountOnboardingView: View {
             HStack {
                 Text("TEMPO").font(.caption.bold()).tracking(3).foregroundStyle(TempoTheme.green)
                 Spacer()
-                Text("\(step + 1) / 3").font(.caption.bold()).foregroundStyle(TempoTheme.secondary)
+                Text("\(step + 1) / 5").font(.caption.bold()).foregroundStyle(TempoTheme.secondary)
             }
             HStack(spacing: 7) {
-                ForEach(0..<3, id: \.self) { index in
+                ForEach(0..<5, id: \.self) { index in
                     Capsule().fill(index <= step ? TempoTheme.green : TempoTheme.raised).frame(height: 5)
                 }
             }
@@ -645,7 +701,7 @@ struct AccountOnboardingView: View {
             Button {
                 Task {
                     if await account.updateProfile(displayName: displayName, username: username, avatarData: avatarData) {
-                        withAnimation { step = 1 }
+                        withAnimation { step = 2 }
                     }
                 }
             } label: {
@@ -667,12 +723,12 @@ struct AccountOnboardingView: View {
             SportSelectionGrid(selection: $selectedSports)
             accountError
             HStack(spacing: 10) {
-                Button("Geri") { withAnimation { step = 0 } }
+                Button("Geri") { withAnimation { step = 1 } }
                     .buttonStyle(AccountOutlineButtonStyle())
                 Button {
                     Task {
                         if await account.updateProfile(sports: selectedSports) {
-                            withAnimation { step = 2 }
+                            withAnimation { step = 3 }
                         }
                     }
                 } label: {
@@ -683,6 +739,41 @@ struct AccountOnboardingView: View {
                 .disabled(account.isBusy || selectedSports.isEmpty)
             }
         }
+    }
+
+    private var anchorStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            OnboardingTitle(title: "auth.anchor.title", subtitle: "auth.anchor.detail")
+            TempoCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Label("auth.anchor.invite".tempoLocalized, systemImage: "person.badge.plus").font(.headline)
+                    TextField("auth.anchor.placeholder".tempoLocalized, text: $invitation).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
+                    Button { Task { await sendAnchorInvite() } } label: {
+                        HStack { if sendingInvite { ProgressView() }; Text("auth.anchor.send".tempoLocalized) }.frame(maxWidth: .infinity)
+                    }.buttonStyle(AccountPrimaryButtonStyle()).disabled(sendingInvite || invitation.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                    if !anchorMessage.isEmpty { Text(anchorMessage.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary) }
+                    if let username = account.profile?.username {
+                        ShareLink(item: "auth.anchor.share".tempoFormatted(username)) { Label("auth.anchor.shareAction".tempoLocalized, systemImage: "square.and.arrow.up").frame(minHeight: 44) }
+                    }
+                }
+            }
+            NavigationLink(destination: TempoCircleScreen()) {
+                TempoMenuRow(title: "auth.anchor.group", subtitle: "auth.anchor.groupDetail", icon: "person.3.fill")
+            }.buttonStyle(TempoSoftPressStyle())
+            Text("auth.anchor.optional".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
+            Button {
+                Task { if await account.updateProfile(onboardingComplete: true) { model.skipStravaForNow() } }
+            } label: { Text("auth.anchor.finish".tempoLocalized).frame(maxWidth: .infinity) }
+                .buttonStyle(AccountPrimaryButtonStyle()).disabled(account.isBusy || sendingInvite).accessibilityIdentifier("onboarding.finish")
+            accountError
+        }
+    }
+    private func sendAnchorInvite() async {
+        guard !sendingInvite else { return }; sendingInvite = true; anchorMessage = ""
+        defer { sendingInvite = false }
+        let value = invitation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+        do { let accepted = try await account.sendFriendRequest(username: value); anchorMessage = accepted ? "auth.anchor.connected" : "auth.anchor.sent"; invitation = "" }
+        catch { anchorMessage = error.localizedDescription }
     }
 
     private var connectionsStep: some View {
@@ -1918,19 +2009,29 @@ private struct AccountAvatarView: View {
 }
 
 private struct AccountPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.headline).foregroundStyle(TempoTheme.onAccent).padding(.vertical, 16)
             .padding(.horizontal, 18)
             .background(TempoTheme.green.opacity(configuration.isPressed ? 0.76 : 1), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, pressed in pressed && isEnabled }
     }
 }
 
 private struct AccountOutlineButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.headline).foregroundStyle(TempoTheme.primary).padding(.vertical, 16)
             .padding(.horizontal, 18)
             .background(TempoTheme.card.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(TempoTheme.primary.opacity(0.08)))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, pressed in pressed && isEnabled }
     }
 }
 
@@ -2043,5 +2144,30 @@ struct TempoGlassBackButtonModifier: ViewModifier {
 extension View {
     func tempoGlassBackButton(_ enabled: Bool = true) -> some View {
         modifier(TempoGlassBackButtonModifier(enabled: enabled))
+    }
+}
+
+private struct TempoValueIntro: View {
+    let onFinish: () -> Void
+    @State private var page = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let symbols = ["bag.fill", "person.3.fill", "figure.run.circle.fill"]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack { TempoBrandMark(size: 56); Spacer(); Text("\(page + 1) / 3").font(.caption.monospacedDigit()).foregroundStyle(TempoTheme.secondary) }
+            TempoCard {
+                VStack(alignment: .leading, spacing: 22) {
+                    TempoIconBadge(symbol: symbols[page], color: page == 1 ? TempoTheme.green : TempoTheme.blue, size: 64)
+                    Text(("auth.intro." + String(page) + ".title").tempoLocalized).font(.largeTitle.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(("auth.intro." + String(page) + ".detail").tempoLocalized).font(.body).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, minHeight: 240, alignment: .leading).id(page).transition(.opacity)
+            }
+            HStack(spacing: 7) { ForEach(0..<3, id: \.self) { index in Capsule().fill(index == page ? TempoTheme.green : TempoTheme.raised).frame(height: 4) } }.accessibilityHidden(true)
+            Button {
+                if page < 2 { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { page += 1 } } else { onFinish() }
+            } label: { Label((page == 2 ? "auth.intro.finish" : "Devam et").tempoLocalized, systemImage: "arrow.right").frame(maxWidth: .infinity) }
+                .buttonStyle(AccountPrimaryButtonStyle())
+            Button("auth.intro.skip".tempoLocalized, action: onFinish).font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).foregroundStyle(TempoTheme.secondary)
+        }.padding(.top, 12)
     }
 }

@@ -45,6 +45,8 @@ jobs:
           printf '%s' "$CERTIFICATE_BASE64" | base64 -D > "$CERTIFICATE_PATH"
           printf '%s' "$PROVISIONING_PROFILE_BASE64" | base64 -D > "$PROFILE_PATH"
           security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          PROFILE_APPLE_SIGNIN="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.applesignin:0' "$PROFILE_PLIST")"
+          test "$PROFILE_APPLE_SIGNIN" = "Default"
           PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")"
           PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")"
 
@@ -100,11 +102,13 @@ jobs:
           codesign -d --entitlements :- "$SIGNED_APP" > "$RUNNER_TEMP/Tempo-signed-entitlements.plist"
           SIGNED_PUSH=$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$RUNNER_TEMP/Tempo-signed-entitlements.plist")
           SIGNED_HEALTH=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.healthkit' "$RUNNER_TEMP/Tempo-signed-entitlements.plist")
+          SIGNED_APPLE_SIGNIN=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.applesignin:0' "$RUNNER_TEMP/Tempo-signed-entitlements.plist")
+          test "$SIGNED_APPLE_SIGNIN" = "Default"
           SIGNED_TEAM=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$RUNNER_TEMP/Tempo-signed-entitlements.plist")
           test "$SIGNED_PUSH" = "production"
           test "$SIGNED_HEALTH" = "true"
           test "$SIGNED_TEAM" = "DV675SBH9Q"
-          echo "Verified signed capabilities: production APNs, HealthKit, expected Tempo team."
+          echo "Verified signed capabilities: production APNs, HealthKit, Sign in with Apple, expected Tempo team."
 
 
       - name: TestFlight IPA dosyasını dışa aktar

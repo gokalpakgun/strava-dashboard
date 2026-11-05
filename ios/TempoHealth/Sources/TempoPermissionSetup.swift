@@ -8,6 +8,7 @@ import UserNotifications
 
 private enum TempoSetupPermission: String, CaseIterable, Identifiable {
     case health, location, motion, notifications, photos
+    static var allCases: [TempoSetupPermission] { [.health, .location, .motion, .notifications] }
     var id: String { rawValue }
     var title: String { "permissions.\(rawValue).title".tempoLocalized }
     var detail: String { "permissions.\(rawValue).detail".tempoLocalized }

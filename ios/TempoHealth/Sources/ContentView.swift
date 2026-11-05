@@ -71,12 +71,14 @@ struct TempoIconBadge: View {
 }
 
 struct TempoSoftPressStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.84 : 1)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, pressed in pressed && isEnabled }
     }
 }
 
@@ -149,7 +151,7 @@ struct ContentView: View {
             } else if !account.isAuthenticated {
                 AccountWelcomeView()
             } else if account.profile?.onboardingComplete != true {
-                AccountOnboardingView()
+                NavigationStack { AccountOnboardingView() }
             } else {
                 TempoStartupPermissionGate {
                     TempoMainShell(selectedTab: $selectedTab)
@@ -379,7 +381,7 @@ private struct TempoGlassTabBar: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TempoSoftPressStyle())
                 .accessibilityIdentifier("tab.\(tab.id)")
                 .accessibilityLabel(tab.title.tempoLocalized)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -473,7 +475,7 @@ private struct WelcomeScreen: View {
                         )
                         .shadow(color: TempoTheme.orange.opacity(0.24), radius: 18, y: 9)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(TempoSoftPressStyle())
                     .disabled(model.isBusy)
                     .opacity(model.isBusy ? 0.76 : 1)
 
@@ -629,7 +631,7 @@ private struct HomeScreen: View {
                                 }
                                 .frame(minHeight: 44).padding(.horizontal, 4)
                             }
-                            .buttonStyle(.plain).foregroundStyle(TempoTheme.secondary)
+                            .buttonStyle(TempoSoftPressStyle()).foregroundStyle(TempoTheme.secondary)
                             .accessibilityLabel("Antrenman geçmişi".tempoLocalized)
                         }
                         ManualWorkoutRow(workout: workout)
@@ -638,7 +640,7 @@ private struct HomeScreen: View {
                 TempoDisclosureSection(title: "Strava araçları", icon: "link") {
                     NavigationLink(destination: RoutesScreen()) {
                         TempoMenuRow(title: "Rotalar", subtitle: "Strava’daki kayıtların", icon: "map")
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(TempoSoftPressStyle())
                     if let dashboard = model.dashboard {
                         RecentActivitiesPanel(activities: dashboard.activities)
                     } else if model.isConnected {
@@ -679,7 +681,7 @@ private struct HomeScreen: View {
                 .background(TempoTheme.raised.opacity(0.55), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
-            .buttonStyle(.plain).accessibilityIdentifier("home.monthly")
+            .buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("home.monthly")
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -772,7 +774,7 @@ private struct HomeMovementMenuCard: View {
             )
             .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.08)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
     }
 }
 
@@ -820,7 +822,7 @@ private struct HomeSocialCard: View {
             .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.085), lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
         .accessibilityHint("Sosyal alana git")
     }
 }
@@ -1063,7 +1065,7 @@ private struct ActivitiesScreen: View {
                                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.secondary)
                             }.foregroundStyle(TempoTheme.primary).padding(14).frame(maxWidth: .infinity, minHeight: 64).background(TempoTheme.raised, in: RoundedRectangle(cornerRadius: 17))
                         }.accessibilityIdentifier("activity.live.start")
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(TempoSoftPressStyle())
                 }
                 if !model.activityWorkouts.isEmpty {
                     TempoMetricGrid {
@@ -1090,7 +1092,7 @@ private struct ActivitiesScreen: View {
                             Button { selectedFilter = option } label: {
                                 if selectedFilter.id == option.id { Label(option.title.tempoLocalized, systemImage: "checkmark") }
                                 else { Text(option.title.tempoLocalized) }
-                            }.buttonStyle(.plain).accessibilityIdentifier("activity.filter.\(option.id)")
+                            }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("activity.filter.\(option.id)")
                         }
                 } label: {
                     HStack(spacing: 12) {
@@ -1102,7 +1104,7 @@ private struct ActivitiesScreen: View {
                     }
                     .padding(16).frame(maxWidth: .infinity, minHeight: 48)
                     .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
-                }.buttonStyle(.plain).accessibilityIdentifier("activity.filters")
+                }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("activity.filters")
                 SectionHeading(title: "Antrenmanların", caption: "TEMPO + APPLE SAĞLIK", padding: false)
                 ForEach(activityDays) { day in
                     VStack(alignment: .leading, spacing: 12) {
@@ -1127,7 +1129,7 @@ private struct ActivitiesScreen: View {
                     Text("Strava kayıtları burada doğrudan görüntülenir; Tempo puanlarına ve hedeflerine katılmaz.").font(.caption2).foregroundStyle(TempoTheme.secondary)
                     if model.dashboard == nil { LoadingDashboardCard() }
                     else {
-                        ForEach(stravaRecords) { activity in NavigationLink(destination: ActivityDetailScreen(activity: activity)) { ActivityRow(activity: activity) }.buttonStyle(.plain) }
+                        ForEach(stravaRecords) { activity in NavigationLink(destination: ActivityDetailScreen(activity: activity)) { ActivityRow(activity: activity) }.buttonStyle(TempoSoftPressStyle()) }
                         if stravaRecords.isEmpty { EmptyCard(icon: "magnifyingglass", text: "Bu filtreye uygun Strava aktivitesi yok.") }
                     }
                 } else { StravaOptionalCard(title: "Strava bağlantısı isteğe bağlı", message: "Bağladığında Strava kayıtlarını burada ayrı kaynak etiketiyle görebilirsin.") }
@@ -1238,7 +1240,7 @@ private struct ManualWorkoutRow: View {
                             .frame(width: 44, height: 44)
                             .background(TempoTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(TempoSoftPressStyle())
                     .accessibilityLabel("Rotayı görüntüle")
                 }
                 if let url = model.manualWorkoutPhotoURL(for: workout), let image = UIImage(contentsOfFile: url.path) {
@@ -1246,7 +1248,7 @@ private struct ManualWorkoutRow: View {
                         Image(uiImage: image).resizable().scaledToFill()
                             .frame(width: 54, height: 54).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(TempoSoftPressStyle())
                 } else if workout.photoFilename != nil {
                     Image(systemName: "photo").foregroundStyle(TempoTheme.secondary).frame(width: 40, height: 40)
                 }
@@ -1508,7 +1510,7 @@ private struct RecentActivitiesPanel: View {
                             .stroke(LinearGradient(colors: [TempoTheme.green.opacity(0.24), TempoTheme.primary.opacity(0.045)], startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TempoSoftPressStyle())
 
                 let secondary = Array(activities.dropFirst().prefix(2))
                 if !secondary.isEmpty {
@@ -1541,7 +1543,7 @@ private struct RecentActivitiesPanel: View {
                                 .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(TempoTheme.primary.opacity(0.05)))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(TempoSoftPressStyle())
                         }
                         if secondary.count == 1 { Color.clear.frame(maxWidth: .infinity) }
                     }
@@ -1570,7 +1572,7 @@ private struct RecentActivitiesPanel: View {
                     .padding(14)
                     .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TempoSoftPressStyle())
             } else {
                 EmptyCard(icon: "figure.run", text: "Henüz aktivite bulunamadı.")
             }
@@ -1707,7 +1709,7 @@ private struct ActivityTimelineScreen: View {
                                         .padding(.vertical, 10)
                                         .background(filter.id == option.id ? TempoTheme.green : TempoTheme.card, in: Capsule())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(TempoSoftPressStyle())
                             }
                         }
                     }
@@ -1729,7 +1731,7 @@ private struct ActivityTimelineScreen: View {
                                     NavigationLink(destination: ActivityDetailScreen(activity: activity)) {
                                         ActivityRow(activity: activity)
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(TempoSoftPressStyle())
                                 }
                             }
                         }
@@ -1957,7 +1959,7 @@ struct CoachScreen: View {
                         Text(suggestion.tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.primary.opacity(0.9))
                         Spacer()
                     }.padding(13).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                }.buttonStyle(.plain).disabled(isSending || model.isCoachLoading).accessibilityIdentifier("coach.suggestion.\(index)")
+                }.buttonStyle(TempoSoftPressStyle()).disabled(isSending || model.isCoachLoading).accessibilityIdentifier("coach.suggestion.\(index)")
             }
         }
     }
@@ -1994,7 +1996,7 @@ struct CoachScreen: View {
                     Image(systemName: "arrow.up").font(.headline.bold())
                         .frame(width: 46, height: 46).foregroundStyle(TempoTheme.onAccent)
                         .background(TempoTheme.green, in: Circle())
-                }.buttonStyle(.plain).accessibilityLabel("Gönder".tempoLocalized).accessibilityIdentifier("coach.send")
+                }.buttonStyle(TempoSoftPressStyle()).accessibilityLabel("Gönder".tempoLocalized).accessibilityIdentifier("coach.send")
                     .disabled(isSending || model.isCoachLoading || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.utf16.count > 1_500)
                     .opacity(isSending || model.isCoachLoading || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
             }
@@ -2179,7 +2181,7 @@ struct SocialScreen: View {
                 PageTitle(title: "Sosyal", subtitle: "Arkadaşlarınla hareket et")
                 Button { selectedSection = .friends; showAddFriend = true } label: {
                     TempoIconBadge(symbol: "person.badge.plus", color: TempoTheme.green, size: 48)
-                }.buttonStyle(.plain).foregroundStyle(TempoTheme.green).disabled(working)
+                }.buttonStyle(TempoSoftPressStyle()).foregroundStyle(TempoTheme.green).disabled(working)
                     .accessibilityLabel("Arkadaş ekle".tempoLocalized)
             }
             sectionSelector
@@ -2191,7 +2193,7 @@ struct SocialScreen: View {
                         Spacer(); Image(systemName: "chevron.right").foregroundStyle(TempoTheme.secondary)
                     }
                 }
-            }.buttonStyle(.plain)
+            }.buttonStyle(TempoSoftPressStyle())
             if !notice.isEmpty {
                 Label(notice, systemImage: "info.circle").font(.caption).foregroundStyle(TempoTheme.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
@@ -2335,7 +2337,7 @@ struct SocialScreen: View {
                                     .matchedGeometryEffect(id: "social.selection", in: socialSelection)
                             }
                         }
-                }.buttonStyle(.plain)
+                }.buttonStyle(TempoSoftPressStyle())
                     .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
                     .accessibilityIdentifier("social.section.\(section.rawValue)")
             }
@@ -2382,7 +2384,7 @@ struct SocialScreen: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold))
                     }.padding(16).background(TempoTheme.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 22))
-                }.buttonStyle(.plain)
+                }.buttonStyle(TempoSoftPressStyle())
             }
             if !favoriteFriends.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
@@ -2396,7 +2398,7 @@ struct SocialScreen: View {
                                         Text(friend.displayName.isEmpty ? friend.username : friend.displayName)
                                             .font(.caption.weight(.medium)).lineLimit(2).multilineTextAlignment(.center)
                                     }.frame(width: 88).contentShape(Rectangle())
-                                }.buttonStyle(.plain).disabled(working)
+                                }.buttonStyle(TempoSoftPressStyle()).disabled(working)
                             }
                         }.padding(.vertical, 4)
                     }
@@ -2407,7 +2409,7 @@ struct SocialScreen: View {
                     Label("Yarışma skorları için Apple Sağlık’ı bağla", systemImage: "heart.text.square.fill")
                         .font(.subheadline.weight(.semibold)).foregroundStyle(.pink).frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14).background(.pink.opacity(0.10), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                }.buttonStyle(.plain)
+                }.buttonStyle(TempoSoftPressStyle())
             }
 
             if !(snapshot?.incoming.isEmpty ?? true) {
@@ -2450,7 +2452,7 @@ struct SocialScreen: View {
                             SocialPersonRow(profile: friend, detail: "@\(friend.username)")
                             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.secondary)
                         }.padding(14).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    }.buttonStyle(.plain).disabled(working)
+                    }.buttonStyle(TempoSoftPressStyle()).disabled(working)
                 }
                 if friends.count > 3 {
                     Button("%d arkadaşın tümünü gör".tempoFormatted(friends.count)) { selectedSection = .friends }
@@ -2522,7 +2524,7 @@ struct SocialScreen: View {
                                     Image(systemName: selectedFriends.contains(friend.id) ? "checkmark.circle.fill" : "circle")
                                         .foregroundStyle(selectedFriends.contains(friend.id) ? TempoTheme.green : TempoTheme.secondary)
                                 }.contentShape(Rectangle())
-                            }.buttonStyle(.plain).disabled(working)
+                            }.buttonStyle(TempoSoftPressStyle()).disabled(working)
                                 .accessibilityAddTraits(selectedFriends.contains(friend.id) ? .isSelected : [])
                             Menu {
                                 Button("social.extra.viewProfile".tempoLocalized, systemImage: "person.crop.rectangle") { friendProfile = friend }
@@ -2632,7 +2634,7 @@ struct SocialScreen: View {
                     Label("Yarışma skorları için Apple Sağlık’ı bağla", systemImage: "heart.text.square.fill")
                         .font(.subheadline.weight(.semibold)).foregroundStyle(.pink).frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14).background(.pink.opacity(0.10), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                }.buttonStyle(.plain)
+                }.buttonStyle(TempoSoftPressStyle())
             }
 
             Button { showChallengeComposer = true } label: { Label("Yarış oluştur", systemImage: "plus") }
@@ -2709,7 +2711,7 @@ struct SocialScreen: View {
                                             .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 11)
                                             .foregroundStyle(selectedFriends.contains(friend.id) ? TempoTheme.onAccent : TempoTheme.primary)
                                             .background(selectedFriends.contains(friend.id) ? TempoTheme.green : TempoTheme.raised, in: Capsule())
-                                    }.buttonStyle(.plain).disabled(working)
+                                    }.buttonStyle(TempoSoftPressStyle()).disabled(working)
                                         .accessibilityIdentifier("social.challenge.friend.\(friend.id)")
                                 }
                             }
@@ -3233,7 +3235,7 @@ private struct SocialChallengeCard: View {
                     Button(role: .destructive) { onCancel() } label: {
                         Label("social.challenge.cancel".tempoLocalized, systemImage: "xmark.circle")
                             .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
-                    }.buttonStyle(.plain).disabled(isWorking).accessibilityIdentifier("social.challenge.cancel.\(challenge.id)")
+                    }.buttonStyle(TempoSoftPressStyle()).disabled(isWorking).accessibilityIdentifier("social.challenge.cancel.\(challenge.id)")
                 }
             }
         }
@@ -3504,7 +3506,7 @@ struct HealthScreen: View {
                     } else { Text("wellness.sleep.empty".tempoLocalized).font(.subheadline).foregroundStyle(TempoTheme.secondary) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
-        }.buttonStyle(.plain).foregroundStyle(TempoTheme.primary)
+        }.buttonStyle(TempoSoftPressStyle()).foregroundStyle(TempoTheme.primary)
             .simultaneousGesture(TapGesture().onEnded { if let point { selectedHealthDay = point.day } })
     }
 
@@ -3663,7 +3665,7 @@ private struct HealthDaySelector: View {
                                     .background(isSelected ? TempoTheme.green : TempoTheme.raised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                                     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isSelected ? TempoTheme.green : TempoTheme.primary.opacity(0.06)))
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(TempoSoftPressStyle())
                                 .accessibilityLabel(point.day.formatted(date: .complete, time: .omitted))
                             }
                         }
@@ -4255,7 +4257,7 @@ private struct MonthlyStatsScreen: View {
                                         .font(.caption.weight(.semibold)).padding(.horizontal, 13).padding(.vertical, 10)
                                         .foregroundStyle(item.date == selection?.date ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.8))
                                         .background(item.date == selection?.date ? accent : TempoTheme.raised, in: Capsule())
-                                }.buttonStyle(.plain)
+                                }.buttonStyle(TempoSoftPressStyle())
                                     .accessibilityLabel(item.date.formatted(.dateTime.month(.wide).year()))
                                     .accessibilityIdentifier(item.id == stats.last?.id ? "monthly.month.current" : "monthly.month.\(item.date.timeIntervalSince1970)")
                             }
@@ -4348,7 +4350,7 @@ private struct SegmentsScreen: View {
                                 Spacer(); Image(systemName: "arrow.up.right").foregroundStyle(TempoTheme.green)
                             }
                         }
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(TempoSoftPressStyle())
                 }
                 if model.dashboard?.segments.isEmpty != false { EmptyCard(icon: "flag.checkered", text: "Favori segment bulunamadı.") }
             }
@@ -4424,7 +4426,7 @@ private struct PhotosScreen: View {
                                 Text(photo.activityName ?? "Aktivite".tempoLocalized).font(.caption.weight(.semibold)).foregroundStyle(TempoTheme.primary).lineLimit(1)
                             }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(TempoSoftPressStyle())
                     }
                 }
                 if model.dashboard?.photos.isEmpty != false { EmptyCard(icon: "photo", text: "Gösterilecek aktivite fotoğrafı bulunamadı.") }
@@ -4478,7 +4480,7 @@ private struct HomeHeader: View {
                     Image(systemName: "bell").font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44)
                     if notifications.unreadCount > 0 { Circle().fill(TempoTheme.green).frame(width: 7, height: 7).offset(x: -7, y: 6) }
                 }.foregroundStyle(TempoTheme.primary.opacity(0.88)).background(.ultraThinMaterial, in: Circle())
-            }.buttonStyle(.plain).accessibilityLabel("Bildirimler".tempoLocalized).accessibilityIdentifier("home.notifications")
+            }.buttonStyle(TempoSoftPressStyle()).accessibilityLabel("Bildirimler".tempoLocalized).accessibilityIdentifier("home.notifications")
         }
     }
 }
@@ -4563,7 +4565,7 @@ private struct StravaConnectionCard: View {
             )
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(TempoTheme.orange.opacity(0.18)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
     }
 }
 
@@ -4730,8 +4732,9 @@ struct TempoPrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 16).padding(.vertical, 14).frame(maxWidth: .infinity, minHeight: 48)
             .background(TempoTheme.green.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .opacity(isEnabled ? 1 : 0.48)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, pressed in pressed && isEnabled }
     }
 }
 
@@ -4745,8 +4748,9 @@ struct TempoSecondaryButtonStyle: ButtonStyle {
             .background(TempoTheme.card.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 17).stroke(TempoTheme.primary.opacity(0.10), lineWidth: 1))
             .opacity(isEnabled ? 1 : 0.48)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, pressed in pressed && isEnabled }
     }
 }
 

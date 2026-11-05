@@ -39,7 +39,7 @@ final class TempoHealthStore {
 
     func requestAuthorization() async throws {
         guard isAvailable else { throw HealthStoreError.unavailable }
-        try await store.requestAuthorization(toShare: [waterType], read: readTypes)
+        try await store.requestAuthorization(toShare: [], read: readTypes)
     }
 
     func readRecentWorkouts(dayCount: Int = 365) async throws -> [TempoManualWorkout] {
@@ -297,6 +297,7 @@ final class TempoHealthStore {
     func saveWater(amountMl: Double) async throws -> UUID {
         guard isAvailable else { throw HealthStoreError.unavailable }
         guard amountMl.isFinite, amountMl > 0 else { throw HealthStoreError.invalidWaterAmount }
+        try await store.requestAuthorization(toShare: [waterType], read: [])
         let now = Date()
         let quantity = HKQuantity(unit: .literUnit(with: .milli), doubleValue: amountMl)
         let sample = HKQuantitySample(type: waterType, quantity: quantity, start: now, end: now, metadata: ["TempoWaterEntry": true])

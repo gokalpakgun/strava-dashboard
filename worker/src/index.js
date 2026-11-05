@@ -1,3 +1,5 @@
+export { AuthFlow } from './passwordless-auth.js';
+import { handlePasswordlessAuth } from './passwordless-auth.js';
 export { NotificationInbox } from "./notification-inbox.js";
 export { PassiveCohort, PassiveRecipient } from "./passive-social-live.js";
 import { handlePassiveSocial } from "./passive-social-live.js";
@@ -19,6 +21,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     try {
+      if (url.pathname.startsWith("/api/account/access/")) return handlePasswordlessAuth(request, env);
       if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {
         const accountResponse = await handleAccountRequest(request, env, url);
         if (accountResponse) return accountResponse;

@@ -1,3 +1,4 @@
+import { revokeAppleAccount } from './apple-auth.js';
 import { deletePushAccount, removeSessionDevices } from "./push.js";
 import { deleteSocialAccount } from "./social.js";
 import { deletePassiveSocial } from "./passive-social-live.js";
@@ -506,6 +507,8 @@ async function signOut(request, env) {
 async function deleteAccount(request, env) {
   const context = await accountContext(request, env);
   if (context.response) return context.response;
+  if (!await revokeAppleAccount(env, context.user)) return responseJSON({error:'auth.apple.revokeFailed'},503);
+  if (env.AUTH_FLOW) await env.AUTH_FLOW.get(env.AUTH_FLOW.idFromName(await sha256Hex(context.user.email))).fetch('https://auth.internal/erase', {method:'POST'});
   const athleteId = await env.TOKEN_STORE.get("account-strava:" + context.user.id);
   const strava = athleteId ? await env.TOKEN_STORE.get("mobile-strava:" + athleteId, "json") : null;
   const stravaRevoked = !strava?.refresh_token || await revokeStravaRefreshToken(env, strava.refresh_token);
@@ -527,6 +530,7 @@ async function deleteAccount(request, env) {
     );
   }
   const relatedKeys = [
+    ...(context.user.appleSubject ? ["account-apple:" + await sha256Hex(context.user.appleSubject)] : []),
     "account-health:" + context.user.id,
     "account-water:" + context.user.id,
     "account-strava:" + context.user.id,
@@ -821,3 +825,5 @@ function responseJSON(value, status = 200, extraHeaders = {}) {
     },
   });
 }
+
+export { createSession, publicUser, sha256Hex, rateLimit };
