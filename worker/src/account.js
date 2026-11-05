@@ -442,9 +442,10 @@ async function updateProfile(request, env) {
     const texts = [];
     if (user.displayName !== context.user.displayName) texts.push([user.displayName, "Görünen ad"]);
     if (user.username !== oldUsername) texts.push([user.username, "Kullanıcı adı"]);
-    for (const [text, label] of texts) {
-      const moderation = await moderateCommunityText(env, text);
-      if (moderation.unavailable) return responseJSON({ error: `${label} denetimi şu anda kullanılamıyor. Biraz sonra tekrar dene.` }, 503);
+    const verdicts = await Promise.all(texts.map(([text]) => moderateCommunityText(env, text)));
+    for (let index = 0; index < texts.length; index++) {
+      const [, label] = texts[index], moderation = verdicts[index];
+      if (moderation.unavailable) return responseJSON({ error: "Profil denetimi şu anda yanıt vermiyor. Bilgilerin korunuyor; biraz sonra tekrar dene.", diagnostic: moderation.diagnostic }, 503);
       if (!moderation.allowed) return responseJSON({ error: `Bu ${label.toLocaleLowerCase("tr-TR")} topluluk kurallarına uygun değil.` }, 400);
     }
   }

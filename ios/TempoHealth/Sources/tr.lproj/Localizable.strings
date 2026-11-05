@@ -1822,3 +1822,11 @@
 "auth.anchor.finish" = "Tempo’yu aç";
 "auth.anchor.connected" = "Artık arkadaşsınız.";
 "auth.anchor.sent" = "İsteğin gönderildi. Arkadaşın kabul ettiğinde bağlantınız tamamlanır.";
+
+// Tamamlanmamış hesap kurulumu
+"setup.returnToSignIn" = "Giriş ekranına dön";
+"setup.restart" = "Kurulumu kapat ve girişe dön";
+"setup.profile.rules" = "Adın 2–50 karakter; kullanıcı adın 3–24 karakter ve yalnızca İngilizce harf, rakam veya alt çizgi içermeli.";
+"setup.profile.timeout" = "Profil kaydı zaman aşımına uğradı. Bilgilerin bu ekranda korunuyor; biraz sonra tekrar dene.";
+"setup.temporary" = "Kurulumu tamamlayana kadar seçimlerin geçicidir. Uygulamayı tamamen kapatırsan yeniden başlayabilirsin.";
+"Profil denetimi şu anda yanıt vermiyor. Bilgilerin korunuyor; biraz sonra tekrar dene." = "Profil denetimi şu anda yanıt vermiyor. Bilgilerin korunuyor; biraz sonra tekrar dene.";

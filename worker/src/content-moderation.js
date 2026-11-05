@@ -4,11 +4,12 @@ const PROVIDER_CODES = new Set([5007, 5004, 3039, 3003, 5018, 5016, 3023, 3041, 
 
 // Only short public-facing user content is sent here. Health, Strava and
 // private account fields must never be passed to this classifier.
-export async function moderateCommunityText(env, text) {
+export async function moderateCommunityText(env, text, options = {}) {
   if (!env.AI || typeof env.AI.run !== "function") return unavailable("binding");
   if (typeof text !== "string" || !text.trim()) return unavailable("input");
+  let timer;
   try {
-    const result = await env.AI.run(MODEL, {
+    const inference = env.AI.run(MODEL, {
       messages: [
         {
           role: "user",
@@ -21,6 +22,10 @@ export async function moderateCommunityText(env, text) {
       temperature: 0,
       response_format: { type: "json_object" },
     });
+    const timeout = Math.min(8000, Math.max(1, options.timeoutMs ?? 8000));
+    const timedOut = Symbol("moderation-timeout");
+    const result = await Promise.race([inference, new Promise(resolve => { timer = setTimeout(() => resolve(timedOut), timeout); })]);
+    if (result === timedOut) return unavailable("timeout");
     const verdict = parseVerdict(result?.response);
     if (verdict === true) return { allowed: true };
     if (verdict === false) return { allowed: false, unavailable: false };
@@ -33,7 +38,7 @@ export async function moderateCommunityText(env, text) {
     const rawStatus = Number(error?.status ?? error?.statusCode);
     const status = Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599 ? rawStatus : null;
     return unavailable("provider", code, status);
-  }
+  } finally { clearTimeout(timer); }
 }
 
 function parseVerdict(response) {

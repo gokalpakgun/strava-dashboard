@@ -110,3 +110,12 @@ test("signup succeeds when real guard schema returns a structured safe result", 
   assert.equal(result.status, 201);
   assert.equal((await result.json()).user.username, "guard_schema");
 });
+
+test("moderation timeout fails closed without waiting forever", async () => {
+  await withoutLogs(async () => {
+    const pending = { AI: { run: () => new Promise(() => {}) } };
+    assert.deepEqual(await moderateCommunityText(pending, "athlete", { timeoutMs: 10 }), {
+      allowed: false, unavailable: true, diagnostic: "moderation-timeout",
+    });
+  });
+});

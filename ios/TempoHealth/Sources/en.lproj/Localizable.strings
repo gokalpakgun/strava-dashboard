@@ -2347,3 +2347,11 @@
 "auth.anchor.finish" = "Open Tempo";
 "auth.anchor.connected" = "You are now friends.";
 "auth.anchor.sent" = "Request sent. Your connection is complete when your friend accepts.";
+
+// Tamamlanmamış hesap kurulumu
+"setup.returnToSignIn" = "Return to sign in";
+"setup.restart" = "Close setup and return to sign in";
+"setup.profile.rules" = "Use 2–50 characters for your name. Your username needs 3–24 letters (A–Z), numbers or underscores.";
+"setup.profile.timeout" = "Saving your profile took too long. Your details are still on this screen; try again shortly.";
+"setup.temporary" = "Your setup stays temporary until you finish. Closing the app completely lets you start again.";
+"Profil denetimi şu anda yanıt vermiyor. Bilgilerin korunuyor; biraz sonra tekrar dene." = "Profile checks are temporarily unavailable. Your details are still here; try again shortly.";

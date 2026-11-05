@@ -280,3 +280,31 @@ test("English password-reset requests send localized email and preserve language
     if (newPassword === "short" || newPassword === "ValidPass123") assert.ok(resultHTML.includes('name="token" value="' + token + '"'));
   }
 });
+
+test("profile checks run together and no partial profile is saved if either check fails", async () => {
+  const env = environment();
+  const created = await signup(env);
+  let started = 0;
+  let release;
+  const bothStarted = new Promise(resolve => { release = resolve; });
+  env.AI.run = async () => { started += 1; if (started === 2) release(); await bothStarted; return { response: "safe" }; };
+  const saved = await call(env, "/api/account/profile", { displayName: "Setup Athlete", username: "setup_athlete", sports: ["run"], onboardingComplete: true }, { token: created.token, method: "PATCH" });
+  assert.equal(started, 2);
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.data.user.onboardingComplete, true);
+  const before = await env.TOKEN_STORE.get("account-user:" + created.user.id);
+  const originalLog = console.error;
+  console.error = () => {};
+  try {
+    env.AI.run = async () => { throw new Error("simulated provider unavailable"); };
+    const unavailable = await call(env, "/api/account/profile", { displayName: "New Athlete", username: "new_athlete" }, { token: created.token, method: "PATCH" });
+    assert.equal(unavailable.response.status, 503);
+    assert.equal(unavailable.data.diagnostic, "moderation-provider");
+    assert.equal(unavailable.data.error, "Profil denetimi şu anda yanıt vermiyor. Bilgilerin korunuyor; biraz sonra tekrar dene.");
+    assert.equal(await env.TOKEN_STORE.get("account-user:" + created.user.id), before);
+    assert.equal(await env.TOKEN_STORE.get("account-username:new_athlete"), null);
+    env.AI.run = async () => ({ response: "unsafe" });
+    assert.equal((await call(env, "/api/account/profile", { displayName: "Rejected Athlete" }, { token: created.token, method: "PATCH" })).response.status, 400);
+    assert.equal(await env.TOKEN_STORE.get("account-user:" + created.user.id), before);
+  } finally { console.error = originalLog; }
+});

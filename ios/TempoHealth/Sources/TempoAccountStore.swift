@@ -288,8 +288,12 @@ final class TempoAccountStore: ObservableObject {
             return
         }
 #endif
-        let storedToken = AccountTokenStore.read()
-        let cachedProfile = storedToken == nil ? nil : AccountProfileCache.read()
+        var storedToken = AccountTokenStore.read()
+        var cachedProfile = storedToken == nil ? nil : AccountProfileCache.read()
+        // Önceki sürümlerin yarım kurulum oturumları yeni açılışta devam ettirilmez.
+        if cachedProfile?.onboardingComplete == false {
+            AccountTokenStore.delete(); AccountProfileCache.delete(); storedToken = nil; cachedProfile = nil
+        }
         sessionToken = storedToken
         profile = cachedProfile
         isRestoring = storedToken != nil && cachedProfile == nil
@@ -358,13 +362,14 @@ final class TempoAccountStore: ObservableObject {
         username: String? = nil,
         sports: Set<TempoSportChoice>? = nil,
         avatarData: Data? = nil,
+        clearAvatar: Bool = false,
         onboardingComplete: Bool? = nil
     ) async -> Bool {
         guard sessionToken != nil, !isBusy else { return false }
         let operation = beginOperation()
         errorMessage = ""
         defer { finishOperation(operation) }
-        let avatar = avatarData.map { "data:image/jpeg;base64," + $0.base64EncodedString() }
+        let avatar = clearAvatar ? "" : avatarData.map { "data:image/jpeg;base64," + $0.base64EncodedString() }
         let payload = ProfileUpdate(
             displayName: displayName,
             username: username,
@@ -376,8 +381,9 @@ final class TempoAccountStore: ObservableObject {
             let envelope = try await request(path: "/api/account/profile", method: "PATCH", body: payload, authenticated: true)
             guard operationGeneration == operation, !Task.isCancelled else { return false }
             guard let user = envelope.user else { throw AccountError.server("Profil kaydedilemedi.") }
+            guard let token = sessionToken else { throw CancellationError() }
+            try persistCompletedSession(token: token, user: user)
             profile = user
-            AccountProfileCache.save(user)
             return true
         } catch {
             guard operationGeneration == operation else { return false }
@@ -385,6 +391,26 @@ final class TempoAccountStore: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    /// Ekran anında sıfırlanır; uzak oturum kapatma yeni girişin sonucunu etkileyemez.
+    func restartIncompleteSetup() {
+        guard profile?.onboardingComplete != true else { return }
+        let oldToken = sessionToken
+        TempoNotifications.shared.detach()
+        clearLocalSession(); errorMessage = ""; appleNonce = nil; appleFlowID = nil
+        guard let oldToken else { return }
+        Task {
+            var request = URLRequest(url: URL(string: "/api/account/logout", relativeTo: baseURL)!)
+            request.httpMethod = "POST"; request.timeoutInterval = 8
+            request.setValue("Bearer " + oldToken, forHTTPHeaderField: "Authorization")
+            _ = try? await Self.apiSession.data(for: request)
+        }
+    }
+    private func persistCompletedSession(token: String, user: TempoUserProfile) throws {
+        guard user.onboardingComplete else { AccountTokenStore.delete(); AccountProfileCache.delete(); return }
+        guard AccountTokenStore.save(token) else { throw AccountError.server("Oturum anahtarı iPhone’da güvenle saklanamadı.") }
+        AccountProfileCache.save(user)
     }
 
     func signOut() async {
@@ -489,6 +515,7 @@ final class TempoAccountStore: ObservableObject {
             // profile after the user signs out or signs in to another account.
             guard sessionToken == restoringToken else { return }
             guard let user = envelope.user else { throw AccountError.server("Hesap bilgisi alınamadı.") }
+            guard user.onboardingComplete else { clearLocalSession(); return }
             profile = user
             AccountProfileCache.save(user)
         } catch {
@@ -536,12 +563,9 @@ final class TempoAccountStore: ObservableObject {
             guard let token = envelope.token, let user = envelope.user else {
                 throw AccountError.server("Hesap oturumu başlatılamadı.")
             }
-            guard AccountTokenStore.save(token) else {
-                throw AccountError.server("Oturum anahtarı iPhone’da güvenle saklanamadı.")
-            }
+            try persistCompletedSession(token: token, user: user)
             sessionToken = token
             profile = user
-            AccountProfileCache.save(user)
             return true
         } catch {
             guard operationGeneration == operation else { return false }
@@ -559,7 +583,7 @@ final class TempoAccountStore: ObservableObject {
     ) async throws -> AccountEnvelope {
         var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
         request.httpMethod = method
-        request.timeoutInterval = 12
+        request.timeoutInterval = path == "/api/account/profile" ? 25 : 12
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Tempo-Request-ID")
@@ -630,6 +654,7 @@ final class TempoAccountStore: ObservableObject {
             }
         }
         if let urlError = lastError as? URLError {
+            if path == "/api/account/profile", urlError.code == .timedOut { throw AccountError.server("setup.profile.timeout") }
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost, .cannotFindHost:
                 throw AccountError.server("Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.")

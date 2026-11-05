@@ -613,6 +613,11 @@ struct AccountOnboardingView: View {
     @State private var isPreparingPhoto = false
     @State private var photoError = ""
     @State private var loaded = false
+    @State private var showCircle = false
+    @State private var showInviteShare = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var validDisplayName: Bool { (2...50).contains(displayName.trimmingCharacters(in: .whitespacesAndNewlines).count) }
+    private var validUsername: Bool { username.trimmingCharacters(in: .whitespacesAndNewlines).range(of: #"^[A-Za-z0-9_]{3,24}$"#, options: .regularExpression) != nil }
 
     var body: some View {
         ZStack {
@@ -632,6 +637,10 @@ struct AccountOnboardingView: View {
                     }
                 }
             }
+        }
+        .navigationDestination(isPresented: $showCircle) { TempoCircleScreen() }
+        .sheet(isPresented: $showInviteShare) {
+            if let username = account.profile?.username { TempoProfileActivitySheet(items: ["auth.anchor.share".tempoFormatted(username)]) }
         }
         .task { loadProfileOnce() }
         .task(id: photoItem) {
@@ -657,16 +666,20 @@ struct AccountOnboardingView: View {
 
     private var onboardingProgress: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 8) {
+                Button(action: goBack) { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
+                    .buttonStyle(TempoSoftPressStyle()).disabled(account.isBusy || sendingInvite).accessibilityLabel((step == 0 ? "setup.returnToSignIn" : "Geri").tempoLocalized).accessibilityIdentifier("onboarding.back")
                 Text("TEMPO").font(.caption.bold()).tracking(3).foregroundStyle(TempoTheme.green)
                 Spacer()
                 Text("\(step + 1) / 5").font(.caption.bold()).foregroundStyle(TempoTheme.secondary)
+                Button { account.restartIncompleteSetup() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }.buttonStyle(TempoSoftPressStyle()).accessibilityLabel("setup.restart".tempoLocalized).accessibilityIdentifier("onboarding.restart")
             }
             HStack(spacing: 7) {
                 ForEach(0..<5, id: \.self) { index in
                     Capsule().fill(index <= step ? TempoTheme.green : TempoTheme.raised).frame(height: 5)
                 }
             }
+            Text("setup.temporary".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
@@ -677,7 +690,7 @@ struct AccountOnboardingView: View {
             OnboardingTitle(title: "Profilini oluşturalım", subtitle: "İnsanların seni nasıl göreceğini seç.")
                 .accessibilityIdentifier("onboarding.profile.title")
             VStack(spacing: 12) {
-                let currentAvatarData = avatarData ?? account.profile?.avatarData
+                let currentAvatarData = avatarData
                 PhotosPicker(selection: $photoItem, matching: .images, preferredItemEncoding: .compatible) {
                     ZStack(alignment: .bottomTrailing) {
                         AccountAvatarView(data: currentAvatarData, size: 116)
@@ -696,14 +709,11 @@ struct AccountOnboardingView: View {
             AccountTextField(title: "Kullanıcı adı", icon: "at", text: $username, contentType: .username)
                 .accessibilityIdentifier("onboarding.username")
 
+            Text("setup.profile.rules".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
             accountError
 
             Button {
-                Task {
-                    if await account.updateProfile(displayName: displayName, username: username, avatarData: avatarData) {
-                        withAnimation { step = 2 }
-                    }
-                }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { account.errorMessage = ""; step = 2 }
             } label: {
                 Label(
                     isPreparingPhoto ? "Fotoğraf hazırlanıyor…" : (account.isBusy ? "Kaydediliyor…" : "Devam et"),
@@ -713,7 +723,7 @@ struct AccountOnboardingView: View {
             }
             .buttonStyle(AccountPrimaryButtonStyle())
             .accessibilityIdentifier("onboarding.profile.continue")
-            .disabled(account.isBusy || isPreparingPhoto || photoItem != nil || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(account.isBusy || isPreparingPhoto || photoItem != nil || !validDisplayName || !validUsername)
         }
     }
 
@@ -726,11 +736,7 @@ struct AccountOnboardingView: View {
                 Button("Geri") { withAnimation { step = 1 } }
                     .buttonStyle(AccountOutlineButtonStyle())
                 Button {
-                    Task {
-                        if await account.updateProfile(sports: selectedSports) {
-                            withAnimation { step = 3 }
-                        }
-                    }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { account.errorMessage = ""; step = 3 }
                 } label: {
                     Text((account.isBusy ? "Kaydediliyor…" : "Devam et").tempoLocalized).frame(maxWidth: .infinity)
                 }
@@ -752,17 +758,17 @@ struct AccountOnboardingView: View {
                         HStack { if sendingInvite { ProgressView() }; Text("auth.anchor.send".tempoLocalized) }.frame(maxWidth: .infinity)
                     }.buttonStyle(AccountPrimaryButtonStyle()).disabled(sendingInvite || invitation.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
                     if !anchorMessage.isEmpty { Text(anchorMessage.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary) }
-                    if let username = account.profile?.username {
-                        ShareLink(item: "auth.anchor.share".tempoFormatted(username)) { Label("auth.anchor.shareAction".tempoLocalized, systemImage: "square.and.arrow.up").frame(minHeight: 44) }
-                    }
+                    Button { Task { if await saveDraft(complete: false) { showInviteShare = true } } } label: {
+                        Label("auth.anchor.shareAction".tempoLocalized, systemImage: "square.and.arrow.up").frame(minHeight: 44)
+                    }.disabled(account.isBusy || sendingInvite)
                 }
             }
-            NavigationLink(destination: TempoCircleScreen()) {
+            Button { Task { if await saveDraft(complete: false) { showCircle = true } } } label: {
                 TempoMenuRow(title: "auth.anchor.group", subtitle: "auth.anchor.groupDetail", icon: "person.3.fill")
-            }.buttonStyle(TempoSoftPressStyle())
+            }.buttonStyle(TempoSoftPressStyle()).disabled(account.isBusy || sendingInvite)
             Text("auth.anchor.optional".tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
             Button {
-                Task { if await account.updateProfile(onboardingComplete: true) { model.skipStravaForNow() } }
+                Task { if await saveDraft(complete: true) { model.skipStravaForNow() } }
             } label: { Text("auth.anchor.finish".tempoLocalized).frame(maxWidth: .infinity) }
                 .buttonStyle(AccountPrimaryButtonStyle()).disabled(account.isBusy || sendingInvite).accessibilityIdentifier("onboarding.finish")
             accountError
@@ -772,53 +778,21 @@ struct AccountOnboardingView: View {
         guard !sendingInvite else { return }; sendingInvite = true; anchorMessage = ""
         defer { sendingInvite = false }
         let value = invitation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+        guard await saveDraft(complete: false) else { return }
         do { let accepted = try await account.sendFriendRequest(username: value); anchorMessage = accepted ? "auth.anchor.connected" : "auth.anchor.sent"; invitation = "" }
         catch { anchorMessage = error.localizedDescription }
     }
 
-    private var connectionsStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            OnboardingTitle(title: "Sağlık verilerini bağla", subtitle: "Apple Sağlık Tempo’nun ana sağlık kaynağıdır. Strava isteğe bağlıdır ve daha sonra bağlanabilir.")
-
-            ConnectionCard(
-                title: "Apple Sağlık · Önerilen",
-                subtitle: model.healthSyncEnabled ? "Apple Sağlık bağlı." : "Uyku, su, adım, kalori, nabız ve diğer sağlık ölçülerini eşitle.",
-                icon: "heart.fill",
-                color: .pink,
-                connected: model.healthSyncEnabled,
-                busy: model.isHealthSyncing,
-                action: model.connectAppleHealth
-            )
-            ConnectionCard(
-                title: "Strava · İsteğe bağlı",
-                subtitle: model.isConnected ? "Strava hesabın bağlı." : "Strava aktivitelerini ve rotalarını isteğe bağlı görüntüle.",
-                icon: "figure.run",
-                color: TempoTheme.orange,
-                connected: model.isConnected,
-                busy: model.isBusy,
-                action: model.connectStrava
-            )
-
-            Text(model.status.tempoLocalized).font(.footnote).foregroundStyle(TempoTheme.secondary)
-            accountError
-
-            HStack(spacing: 10) {
-                Button("Geri") { withAnimation { step = 1 } }
-                    .buttonStyle(AccountOutlineButtonStyle())
-                Button {
-                    Task {
-                        if await account.updateProfile(onboardingComplete: true) {
-                            model.skipStravaForNow()
-                        }
-                    }
-                } label: {
-                    Text((account.isBusy ? "Hazırlanıyor…" : "Tempo’yu aç").tempoLocalized).frame(maxWidth: .infinity)
-                }
-                .buttonStyle(AccountPrimaryButtonStyle())
-                .accessibilityIdentifier("onboarding.finish")
-                .disabled(account.isBusy)
-            }
-        }
+    private func goBack() {
+        guard step > 0 else { account.restartIncompleteSetup(); return }
+        photoItem = nil; photoError = ""; account.errorMessage = ""
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { step -= 1 }
+    }
+    private func saveDraft(complete: Bool) async -> Bool {
+        guard validDisplayName, validUsername, !selectedSports.isEmpty else { account.errorMessage = "setup.profile.rules"; step = 1; return false }
+        let saved = await account.updateProfile(displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines), username: username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), sports: selectedSports, avatarData: avatarData, clearAvatar: avatarData == nil, onboardingComplete: complete)
+        if !saved, account.profile != nil { step = 1 }
+        return saved
     }
 
     @ViewBuilder
@@ -834,11 +808,10 @@ struct AccountOnboardingView: View {
     }
 
     private func loadProfileOnce() {
-        guard !loaded, let profile = account.profile else { return }
+        guard !loaded, account.profile != nil else { return }
         loaded = true
-        displayName = profile.displayName
-        username = profile.username
-        selectedSports = Set(profile.sports.compactMap(TempoSportChoice.init(rawValue:)))
+        displayName = ""; username = ""; selectedSports = []
+        avatarData = nil; photoItem = nil; invitation = ""; anchorMessage = ""; account.errorMessage = ""
     }
 }
 
