@@ -306,7 +306,7 @@ struct TempoPhoneTrackerScreen: View {
                 .foregroundStyle(selectedSport == id ? TempoTheme.onAccent : TempoTheme.primary.opacity(0.76))
                 .background(selectedSport == id ? TempoTheme.green : TempoTheme.card, in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
         .disabled(recorder.hasStarted || isSaving)
     }
 

@@ -150,7 +150,7 @@ struct TempoWellnessTools: View {
                             NavigationLink(destination: TempoWellnessSessionScreen(kind: kind, store: store, autoStart: true)) {
                                 Label(kind.title, systemImage: kind.symbol).font(.subheadline.weight(.semibold))
                                     .padding(12).background(kind.color.opacity(0.10), in: Capsule())
-                            }.buttonStyle(.plain).foregroundStyle(kind.color)
+                            }.buttonStyle(TempoSoftPressStyle()).foregroundStyle(kind.color)
                         }
                     }
                 }.accessibilityLabel("wellness.favorites".tempoLocalized)
@@ -168,10 +168,10 @@ struct TempoWellnessTools: View {
                                 }.frame(maxWidth: .infinity, alignment: .leading)
                                 Image(systemName: "play.circle.fill").font(.title2).foregroundStyle(kind.color)
                             }.padding(14).contentShape(Rectangle())
-                        }.buttonStyle(.plain).accessibilityIdentifier("wellness.tool.\(kind.rawValue)")
+                        }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("wellness.tool.\(kind.rawValue)")
                         Button { store.toggleFavorite(kind) } label: {
                             Image(systemName: store.favorites.contains(kind) ? "star.fill" : "star").foregroundStyle(kind.color).frame(width: 44, height: 48)
-                        }.buttonStyle(.plain).disabled(!store.isReady)
+                        }.buttonStyle(TempoSoftPressStyle()).disabled(!store.isReady)
                             .accessibilityLabel((store.favorites.contains(kind) ? "wellness.unfavorite" : "wellness.favorite").tempoLocalized)
                     }.padding(.trailing, 6).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22))
                         .overlay(RoundedRectangle(cornerRadius: 22).stroke(kind.color.opacity(0.12), lineWidth: 1))
@@ -344,7 +344,7 @@ struct TempoWellnessCheckInScreen: View {
                         Text(number.formatted()).font(.headline).frame(maxWidth: .infinity, minHeight: 48)
                             .foregroundStyle(value.wrappedValue == number ? TempoTheme.onAccent : TempoTheme.primary)
                             .background(value.wrappedValue == number ? TempoTheme.green : TempoTheme.raised, in: RoundedRectangle(cornerRadius: 13))
-                    }.buttonStyle(.plain).accessibilityLabel("\(key.tempoLocalized), \(number)/5")
+                    }.buttonStyle(TempoSoftPressStyle()).accessibilityLabel("\(key.tempoLocalized), \(number)/5")
                         .accessibilityAddTraits(value.wrappedValue == number ? .isSelected : [])
                 }
             }
@@ -386,7 +386,7 @@ struct TempoWellnessWaterCard: View {
                 if let entry = store.todayWater.first {
                     Button { Task { await undo(entry) } } label: {
                         Label("wellness.water.undo".tempoFormatted(entry.amount), systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    }.buttonStyle(.plain).font(.subheadline).foregroundStyle(TempoTheme.blue).disabled(working || !store.isReady)
+                    }.buttonStyle(TempoSoftPressStyle()).font(.subheadline).foregroundStyle(TempoTheme.blue).disabled(working || !store.isReady)
                 }
                 if working { ProgressView().tint(TempoTheme.blue) }
                 if !error.isEmpty { Text(error).font(.footnote).foregroundStyle(TempoTheme.orange) }

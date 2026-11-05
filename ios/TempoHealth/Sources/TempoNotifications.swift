@@ -489,7 +489,7 @@ struct TempoNotificationsScreen: View {
                             Spacer(minLength: 2)
                             if !notice.read { Circle().fill(TempoTheme.green).frame(width: 7, height: 7) }
                         }.padding(15).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
-                    }.buttonStyle(.plain).accessibilityIdentifier("notification.\(notice.type)")
+                    }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("notification.\(notice.type)")
                         .simultaneousGesture(TapGesture().onEnded { Task { await notifications.markRead(notice) } })
                 }
             }

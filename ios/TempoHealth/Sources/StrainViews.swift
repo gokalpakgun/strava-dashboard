@@ -97,7 +97,7 @@ struct StrainDashboardScreen: View {
                                 Text(state.scores[record.id].map { String($0.value) + "/100" } ?? "—").font(.subheadline.monospacedDigit()).foregroundStyle(TempoTheme.blue)
                                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.secondary)
                             }.padding(16).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20))
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(TempoSoftPressStyle())
                     }
                 }
             }

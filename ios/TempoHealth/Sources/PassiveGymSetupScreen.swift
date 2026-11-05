@@ -96,7 +96,7 @@ struct PassiveGymSetupScreen: View {
                                 Label((config.isVerifiedGym ? "gym.verified" : "gym.reverify").tempoLocalized, systemImage: config.isVerifiedGym ? "checkmark.seal.fill" : "exclamationmark.circle")
                                     .font(.caption).foregroundStyle(config.isVerifiedGym ? TempoTheme.green : TempoTheme.orange)
                             }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(TempoSoftPressStyle())
                         Button(role: .destructive) { removal = config } label: { Image(systemName: "trash").frame(width: 44, height: 44) }.accessibilityLabel("gym.remove".tempoLocalized)
                     }
                 }
@@ -177,7 +177,7 @@ struct PassiveGymSetupScreen: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                             if chosen?.latitude == item.coordinate.latitude && chosen?.longitude == item.coordinate.longitude { Image(systemName: "checkmark.circle.fill").foregroundStyle(TempoTheme.green) }
                         }.padding(.vertical, 10).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(TempoSoftPressStyle())
                     Divider()
                 }
                 if let coordinate {

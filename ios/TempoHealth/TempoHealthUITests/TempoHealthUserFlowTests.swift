@@ -7,19 +7,19 @@ final class TempoHealthUserFlowTests: XCTestCase {
     }
 
     func testWelcomeSignupAndSignInForms() {
-        let app = launchApp()
+        var app = launchApp()
 
         let createAccount = element("auth.createAccount", in: app)
         XCTAssertTrue(createAccount.waitForExistence(timeout: 10), "Welcome screen should offer account creation")
         createAccount.tap()
 
-        XCTAssertTrue(element("auth.email", in: app).waitForExistence(timeout: 5), "Sign-up form should show email input")
-        XCTAssertTrue(element("auth.username", in: app).exists, "Sign-up form should show username input")
-        XCTAssertTrue(element("auth.password", in: app).exists, "Sign-up form should show password input")
-        XCTAssertFalse(element("auth.submit", in: app).isEnabled, "Empty sign-up form must not submit")
-        capture(app, named: "Sign-up form")
-
-        element("auth.switchMode", in: app).tap()
+        XCTAssertTrue(element("auth.code.email", in: app).waitForExistence(timeout: 5), "Quick access should show email input")
+        XCTAssertFalse(element("auth.code.submit", in: app).isEnabled, "Empty email must not request a code")
+        XCTAssertFalse(element("auth.password", in: app).exists, "Quick access should not require a password")
+        capture(app, named: "Email code access")
+        app.terminate()
+        app = launchApp()
+        element("auth.signIn", in: app).tap()
         XCTAssertTrue(element("auth.forgotPassword", in: app).waitForExistence(timeout: 5), "Sign-in form should offer password reset")
         XCTAssertTrue(element("auth.email", in: app).exists, "Sign-in form should show email or username input")
         XCTAssertFalse(element("auth.submit", in: app).isEnabled, "Empty sign-in form must not submit")
@@ -55,14 +55,16 @@ final class TempoHealthUserFlowTests: XCTestCase {
         }
 
         var app = launchApp()
-        let create = element("auth.createAccount", in: app)
-        XCTAssertTrue(create.waitForExistence(timeout: 15))
-        create.tap()
+        let legacySignIn = element("auth.signIn", in: app)
+        XCTAssertTrue(legacySignIn.waitForExistence(timeout: 15))
+        legacySignIn.tap()
+        try tapButton("auth.switchMode", in: app)
         try enter(email, into: "auth.email", in: app)
         try enter(username, into: "auth.username", in: app)
         try enter(password, into: "auth.password", in: app)
         try tapButton("auth.submit", in: app)
 
+        try tapButton("onboarding.intro.skip", in: app)
         let onboarding = element("onboarding.profile.title", in: app)
         try require(onboarding.waitForExistence(timeout: 50), "Real registration did not reach onboarding. \(accountError(in: app))", in: app)
         dismissPasswordSavePrompt(in: app, timeout: 5)
@@ -72,7 +74,8 @@ final class TempoHealthUserFlowTests: XCTestCase {
         try require(sport.waitForExistence(timeout: 30), "Real profile save did not advance to sports", in: app)
         sport.tap()
         try tapButton("onboarding.sports.continue", in: app)
-        try require(element("onboarding.finish", in: app).waitForExistence(timeout: 30), "Real sports save did not advance to connections", in: app)
+        for _ in 0..<4 { try tapButton("permissions.skip", in: app) }
+        try require(element("onboarding.finish", in: app).waitForExistence(timeout: 30), "Permissions should advance to optional social setup", in: app)
         try tapButton("onboarding.finish", in: app)
         try require(element("screen.summary", in: app).waitForExistence(timeout: 30), "Onboarding should finish without requiring Strava or Apple Health", in: app)
         capture(app, named: "Live account onboarding completed")

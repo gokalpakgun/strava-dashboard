@@ -874,7 +874,7 @@ struct ProfileProgressSummary: View {
                 }
                 NavigationLink(destination: AchievementsScreen()) {
                     Label("profile.extra.allBadges".tempoLocalized, systemImage: "arrow.up.right").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                }.buttonStyle(.plain).foregroundStyle(TempoTheme.green)
+                }.buttonStyle(TempoSoftPressStyle()).foregroundStyle(TempoTheme.green)
             }
         }
     }
@@ -1379,7 +1379,7 @@ struct AchievementsScreen: View {
                                         .padding(.horizontal, 13).padding(.vertical, 9)
                                         .background(selected ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(TempoSoftPressStyle())
                             }
                         }
                     }
@@ -1729,7 +1729,7 @@ struct AccountSettingsScreen: View {
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(TempoTheme.secondary)
                         }.padding(16).frame(minHeight: 54).background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    }.buttonStyle(.plain).accessibilityIdentifier("account.appearance")
+                    }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("account.appearance")
 
                     DisclosureGroup(isExpanded: $showAccountActions) {
                         VStack(spacing: 10) {
@@ -1843,7 +1843,7 @@ struct TempoAppearanceSettingsScreen: View {
                                     .font(.title3).foregroundStyle(selected == option ? TempoTheme.green : TempoTheme.secondary.opacity(0.4))
                                     .accessibilityHidden(true)
                             }.padding(.vertical, 16).frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(TempoSoftPressStyle())
                             .accessibilityIdentifier("appearance.\(option.rawValue)")
                             .accessibilityAddTraits(selected == option ? .isSelected : [])
                         if option != TempoAppearance.allCases.last { Divider() }
@@ -1879,7 +1879,7 @@ struct SportSelectionGrid: View {
                     .frame(maxWidth: .infinity, minHeight: 58)
                     .background(selected ? TempoTheme.green : TempoTheme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TempoSoftPressStyle())
                 .accessibilityIdentifier("sport.selection.\(sport.rawValue)")
             }
         }
@@ -1973,7 +1973,7 @@ private struct AccountSecureField: View {
                     .foregroundStyle(TempoTheme.secondary)
                     .frame(width: 28, height: 40)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(TempoSoftPressStyle())
             .accessibilityLabel((hidesPassword ? "Şifreyi göster" : "Şifreyi gizle").tempoLocalized)
         }
         .padding(.horizontal, 16)
@@ -2131,7 +2131,7 @@ struct TempoGlassBackButtonModifier: ViewModifier {
                             .shadow(color: .black.opacity(0.32), radius: 10, y: 4)
                             .contentShape(Circle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(TempoSoftPressStyle())
                     .accessibilityLabel("Geri".tempoLocalized)
                 }
             }
@@ -2167,7 +2167,7 @@ private struct TempoValueIntro: View {
                 if page < 2 { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { page += 1 } } else { onFinish() }
             } label: { Label((page == 2 ? "auth.intro.finish" : "Devam et").tempoLocalized, systemImage: "arrow.right").frame(maxWidth: .infinity) }
                 .buttonStyle(AccountPrimaryButtonStyle())
-            Button("auth.intro.skip".tempoLocalized, action: onFinish).font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).foregroundStyle(TempoTheme.secondary)
+            Button("auth.intro.skip".tempoLocalized, action: onFinish).font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).foregroundStyle(TempoTheme.secondary).accessibilityIdentifier("onboarding.intro.skip")
         }.padding(.top, 12)
     }
 }

@@ -1,6 +1,6 @@
 const encoder=new TextEncoder();
 export const APPLE_CLIENT_ID='com.apitempo.tempohealth';
-export const appleReady=env=>Boolean(env.APPLE_KEY_ID&&env.APPLE_TEAM_ID&&env.APPLE_PRIVATE_KEY&&env.AUTH_FLOW);
+export const appleReady=env=>Boolean(env.APPLE_KEY_ID&&env.APPLE_TEAM_ID&&env.APPLE_PRIVATE_KEY&&env.AUTH_FLOW&&(env.AUTH_PEPPER_V2||env.AUTH_PEPPER||'').length>=32);
 const b64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
 const bytes=value=>Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(value.length/4)*4,'=')),c=>c.charCodeAt(0));
 let keyCache;

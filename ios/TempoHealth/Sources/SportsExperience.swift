@@ -22,10 +22,10 @@ struct SportsHubScreen: View {
                 sportsHeader
                 NavigationLink(destination: StrainDashboardScreen()) {
                     ToolCard(title: "strain.title", subtitle: "strain.subtitle", icon: "gauge.with.dots.needle.33percent", color: TempoTheme.purple)
-                }.buttonStyle(.plain).accessibilityIdentifier("sports.strain")
+                }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("sports.strain")
                 NavigationLink(destination: PolymorphicWorkoutLibraryScreen()) {
                     ToolCard(title: "archetype.library", subtitle: "archetype.librarySubtitle", icon: "chart.bar.xaxis", color: TempoTheme.blue)
-                }.buttonStyle(.plain).accessibilityIdentifier("sports.archetypeLibrary")
+                }.buttonStyle(TempoSoftPressStyle()).accessibilityIdentifier("sports.archetypeLibrary")
 
                 if let error = model.manualWorkoutError {
                     Text(error).font(.footnote).foregroundStyle(TempoTheme.orange).frame(maxWidth: .infinity, alignment: .leading)
@@ -56,7 +56,7 @@ struct SportsHubScreen: View {
                         NavigationLink(destination: NearbyFacilitiesScreen()) { ToolCard(title: "Yakındaki spor alanları", subtitle: "Kort, saha, havuz ve spor salonlarını bul", icon: "mappin.and.ellipse", color: TempoTheme.green) }
                         NavigationLink(destination: RoutesScreen()) { ToolCard(title: "Aktivite rotaları", subtitle: "Strava GPS rotalarını tek haritada incele", icon: "map", color: TempoTheme.blue) }
                         NavigationLink(destination: CoachScreen()) { ToolCard(title: "Tempo Koç", subtitle: "Spor ve sağlıklı yaşam için sohbet", icon: "sparkles", color: TempoTheme.purple) }
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(TempoSoftPressStyle())
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -348,7 +348,7 @@ struct TempoMovementMenuScreen: View {
                                 .foregroundStyle(minutes == option ? TempoTheme.onAccent : TempoTheme.secondary)
                                 .background(minutes == option ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(TempoSoftPressStyle())
                     }
                 }
                 VStack(alignment: .leading, spacing: 7) {
@@ -364,7 +364,7 @@ struct TempoMovementMenuScreen: View {
                                     .foregroundStyle(energy == option ? TempoTheme.onAccent : TempoTheme.secondary)
                                     .background(energy == option ? TempoTheme.green : TempoTheme.raised, in: Capsule())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(TempoSoftPressStyle())
                         }
                     }
                 }
@@ -390,7 +390,7 @@ struct TempoMovementMenuScreen: View {
                                 .foregroundStyle(selectedSportID == sport.rawValue ? TempoTheme.onAccent : TempoTheme.secondary)
                                 .padding(.horizontal, 12).padding(.vertical, 9)
                                 .background(selectedSportID == sport.rawValue ? TempoTheme.green : TempoTheme.card, in: Capsule())
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(TempoSoftPressStyle())
                     }
                 }
             }
@@ -486,7 +486,7 @@ private struct MovementRoutineCard: View {
             .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).stroke(TempoTheme.primary.opacity(0.06)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
     }
 }
 
@@ -625,7 +625,7 @@ private struct SportDetailScreen: View {
                             }
                         }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TempoSoftPressStyle())
             }
         }
         .padding(5)
@@ -718,7 +718,7 @@ private struct SportProgressSection: View {
                                     .frame(height: max(16, 100 * seconds(workout) / maximum))
                                 Text(workout.startedAt.formatted(.dateTime.day().month(.twoDigits))).font(.caption2).foregroundStyle(TempoTheme.secondary)
                             }.frame(maxWidth: .infinity, minHeight: 128, alignment: .bottom)
-                        }.buttonStyle(.plain).accessibilityLabel(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
+                        }.buttonStyle(TempoSoftPressStyle()).accessibilityLabel(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
                             .accessibilityValue(TempoFormat.duration(seconds(workout))).accessibilityAddTraits(selected?.id == workout.id ? .isSelected : [])
                     }
                 }
@@ -992,7 +992,7 @@ private struct SportProgramSection: View {
                     .padding(17)
                     .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TempoSoftPressStyle())
                 .simultaneousGesture(TapGesture().onEnded { TempoHaptics.impact() })
             }
         }
@@ -1044,7 +1044,7 @@ private struct OfflineSessionScreen: View {
                             .foregroundStyle(completed ? TempoTheme.onAccent : TempoTheme.primary)
                             .background(completed ? sport.accentColor : TempoTheme.raised, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(TempoSoftPressStyle())
 
                     Label("Bu program cihazında kayıtlıdır ve internet bağlantısı olmadan açılır.", systemImage: "iphone.and.arrow.forward")
                         .font(.caption).foregroundStyle(TempoTheme.secondary)
@@ -1117,7 +1117,7 @@ private struct SportPreparationSection: View {
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
                 .background(selected ? sport.accentColor : TempoTheme.card, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TempoSoftPressStyle())
     }
 }
 
@@ -1418,7 +1418,7 @@ struct NearbyFacilitiesScreen: View {
                             .padding(.horizontal, 14).frame(minHeight: 44)
                             .foregroundStyle(selectedSport == sport ? TempoTheme.onAccent : TempoTheme.primary)
                             .background(selectedSport == sport ? TempoTheme.green : TempoTheme.card, in: Capsule())
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(TempoSoftPressStyle())
                         .accessibilityAddTraits(selectedSport == sport ? .isSelected : [])
                         .accessibilityIdentifier("facilities.sport.\(sport.rawValue)")
                 }
@@ -1493,12 +1493,12 @@ private struct PlaceCard: View {
                     Text("\(place.distanceText) · \(place.sourceTitle)")
                         .font(.caption2.weight(.medium)).foregroundStyle(TempoTheme.blue)
                 }.frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel("Haritada göster: %@".tempoFormatted(place.name))
+            }.buttonStyle(TempoSoftPressStyle()).accessibilityLabel("Haritada göster: %@".tempoFormatted(place.name))
             Button { place.openDirections() } label: {
                 Image(systemName: "arrow.triangle.turn.up.right.diamond.fill").font(.title3)
                     .foregroundStyle(TempoTheme.green).frame(width: 48, height: 48)
                     .background(TempoTheme.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 15))
-            }.buttonStyle(.plain).accessibilityLabel("Yol tarifi: %@".tempoFormatted(place.name))
+            }.buttonStyle(TempoSoftPressStyle()).accessibilityLabel("Yol tarifi: %@".tempoFormatted(place.name))
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(TempoTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))

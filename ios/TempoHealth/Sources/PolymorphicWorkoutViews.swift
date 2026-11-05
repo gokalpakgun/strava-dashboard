@@ -333,7 +333,7 @@ struct PolymorphicWorkoutLibraryScreen: View {
             Text("Tempo + Apple Sağlık".tempoLocalized).font(.caption).foregroundStyle(TempoTheme.secondary)
             if local.isEmpty { EmptyCard(icon: "figure.mixed.cardio", text: "archetype.empty") }
             ForEach(local.prefix(60)) { record in
-                NavigationLink(destination: PolymorphicWorkoutDetailScreen(record: record, store: store)) { PolymorphicWorkoutCardView(record: record, showsDisclosure: true) }.buttonStyle(.plain)
+                NavigationLink(destination: PolymorphicWorkoutDetailScreen(record: record, store: store)) { PolymorphicWorkoutCardView(record: record, showsDisclosure: true) }.buttonStyle(TempoSoftPressStyle())
             }
             if !strava.isEmpty {
                 TempoDisclosureSection(title: "Strava", icon: "link") {
@@ -367,7 +367,7 @@ struct SportArchetypeSection: View {
                     .frame(minHeight: 44).fixedSize(horizontal: false, vertical: true)
             } else { PolymorphicWorkoutCardView(record: record, showsDisclosure: true) }
         }
-            .buttonStyle(.plain).task(id: account.profile?.id) { if !compact { store.bind(account.profile?.id) } }
+            .buttonStyle(TempoSoftPressStyle()).task(id: account.profile?.id) { if !compact { store.bind(account.profile?.id) } }
             .onAppear { if !compact { store.reload() } }
     }
 }
