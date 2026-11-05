@@ -117,7 +117,7 @@ struct TempoDisclosureSection<Content: View>: View {
     }
 }
 
-private struct TempoMenuRow: View {
+struct TempoMenuRow: View {
     let title: String
     let subtitle: String
     let icon: String
