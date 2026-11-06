@@ -22,7 +22,7 @@ export async function moderateCommunityText(env, text, options = {}) {
       temperature: 0,
       response_format: { type: "json_object" },
     });
-    const timeout = Math.min(8000, Math.max(1, options.timeoutMs ?? 8000));
+    const timeout = Math.min(20000, Math.max(1, options.timeoutMs ?? 20000));
     const timedOut = Symbol("moderation-timeout");
     const result = await Promise.race([inference, new Promise(resolve => { timer = setTimeout(() => resolve(timedOut), timeout); })]);
     if (result === timedOut) return unavailable("timeout");

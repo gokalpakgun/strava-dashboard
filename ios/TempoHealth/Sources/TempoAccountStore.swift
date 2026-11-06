@@ -583,7 +583,7 @@ final class TempoAccountStore: ObservableObject {
     ) async throws -> AccountEnvelope {
         var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
         request.httpMethod = method
-        request.timeoutInterval = path == "/api/account/profile" ? 25 : 12
+        request.timeoutInterval = ["/api/account/profile", "/api/account/signup"].contains(path) ? 30 : 12
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Tempo-Request-ID")
